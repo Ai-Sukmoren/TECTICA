@@ -16,8 +16,9 @@ const Net = preload("res://scripts/net/net.gd")
 
 const STAND_HEIGHT := 1.8
 const CROUCH_HEIGHT := 1.15
-const SWITCH_TIME := 0.7
+const SWITCH_TIME := 0.5
 const GRAVITY := 18.0
+const COYOTE_TIME := 0.12
 
 var max_health := 100.0
 var health := 100.0
@@ -141,11 +142,13 @@ func move_with(desired: Vector3, delta: float) -> void:
 	if is_on_floor():
 		air_time = 0.0
 		velocity.y = -0.1
-		if jump_request > 0.0:
-			velocity.y = jump_request
 	else:
 		air_time += delta
 		velocity.y -= GRAVITY * delta
+	# coyote time: a jump still counts a moment after running off an edge
+	if jump_request > 0.0 and air_time < COYOTE_TIME:
+		velocity.y = jump_request
+		air_time = COYOTE_TIME
 	jump_request = 0.0
 	move_and_slide()
 

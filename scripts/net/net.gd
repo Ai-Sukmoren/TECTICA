@@ -142,6 +142,15 @@ static func funnel_cleanup_stale() -> void:
 			OS.execute(tailscale_cli(), ["funnel", "--https=%d" % FUNNEL_PORT, "off"], [], true))
 
 
+## Waits for the short-lived helper threads (link registration, Funnel CLI)
+## so none is destroyed while still running.
+static func join_threads() -> void:
+	for t in [_funnel_thread, _reg_thread]:
+		if t != null and t.is_started():
+			t.wait_to_finish()
+	_funnel_thread = null
+
+
 ## Removes only the game's own Funnel mapping.
 static func funnel_stop() -> void:
 	_funnel_join()

@@ -44,6 +44,8 @@ var _mat_log: Material
 var _mat_plank: Material
 var _mat_roof: Material
 var _mat_hesco: Material
+## detail vegetation only shown on HIGH / ULTRA
+var _dense_nodes: Array = []
 var _ground_img: Image
 var _ground_tex: ImageTexture
 
@@ -61,7 +63,7 @@ func build() -> void:
 	_mat_rock = Nature.rock_material()
 	_mat_log = M.wood("log", Color(0.38, 0.28, 0.18))
 	_mat_plank = M.wood("plank", Color(0.42, 0.32, 0.22))
-	_mat_roof = Nature.fade_material(Color(0.24, 0.2, 0.17), 2.5)
+	_mat_roof = Nature.roof_material(Color(0.27, 0.21, 0.17))
 	_mat_hesco = M.fabric("hesco", Color(0.5, 0.45, 0.33), 3.0)
 	Nature.fade_materials = Nature.fade_materials.filter(func(m): return m == _mat_roof)
 
@@ -788,9 +790,9 @@ func _build_forest() -> void:
 	var broad_crown := Nature.broad_crown_mesh()
 	_burn_rng(4)   # the old crown mesh drew 4 values; keeps the forest layout unchanged
 	var trunk := Nature.trunk_mesh()
-	var pine_mat := Nature.canopy_material(Color(0.13, 0.22, 0.11), 0.025, Vector3(0, 0.5, 0), 0.45, 3.0)
-	var broad_mat := Nature.canopy_material(Color(0.24, 0.33, 0.11), 0.04, Vector3(0, 0.72, 0), 0.65, 2.4)
-	var bush_mat := Nature.canopy_material(Color(0.2, 0.29, 0.1), 0.06, Vector3(0, 0.3, 0), 0.6, 3.2)
+	var pine_mat := Nature.canopy_material(Color(0.1, 0.21, 0.1), 0.025, Vector3(0, 0.5, 0), 0.45, 3.0, 0.47, 0.19)
+	var broad_mat := Nature.canopy_material(Color(0.2, 0.35, 0.08), 0.04, Vector3(0, 0.72, 0), 0.65, 2.4, 0.42, 0.1)
+	var bush_mat := Nature.canopy_material(Color(0.17, 0.31, 0.08), 0.06, Vector3(0, 0.3, 0), 0.6, 3.2, 0.4, 0.16)
 	bush_mat.set_shader_parameter("fade_min_h", 100.0)
 	# chunked instance lists
 	var chunks := {}   # Vector2i -> {pine_t, pine_c, broad_t, broad_c, bush, shapes}
@@ -868,9 +870,9 @@ func _build_forest() -> void:
 	_build_grass()
 
 
-func _multimesh(mesh: Mesh, mat: Material, items: Array, shadows: bool, vis_end: float = 0.0) -> void:
+func _multimesh(mesh: Mesh, mat: Material, items: Array, shadows: bool, vis_end: float = 0.0) -> MultiMeshInstance3D:
 	if items.is_empty():
-		return
+		return null
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -888,6 +890,7 @@ func _multimesh(mesh: Mesh, mat: Material, items: Array, shadows: bool, vis_end:
 		mmi.visibility_range_end_margin = 6.0
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	add_child(mmi)
+	return mmi
 
 
 func _free_spot(min_open: float) -> Vector3:
@@ -985,34 +988,80 @@ func _build_grass() -> void:
 	var mat := Nature.grass_material()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
-	var per_chunk := [{}, {}]
+	# growth map (1 m cells): 0 = bare (roads, creek, pads) .. 1 = open meadow.
+	# Sampling it per tuft keeps a 3x denser carpet as fast to build as before.
+	var gn := int(HALF * 2.0)
+	var grow := PackedFloat32Array()
+	grow.resize(gn * gn)
 	var pads := [Vector2(lz_south.x, lz_south.z), Vector2(lz_north.x, lz_north.z)]
-	for i in 62000:
-		var p := Vector2(rng.randf_range(-HALF, HALF), rng.randf_range(-HALF, HALF))
-		if road_dist(p) < 2.6 or _seg_dist(p, creek) < 2.8:
-			continue
-		if p.distance_to(pads[0]) < 6.4 or p.distance_to(pads[1]) < 6.4:
-			continue
-		var inside := false
-		for c in clearings:
-			if p.distance_to(c[0]) < float(c[1]) * 0.55 and float(c[2]) > 0.5:
-				inside = true
-				break
-		if inside and rng.randf() < 0.85:
-			continue
-		# shaded forest floor: only a few sparse tufts
-		if tree_clearance(p) < 2.2 and rng.randf() < 0.75:
-			continue
-		var k := i % 2
-		var ck := _cell(p.x, p.y, GRASS_CHUNK)
-		if not per_chunk[k].has(ck):
-			per_chunk[k][ck] = []
-		var sc := rng.randf_range(0.8, 1.5)
-		var tint := Color(rng.randf_range(0.8, 1.1), rng.randf_range(0.85, 1.1), rng.randf_range(0.75, 1.0))
-		per_chunk[k][ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.75, 1.3), sc)), Vector3(p.x, ground_y(p.x, p.y), p.y)), tint])
-	for k in 2:
-		for ck in per_chunk[k]:
-			_multimesh(tufts[k], mat, per_chunk[k][ck], false, 42.0)
+	for iz in gn:
+		for ix in gn:
+			var p := Vector2(-HALF + ix + 0.5, -HALF + iz + 0.5)
+			var g := 1.0
+			if road_dist(p) < 2.6 or _seg_dist(p, creek) < 2.8 or p.distance_to(pads[0]) < 6.4 or p.distance_to(pads[1]) < 6.4:
+				g = 0.0
+			else:
+				for c in clearings:
+					if p.distance_to(c[0]) < float(c[1]) * 0.55 and float(c[2]) > 0.5:
+						g = 0.15   # trodden camp ground
+						break
+				if g > 0.2 and tree_clearance(p) < 2.2:
+					g = 0.3        # shaded forest floor
+			grow[iz * gn + ix] = g
+	# layer 0: base cover (always shown). layer 1: dense short fill (HIGH / ULTRA).
+	for layer in 2:
+		var per_chunk := [{}, {}]
+		for i in (70000 if layer == 0 else 125000):
+			var x := rng.randf_range(-HALF, HALF)
+			var z := rng.randf_range(-HALF, HALF)
+			var g := grow[clampi(int(z + HALF), 0, gn - 1) * gn + clampi(int(x + HALF), 0, gn - 1)]
+			if rng.randf() > g:
+				continue
+			var k := i % 2
+			var ck := _cell(x, z, GRASS_CHUNK)
+			if not per_chunk[k].has(ck):
+				per_chunk[k][ck] = []
+			var sc := rng.randf_range(0.8, 1.5) if layer == 0 else rng.randf_range(0.5, 0.95)
+			var tint := Color(rng.randf_range(0.8, 1.1), rng.randf_range(0.85, 1.1), rng.randf_range(0.75, 1.0))
+			per_chunk[k][ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.75, 1.3), sc)), Vector3(x, ground_y(x, z), z)), tint])
+		for k in 2:
+			for ck in per_chunk[k]:
+				var node := _multimesh(tufts[k], mat, per_chunk[k][ck], false, 42.0 if layer == 0 else 34.0)
+				if layer == 1 and node != null:
+					_dense_nodes.append(node)
+	# ferns on the forest floor, wildflowers in the meadows
+	var fern := Nature.fern_mesh()
+	var flower := Nature.flower_mesh()
+	var flower_mat := Nature.flower_material()
+	var ferns := {}
+	var flowers := {}
+	var petal := [Color(1.0, 0.98, 0.9), Color(1.0, 0.82, 0.15), Color(0.72, 0.55, 0.95), Color(1.0, 0.98, 0.9)]
+	for i in 26000:
+		var x := rng.randf_range(-HALF, HALF)
+		var z := rng.randf_range(-HALF, HALF)
+		var g := grow[clampi(int(z + HALF), 0, gn - 1) * gn + clampi(int(x + HALF), 0, gn - 1)]
+		var ck := _cell(x, z, GRASS_CHUNK)
+		if g > 0.25 and g < 0.35 and i % 3 == 0:
+			if not ferns.has(ck):
+				ferns[ck] = []
+			var fs := rng.randf_range(0.8, 1.5)
+			ferns[ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(fs, fs, fs)), Vector3(x, ground_y(x, z), z)),
+					Color(rng.randf_range(0.7, 1.0), rng.randf_range(0.8, 1.05), rng.randf_range(0.6, 0.9))])
+		elif g > 0.9:
+			# flowers grow in drifts, not evenly
+			if sin(x * 0.31 + 1.7) * sin(z * 0.27 - 0.6) + sin((x + z) * 0.11) * 0.5 < 0.35:
+				continue
+			if not flowers.has(ck):
+				flowers[ck] = []
+			var ws := rng.randf_range(0.7, 1.3)
+			flowers[ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(ws, ws, ws)), Vector3(x, ground_y(x, z), z)),
+					petal[rng.randi() % petal.size()]])
+	for ck in ferns:
+		_multimesh(fern, mat, ferns[ck], false, 46.0)
+	for ck in flowers:
+		var fn := _multimesh(flower, flower_mat, flowers[ck], false, 30.0)
+		if fn != null:
+			_dense_nodes.append(fn)
 
 
 ## Invisible walls at the map edge; a dense tree line beyond them.
@@ -1155,6 +1204,9 @@ func concealment(pos: Vector3) -> float:
 
 
 func apply_quality(q: int) -> void:
+	for n in _dense_nodes:
+		if is_instance_valid(n):
+			n.visible = q >= 1   # dense grass + flowers on HIGH / ULTRA shadows presets
 	for entry in lights:
 		var l: Light3D = entry.light
 		if is_instance_valid(l):

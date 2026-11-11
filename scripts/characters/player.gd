@@ -73,8 +73,8 @@ func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: S
 	puppet = remote
 	display_name = tag
 	team = 0
-	accel = 18.0
-	decel = 24.0
+	accel = 48.0   # full jog speed in under 0.1 s
+	decel = 60.0
 	_pad_dir = Vector3(-sin(yaw), 0, -cos(yaw))
 	add_to_group("player")
 	# weapon-mounted flashlight (T / Back)
@@ -264,6 +264,15 @@ func get_fire_origin() -> Vector3:
 	return super.get_fire_origin()
 
 
+## Aim is updated every rendered frame (not once per physics tick), so the
+## operator turns with the mouse / stick with no added latency.
+func _process(delta: float) -> void:
+	if rig == null or puppet or is_dead or vaulting or input_blocked:
+		return
+	_update_aim(delta)
+	rig.aim_yaw = aim_yaw
+
+
 func _physics_process(delta: float) -> void:
 	if rig == null:
 		return
@@ -336,7 +345,7 @@ func _physics_process(delta: float) -> void:
 
 	# ---- jump (Space / A when there is nothing to vault over)
 	_jump_cd = maxf(_jump_cd - delta, 0.0)
-	if _vault_buffer > 0.0 and is_on_floor() and not sliding and _jump_cd <= 0.0:
+	if _vault_buffer > 0.0 and (is_on_floor() or air_time < COYOTE_TIME) and not sliding and _jump_cd <= 0.0:
 		_vault_buffer = 0.0
 		_jump_cd = 0.4
 		if crouching:
@@ -378,7 +387,6 @@ func _physics_process(delta: float) -> void:
 		fp_pitch -= rec
 		_recoil_recover -= rec
 
-	_update_aim(delta)
 	_update_peek(lean_in)
 
 	if Input.is_action_just_pressed("grenade"):
@@ -427,7 +435,7 @@ func _update_aim(delta: float) -> void:
 		to.y = 0.0
 		if to.length() > 0.3:
 			target_yaw = atan2(-to.x, -to.z)
-	aim_yaw = lerp_angle(aim_yaw, target_yaw, 1.0 - exp(-(10.0 if sprinting else 22.0) * delta))
+	aim_yaw = lerp_angle(aim_yaw, target_yaw, 1.0 - exp(-(16.0 if sprinting else 40.0) * delta))
 
 
 func _update_fp_aim(delta: float) -> void:

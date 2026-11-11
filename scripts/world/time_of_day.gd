@@ -84,22 +84,22 @@ func _apply(delta: float) -> void:
 	var golden := (1.0 - smoothstep(4.0, 22.0, elev)) * (1.0 - night)
 
 	# --- key light: the sun by day, the moon by night
-	var day_col := Color(1.0, 0.93, 0.82).lerp(Color(1.0, 0.56, 0.28), golden)
+	var day_col := Color(1.0, 0.9, 0.74).lerp(Color(1.0, 0.52, 0.24), golden)
 	var moon_col := Color(0.55, 0.66, 1.0)
 	var sun_k := smoothstep(-3.0, 8.0, elev)
 	if elev > -3.5:
 		sun.basis = Basis.looking_at(-sun_dir, Vector3.UP)
 		sun.light_color = day_col
-		sun.light_energy = 1.75 * sun_k + 0.0001
+		sun.light_energy = 2.7 * sun_k + 0.0001
 	else:
 		sun.basis = Basis.looking_at(-moon_dir, Vector3.UP)
 		sun.light_color = moon_col
 		sun.light_energy = 0.2 * night
-	sun.light_volumetric_fog_energy = lerpf(0.9, 0.4, night)
+	sun.light_volumetric_fog_energy = lerpf(1.25, 0.5, night) + golden * 1.4
 
 	# --- sky
-	var top_day := Color(0.22, 0.42, 0.72)
-	var hor_day := Color(0.66, 0.74, 0.8)
+	var top_day := Color(0.16, 0.38, 0.78)
+	var hor_day := Color(0.62, 0.74, 0.86)
 	var top := top_day.lerp(Color(0.2, 0.22, 0.38), golden).lerp(Color(0.012, 0.018, 0.045), night)
 	var hor := hor_day.lerp(Color(0.95, 0.55, 0.32), golden).lerp(Color(0.04, 0.055, 0.1), night)
 	if red_tint > 0.0:
@@ -115,14 +115,14 @@ func _apply(delta: float) -> void:
 	sky_mat.set_shader_parameter("sun_vis", smoothstep(-4.0, 1.0, elev))
 
 	# --- ambient, fog, exposure
-	var amb_day := Color(0.6, 0.66, 0.74)  # cool sky fill so sun and shade read apart
+	var amb_day := Color(0.46, 0.58, 0.8)   # cool sky fill: shade goes blue, sunlight stays warm
 	var amb := amb_day.lerp(Color(0.75, 0.55, 0.45), golden).lerp(Color(0.16, 0.22, 0.42), night)
 	if red_tint > 0.0:
 		amb = amb.lerp(Color(0.6, 0.3, 0.28), red_tint * 0.5)
 	env.ambient_light_color = amb
-	env.ambient_light_energy = lerpf(0.72, 0.5, night)
+	env.ambient_light_energy = lerpf(0.52, 0.5, night)
 	var morning := clampf(1.0 - absf(hour - 6.8) / 2.0, 0.0, 1.0)
-	env.volumetric_fog_density = 0.004 + morning * 0.006 + night * 0.007 + red_tint * 0.012
+	env.volumetric_fog_density = 0.003 + morning * 0.008 + golden * 0.005 + night * 0.005 + red_tint * 0.012
 	env.volumetric_fog_albedo = hor.lerp(amb, 0.5).lerp(Color(0.8, 0.78, 0.7), 0.35 * (1.0 - night))
 	env.fog_light_color = hor
 	var bright := float(Settings.v.get("brightness", 1.0))

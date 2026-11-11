@@ -73,11 +73,11 @@ func _process(delta: float) -> void:
 		_target_yaw -= PI * 0.25
 	if Input.is_action_just_pressed("zoom_in"):
 		_target_zoom = 11.0 if _target_zoom > 20.0 else (24.0 if _target_zoom > 14.0 else 17.0)
-	yaw = lerp_angle(yaw, _target_yaw, 1.0 - exp(-7.0 * delta))
+	yaw = lerp_angle(yaw, _target_yaw, 1.0 - exp(-12.0 * delta))
 	var extra := 0.0
 	if aim_source and not aim_source.is_dead and aim_source.aiming and not first_person:
 		extra = (float(aim_source.current_weapon().stats.zoom) - 1.0) * 1.8
-	zoom = lerpf(zoom, _target_zoom + extra, 1.0 - exp(-8.0 * delta))
+	zoom = lerpf(zoom, _target_zoom + extra, 1.0 - exp(-12.0 * delta))
 
 	if target:
 		var tp: Vector3 = target.get_global_transform_interpolated().origin
@@ -100,7 +100,7 @@ func _process(delta: float) -> void:
 				off = m.limit_length(1.0)
 				desired += Basis(Vector3.UP, yaw) * Vector3(off.x, 0, off.y) * reach
 			desired += aim_source.peek_offset() * 1.6
-		global_position = global_position.lerp(desired, 1.0 - exp(-5.0 * delta))
+		global_position = global_position.lerp(desired, 1.0 - exp(-10.0 * delta))
 	_apply()
 
 	# first-person eye camera, driven by the rig's head (with physics interpolation offset)

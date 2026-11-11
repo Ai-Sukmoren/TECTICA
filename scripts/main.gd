@@ -199,6 +199,10 @@ func alive_players() -> Array:
 	return out
 
 
+func _exit_tree() -> void:
+	Net.join_threads()
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[quit] window close request from the OS")
@@ -351,23 +355,33 @@ func _build_environment() -> void:
 	env.ambient_light_color = Color(0.5, 0.56, 0.68)
 	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.25
-	env.ssao_radius = 0.85
-	env.ssao_intensity = 1.5
-	env.ssao_detail = 0.6
+	env.tonemap_exposure = 1.12
+	env.tonemap_white = 6.0
+	# contact shadows: wide, strong ambient occlusion that also dims direct light a little
+	env.ssao_radius = 1.6
+	env.ssao_intensity = 2.6
+	env.ssao_power = 1.7
+	env.ssao_detail = 0.7
+	env.ssao_light_affect = 0.22
+	env.ssao_ao_channel_affect = 0.35
+	env.ssil_radius = 4.0
+	env.ssil_intensity = 1.2
 	env.ssr_max_steps = 48
 	env.ssr_fade_in = 0.1
 	env.ssr_fade_out = 2.5
 	env.glow_enabled = true
-	env.glow_intensity = 0.45
-	env.glow_bloom = 0.05
+	env.glow_intensity = 0.62
+	env.glow_bloom = 0.09
+	env.glow_strength = 1.05
 	env.glow_hdr_threshold = 1.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	env.volumetric_fog_density = 0.009
 	env.volumetric_fog_albedo = Color(0.62, 0.66, 0.74)
-	env.volumetric_fog_anisotropy = 0.55
-	env.volumetric_fog_length = 48.0
-	env.volumetric_fog_ambient_inject = 0.15
+	env.volumetric_fog_anisotropy = 0.72      # forward scattering: visible sun shafts through the trees
+	env.volumetric_fog_length = 72.0
+	env.volumetric_fog_detail_spread = 1.6
+	env.volumetric_fog_ambient_inject = 0.08
+	env.volumetric_fog_temporal_reprojection_enabled = true
 	# distance haze: far ridges and the tree line fade into the sky colour
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
@@ -379,8 +393,9 @@ func _build_environment() -> void:
 	env.sdfgi_min_cell_size = 0.2
 	env.sdfgi_energy = 0.9
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.1
-	env.adjustment_saturation = 0.96
+	env.adjustment_contrast = 1.16
+	env.adjustment_saturation = 1.14
+	env.adjustment_brightness = 1.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	var attrs := CameraAttributesPractical.new()
@@ -393,11 +408,14 @@ func _build_environment() -> void:
 	sun.light_color = Color(1.0, 0.84, 0.66)
 	sun.light_energy = 1.15
 	sun.shadow_enabled = true
-	sun.shadow_blur = 1.5
+	sun.shadow_blur = 1.1
 	sun.light_volumetric_fog_energy = 0.6
-	sun.directional_shadow_max_distance = 60.0
-	sun.shadow_bias = 0.04
-	sun.shadow_normal_bias = 1.2
+	sun.light_angular_distance = 0.6          # soft penumbra that widens with distance
+	sun.directional_shadow_max_distance = 80.0
+	sun.directional_shadow_fade_start = 0.85
+	sun.directional_shadow_blend_splits = true
+	sun.shadow_bias = 0.035
+	sun.shadow_normal_bias = 1.1
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
 
@@ -509,6 +527,9 @@ func _process(_delta: float) -> void:
 	if player == null or hud == null:
 		return
 	_update_respawn(_delta)
+	var vcam := get_viewport().get_camera_3d()
+	if vcam != null:
+		Nature.set_view(vcam.global_position)
 	# zombie survival: the light comes on by itself as night falls
 	# (unless the player switched it off on purpose)
 	if director != null and _deployed and not player.is_dead and not player.flashlight_on 			and not player.flashlight_manual and tod.night > 0.35:

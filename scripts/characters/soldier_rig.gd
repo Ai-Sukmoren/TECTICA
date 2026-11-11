@@ -267,6 +267,50 @@ func build(p: Dictionary) -> void:
 	hand_mag = _node(hands[0], "HandMag", Vector3(0, -0.04, 0))
 	_grenade_mesh = _mesh(hands[1], ML.sphere(0.042, false, 10), M.painted_metal("grenade", Color(0.25, 0.3, 0.2)), Vector3(0, -0.05, -0.03))
 	_grenade_mesh.visible = false
+	_build_details(p)
+
+
+## Second pass of gear detail shared by every soldier: webbing, pads, cuffs,
+## boot shaping and belt kit. Purely visual (no new joints).
+func _build_details(p: Dictionary) -> void:
+	var vest: Material = p.vest
+	var gear: Material = p.gear
+	var detail: Material = p.detail
+	var strap := M.fabric("webbing_strap", Color(0.13, 0.13, 0.11), 9.0)
+	# plate carrier: MOLLE webbing on the cummerbund, padded shoulder straps, drag handle
+	for side in [-1, 1]:
+		for i in 3:
+			_mesh(chest, ML.rbox(Vector3(0.012, 0.014, 0.2)), strap, Vector3(side * 0.212, -0.02 - i * 0.04, 0.0))
+		_mesh(chest, ML.rbox(Vector3(0.095, 0.03, 0.16)), vest, Vector3(side * 0.125, 0.268, 0.0))
+		_mesh(chest, ML.rbox(Vector3(0.03, 0.2, 0.014)), strap, Vector3(side * 0.12, 0.13, -0.17))
+	for i in 2:
+		_mesh(chest, ML.rbox(Vector3(0.3, 0.014, 0.012)), strap, Vector3(0, 0.2 + i * 0.045, -0.169))
+	_mesh(chest, ML.rbox(Vector3(0.11, 0.022, 0.03)), strap, Vector3(0, 0.275, 0.135))
+	# shemagh / neck wrap: hides the neck seam and softens the silhouette
+	var wrap := M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0)
+	_mesh(chest, ML.cylinder(0.07, 0.092, 0.075, 14), wrap, Vector3(0, 0.305, 0.0))
+	_mesh(chest, ML.sphere(0.06, false, 10), wrap, Vector3(0.0, 0.285, -0.075), Vector3.ZERO, Vector3(1.5, 0.75, 0.7))
+	# arms: rounded elbow pads, glove cuffs, wrist GPS on the support arm
+	for i in 2:
+		_mesh(elbows[i], ML.sphere(0.052, false, 10), detail, Vector3(0, -0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
+		_mesh(elbows[i], ML.cylinder(0.06, 0.064, 0.055, 12), p.gloves, Vector3(0, -FOREARM + 0.035, 0))
+		_mesh(hands[i], ML.rbox(Vector3(0.076, 0.03, 0.06)), detail, Vector3(0, -0.02, -0.03))
+	_mesh(elbows[0], ML.rbox(Vector3(0.052, 0.04, 0.016)), M.solid(Color(0.05, 0.06, 0.06), 0.25, 0.4), Vector3(0, -0.2, -0.058))
+	_mesh(elbows[0], ML.rbox(Vector3(0.036, 0.026, 0.004)), M.emissive("wrist_gps", Color(0.2, 0.9, 0.5), 0.9), Vector3(0, -0.2, -0.068))
+	# legs: knee caps, pocket flaps, boot collars and toe caps
+	for i in 2:
+		var side := -1.0 if i == 0 else 1.0
+		_mesh(shins[i], ML.sphere(0.07, false, 10), detail, Vector3(0, -0.035, -0.062), Vector3.ZERO, Vector3(0.95, 1.2, 0.55))
+		_mesh(shins[i], ML.cylinder(0.078, 0.084, 0.07, 12), p.boots, Vector3(0, -SHIN + 0.075, 0))
+		_mesh(thighs[i], ML.rbox(Vector3(0.022, 0.014, 0.125)), strap, Vector3(side * 0.112, -0.185, 0))
+		_mesh(thighs[i], ML.cylinder(0.094, 0.094, 0.02, 12), strap, Vector3(0, -0.11, 0))
+		_mesh(feet[i], ML.sphere(0.062, false, 10), p.boots, Vector3(0, -0.032, -0.165), Vector3.ZERO, Vector3(0.95, 0.78, 1.0))
+		_mesh(feet[i], ML.rbox(Vector3(0.09, 0.012, 0.07)), strap, Vector3(0, 0.02, -0.07))
+	# belt kit: dump pouch, knife, magazine pouch
+	_mesh(hips, ML.rbox(Vector3(0.1, 0.14, 0.075)), gear, Vector3(-0.1, -0.035, 0.155))
+	_mesh(hips, ML.rbox(Vector3(0.03, 0.17, 0.028)), detail, Vector3(0.195, -0.075, 0.02))
+	_mesh(hips, ML.rbox(Vector3(0.022, 0.05, 0.022)), M.solid(Color(0.3, 0.3, 0.3), 0.3, 0.8), Vector3(0.195, 0.03, 0.02))
+	_mesh(hips, ML.rbox(Vector3(0.06, 0.11, 0.035)), gear, Vector3(0.1, -0.01, -0.145))
 
 
 func _build_headgear(h: Node3D, p: Dictionary) -> void:
@@ -282,6 +326,20 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 				_mesh(h, ML.cylinder(0.05, 0.05, 0.045, 12), detail, Vector3(side * 0.115, -0.02, 0.0), Vector3(0, 0, PI * 0.5))
 			_mesh(h, ML.rbox(Vector3(0.08, 0.05, 0.035)), detail, Vector3(0, 0.07, 0.16))
 			_mesh(h, ML.rbox(Vector3(0.2, 0.012, 0.012)), detail, Vector3(0, 0.1, -0.02))
+			# chin strap + cup, boom microphone, side velcro patches
+			var web := M.fabric("webbing_strap", Color(0.13, 0.13, 0.11), 9.0)
+			for side in [-1, 1]:
+				_mesh(h, ML.rbox(Vector3(0.01, 0.115, 0.018)), web, Vector3(side * 0.092, -0.065, -0.035), Vector3(-0.35, 0, 0))
+				_mesh(h, ML.rbox(Vector3(0.006, 0.04, 0.05)), M.solid(Color(0.25, 0.27, 0.2), 0.9), Vector3(side * 0.148, 0.075, 0.045))
+			_mesh(h, ML.rbox(Vector3(0.07, 0.018, 0.03)), web, Vector3(0, -0.118, -0.062))
+			_mesh(h, ML.cylinder(0.004, 0.004, 0.11, 6), detail, Vector3(-0.105, -0.06, -0.06), Vector3(1.25, 0, 0.25))
+			_mesh(h, ML.sphere(0.012, false, 8), detail, Vector3(-0.075, -0.075, -0.108))
+			if p.get("nvg", false):
+				# flip-up binocular night vision on the shroud
+				_mesh(h, ML.rbox(Vector3(0.03, 0.06, 0.03)), detail, Vector3(0, 0.115, -0.165))
+				for sx in [-1, 1]:
+					_mesh(h, ML.cylinder(0.021, 0.024, 0.085, 12), detail, Vector3(sx * 0.03, 0.175, -0.15), Vector3(0.5, 0, 0))
+					_mesh(h, ML.cylinder(0.019, 0.019, 0.006, 12), M.solid(Color(0.1, 0.25, 0.18), 0.1, 0.6), Vector3(sx * 0.03, 0.212, -0.129), Vector3(0.5, 0, 0))
 		"cap":
 			_mesh(h, ML.cylinder(0.105, 0.112, 0.08, 16), p.camo, Vector3(0, 0.07, 0))
 			_mesh(h, ML.rbox(Vector3(0.15, 0.012, 0.09)), p.camo, Vector3(0, 0.035, -0.135))
@@ -529,7 +587,7 @@ func _animate(delta: float) -> void:
 
 func _update_state(delta: float) -> void:
 	crouch_amt = lerpf(crouch_amt, crouch_target, 1.0 - exp(-9.0 * delta))
-	aim_amt = lerpf(aim_amt, aim_target, 1.0 - exp(-12.0 * ads_speed * delta))
+	aim_amt = lerpf(aim_amt, aim_target, 1.0 - exp(-16.0 * ads_speed * delta))
 	slide_amt = lerpf(slide_amt, slide_target, 1.0 - exp(-(14.0 if slide_target > slide_amt else 6.0) * delta))
 	sprint_amt = lerpf(sprint_amt, sprint_target, 1.0 - exp(-7.0 * delta))
 	var lt := 0.0 if (vault_t >= 0.0 or sprint_target > 0.5) else lean_target

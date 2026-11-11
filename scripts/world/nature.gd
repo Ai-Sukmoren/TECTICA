@@ -37,10 +37,13 @@ void fragment() {
 	float grain = texture(noise_a, p * 3.3).r;                // pebbles / needles
 
 	// meadow: lush and dry patches, damp moss, sparse clumps
-	vec3 grass = mix(vec3(0.1, 0.17, 0.045), vec3(0.2, 0.26, 0.08), n1);
-	grass = mix(grass, vec3(0.33, 0.3, 0.15), smoothstep(0.5, 0.82, macro) * 0.4 + smoothstep(0.62, 0.9, n2) * 0.2);
-	grass = mix(grass, vec3(0.06, 0.1, 0.04), smoothstep(0.58, 0.86, n3) * 0.45);
-	grass *= 0.78 + 0.42 * fine;
+	vec3 grass = mix(vec3(0.05, 0.125, 0.028), vec3(0.14, 0.25, 0.05), n1);
+	grass = mix(grass, vec3(0.34, 0.31, 0.12), smoothstep(0.5, 0.82, macro) * 0.38 + smoothstep(0.62, 0.9, n2) * 0.18);
+	grass = mix(grass, vec3(0.04, 0.09, 0.035), smoothstep(0.58, 0.86, n3) * 0.45);
+	grass *= 0.74 + 0.46 * fine;
+	// blade streaks: two stretched noise lookups read as mown / lying grass up close
+	float blade = texture(noise_b, p * vec2(7.0, 1.9)).r * texture(noise_b, p.yx * vec2(6.3, 2.2) + 0.41).r;
+	grass *= 0.62 + 1.5 * blade;
 
 	// forest floor: pine needles, leaf litter and moss under the canopy
 	vec3 litter = mix(vec3(0.15, 0.1, 0.055), vec3(0.27, 0.19, 0.1), n2);
@@ -60,6 +63,10 @@ void fragment() {
 	float puddle = smoothstep(0.7, 0.78, n3) * smoothstep(0.75, 0.95, m.r) * (1.0 - wet);
 
 	vec3 col = mix(grass, litter, forest);
+	// scattered wildflowers in open meadow (white clover / yellow buttercup)
+	float fl = texture(noise_a, p * 5.3 + 0.7).r;
+	float flower = smoothstep(0.80, 0.84, fl) * (1.0 - forest) * smoothstep(0.35, 0.6, n1);
+	col = mix(col, mix(vec3(0.85, 0.84, 0.72), vec3(0.9, 0.72, 0.12), step(0.5, n2)), flower * 0.8);
 	col = mix(col, mix(col, dirt, 0.6), trod);
 	col = mix(col, dirt, d);
 	col = mix(col, mud, wet);
@@ -69,9 +76,11 @@ void fragment() {
 	vec3 nA = texture(nrm, p * 0.35).rgb;
 	vec3 nB = texture(nrm, p * 1.6 + 0.3).rgb;
 	// Blend signed tangent normals, then encode back to texture space.
-	vec3 blended = normalize(mix(nA * 2.0 - 1.0, nB * 2.0 - 1.0, 0.3));
+	vec3 blended = normalize(mix(nA * 2.0 - 1.0, nB * 2.0 - 1.0, 0.45));
 	NORMAL_MAP = blended * 0.5 + 0.5;
-	NORMAL_MAP_DEPTH = mix(0.38, 0.12, max(wet, puddle));
+	NORMAL_MAP_DEPTH = mix(0.85, 0.15, max(wet, puddle));
+	AO = 0.82 + 0.18 * fine;
+	AO_LIGHT_AFFECT = 0.4;
 }
 """
 
@@ -98,6 +107,8 @@ uniform vec3 fade_center = vec3(0.0, -1000.0, 0.0);
 uniform float fade_in = 0.0;
 uniform float fade_out = 0.0;
 uniform float fade_min_h = 2.1;
+// camera position: cut-outs fade to solid far away so distant trees don't shimmer
+uniform vec3 view_pos = vec3(0.0, 0.0, 0.0);
 varying vec3 wpos;
 float dither_hash(vec2 p) { return fract(sin(dot(floor(p), vec2(12.9898, 78.233))) * 43758.5453); }
 void fade_clip(vec2 fragcoord) {
@@ -120,9 +131,13 @@ uniform float sway = 0.05;
 uniform vec3 crown_center = vec3(0.0, 0.65, 0.0);
 uniform float round_normals = 0.0;
 uniform float clump_scale = 2.2;
+// leaf cut-out: 0 = solid; higher punches more gaps between leaf clusters
+uniform float cutout = 0.0;
+uniform float leaf_scale = 0.26;
 %s
 varying vec3 icol;
 varying float ao;
+varying float edge;
 void vertex() {
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	NORMAL = normalize(mix(NORMAL, normalize(VERTEX - crown_center + vec3(0.0001)), round_normals));
@@ -133,21 +148,30 @@ void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	icol = COLOR.rgb;
 	ao = COLOR.a;
+	edge = UV.x;
 }
 void fragment() {
 	fade_clip(FRAGCOORD.xy);
+	if (cutout > 0.0) {
+		// gaps between leaf / needle clusters; branch tips (edge = 1) are the most ragged
+		float l1 = textureLod(noise, wpos.xz * leaf_scale + wpos.yy * (leaf_scale * 0.83), 1.5).r;
+		float l2 = textureLod(noise, wpos.zy * (leaf_scale * 1.7) + 3.7, 1.5).r;
+		float near = 1.0 - smoothstep(38.0, 75.0, distance(wpos, view_pos));
+		if (l1 * 0.7 + l2 * 0.3 < cutout * mix(0.74, 1.2, edge) * near) discard;
+	}
 	float n = texture(noise, wpos.xz * 0.35 + vec2(wpos.y * 0.3)).r;
 	float n2 = texture(noise, wpos.xy * 1.7 + wpos.zz * 0.9).r;
 	// leaf / needle clumps: brighter tufts with dark gaps between them
 	float c = texture(noise, wpos.xz * clump_scale + wpos.yy * (clump_scale * 0.7)).r;
 	float clump = smoothstep(0.28, 0.72, c);
 	vec3 col = base_color * icol * (0.7 + 0.45 * n) * (0.88 + 0.25 * n2);
-	col *= mix(0.5, 1.12, clump);
-	col = mix(col, col * vec3(1.15, 1.1, 0.75), smoothstep(0.6, 0.9, n) * 0.35);
+	col *= mix(0.42, 1.16, clump);
+	col = mix(col, col * vec3(1.25, 1.18, 0.7), smoothstep(0.55, 0.9, n) * 0.4);   // sun-bleached clusters
+	col *= mix(0.8, 1.12, edge);                                                    // fresh, lighter growth at the tips
 	ALBEDO = col;
-	ROUGHNESS = 0.9;
-	SPECULAR = 0.25;
-	BACKLIGHT = base_color * 0.45 * clump;
+	ROUGHNESS = 0.82;
+	SPECULAR = 0.3;
+	BACKLIGHT = base_color * vec3(1.3, 1.5, 0.6) * 0.75 * clump;                    // light glowing through leaves
 	AO = mix(0.35, 1.0, ao) * (0.75 + 0.25 * clump);
 	AO_LIGHT_AFFECT = 0.55;
 }
@@ -160,12 +184,24 @@ uniform vec3 base_color : source_color = vec3(0.4, 0.3, 0.2);
 uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float noise_scale = 1.5;
 uniform float roughness = 0.85;
+// > 0: overlapping shingle / canvas rows per metre of height
+uniform float rows = 0.0;
 %s
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	fade_clip(FRAGCOORD.xy);
 	float n = texture(noise, (wpos.xz + wpos.yy) * noise_scale).r;
-	ALBEDO = base_color * (0.75 + 0.45 * n);
+	vec3 col = base_color * (0.75 + 0.45 * n);
+	if (rows > 0.0) {
+		float r = wpos.y * rows;
+		float row = floor(r);
+		float along = (abs(NORMAL.x) > abs(NORMAL.z) ? wpos.z : wpos.x) * 2.6 + row * 0.37;
+		float tile = fract(sin(dot(vec2(row, floor(along)), vec2(12.9898, 78.233))) * 43758.5453);
+		col *= 0.78 + 0.34 * tile;                                   // every shingle weathers differently
+		col *= mix(0.55, 1.0, smoothstep(0.0, 0.16, fract(r)));      // shadow under each overlapping row
+		col *= mix(0.7, 1.0, smoothstep(0.0, 0.06, fract(along)));   // gaps between shingles
+	}
+	ALBEDO = col;
 	ROUGHNESS = roughness;
 }
 """
@@ -184,8 +220,12 @@ static func foliage_material(color: Color, sway: float = 0.05) -> ShaderMaterial
 
 
 ## Foliage whose normals are rounded around a local crown `center`.
-static func canopy_material(color: Color, sway: float, center: Vector3, round_amt: float = 0.6, clump: float = 2.2) -> ShaderMaterial:
+## `cut` > 0 punches leaf gaps (see FOLIAGE_SHADER).
+static func canopy_material(color: Color, sway: float, center: Vector3, round_amt: float = 0.6, clump: float = 2.2,
+		cut: float = 0.0, leaf: float = 0.26) -> ShaderMaterial:
 	var m := foliage_material(color, sway)
+	m.set_shader_parameter("cutout", cut)
+	m.set_shader_parameter("leaf_scale", leaf)
 	m.set_shader_parameter("crown_center", center)
 	m.set_shader_parameter("round_normals", round_amt)
 	m.set_shader_parameter("clump_scale", clump)
@@ -206,6 +246,20 @@ static func fade_material(color: Color, noise_scale: float = 1.5, roughness: flo
 	return m
 
 
+## Shingled roof (fades around the player like fade_material).
+static func roof_material(color: Color) -> ShaderMaterial:
+	var m := fade_material(color, 2.5, 0.9)
+	m.set_shader_parameter("rows", 3.2)
+	return m
+
+
+## Camera position for distance-based effects (leaf cut-outs).
+static func set_view(pos: Vector3) -> void:
+	for m in fade_materials:
+		if is_instance_valid(m):
+			m.set_shader_parameter("view_pos", pos)
+
+
 static func set_fade(center: Vector3, r_in: float, r_out: float) -> void:
 	for m in fade_materials:
 		if is_instance_valid(m):
@@ -219,9 +273,9 @@ static func set_fade(center: Vector3, r_in: float, r_out: float) -> void:
 const GRASS_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
-uniform vec3 tip : source_color = vec3(0.34, 0.41, 0.13);
-uniform vec3 dry_tip : source_color = vec3(0.56, 0.5, 0.27);
-uniform vec3 root : source_color = vec3(0.1, 0.14, 0.045);
+uniform vec3 tip : source_color = vec3(0.3, 0.47, 0.1);
+uniform vec3 dry_tip : source_color = vec3(0.6, 0.53, 0.24);
+uniform vec3 root : source_color = vec3(0.08, 0.16, 0.035);
 varying float hgt;
 varying float dry;
 varying vec3 icol;
@@ -241,10 +295,10 @@ void vertex() {
 void fragment() {
 	vec3 t = mix(tip, dry_tip, dry * 0.7);
 	ALBEDO = mix(root, t, smoothstep(0.0, 0.85, hgt)) * icol;
-	ROUGHNESS = 0.85;
-	SPECULAR = 0.3;
-	BACKLIGHT = vec3(0.22, 0.26, 0.08) * hgt;
-	AO = mix(0.65, 1.0, hgt);
+	ROUGHNESS = 0.7;
+	SPECULAR = 0.35;
+	BACKLIGHT = vec3(0.36, 0.44, 0.1) * hgt;
+	AO = mix(0.72, 1.0, hgt);
 	AO_LIGHT_AFFECT = 0.6;
 }
 """
@@ -264,13 +318,13 @@ static func grass_tuft_mesh(seed_value: int = 5) -> ArrayMesh:
 	rng.seed = seed_value
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in 13:
+	for i in 10:
 		var a := rng.randf() * TAU
-		var r := sqrt(rng.randf()) * 0.15
+		var r := sqrt(rng.randf()) * 0.2
 		var base := Vector3(cos(a) * r, 0, sin(a) * r)
 		var face := rng.randf() * TAU
-		var side := Vector3(cos(face), 0, sin(face)) * rng.randf_range(0.014, 0.026)
-		var h := rng.randf_range(0.22, 0.52)
+		var side := Vector3(cos(face), 0, sin(face)) * rng.randf_range(0.016, 0.03)
+		var h := rng.randf_range(0.16, 0.46)
 		var lean := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.04, 0.22) * h * 2.0
 		var mid := base + lean * 0.3 + Vector3(0, h * 0.55, 0)
 		var tip := base + lean + Vector3(0, h, 0)
@@ -283,10 +337,72 @@ static func grass_tuft_mesh(seed_value: int = 5) -> ArrayMesh:
 	return st.commit()
 
 
+## Fern: a rosette of arching, tapered fronds (uses the grass material).
+static func fern_mesh(seed_value: int = 21) -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 8:
+		var a := TAU * i / 8.0 + rng.randf_range(-0.25, 0.25)
+		var dir := Vector3(cos(a), 0, sin(a))
+		var side := Vector3(-sin(a), 0, cos(a))
+		var ln := rng.randf_range(0.38, 0.6)
+		var arch := rng.randf_range(0.22, 0.36)
+		var shade := rng.randf_range(0.6, 0.9)
+		st.set_color(Color(shade * 0.75, shade, shade * 0.6))
+		st.set_normal(Vector3.UP)
+		var prev_c := Vector3.ZERO
+		var prev_w := 0.0
+		for k in range(1, 6):
+			var t := k / 5.0
+			var c := dir * ln * t + Vector3.UP * arch * sin(t * PI * 0.85)
+			var w := 0.085 * sin(t * PI) + 0.004
+			for v in [prev_c - side * prev_w, prev_c + side * prev_w, c + side * w,
+					prev_c - side * prev_w, c + side * w, c - side * w]:
+				st.add_vertex(v)
+			prev_c = c
+			prev_w = w
+	return st.commit()
+
+
+## Wildflower: thin stem with a small crossed blossom. Vertex colour marks
+## stem (dark) vs petals (white) so the instance colour tints the blossom.
+static func flower_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	var h := 0.3
+	st.set_color(Color(0.16, 0.3, 0.08))
+	for v in [Vector3(-0.006, 0, 0), Vector3(0.006, 0, 0), Vector3(0.006, h, 0), Vector3(-0.006, 0, 0), Vector3(0.006, h, 0), Vector3(-0.006, h, 0)]:
+		st.add_vertex(v)
+	st.set_color(Color(1, 1, 1))
+	var r := 0.032
+	var top := Vector3(0, h + 0.012, 0)
+	for k in 6:
+		var a0 := TAU * k / 6.0
+		var a1 := TAU * (k + 1) / 6.0
+		for v in [top, Vector3(cos(a0) * r, h, sin(a0) * r), Vector3(cos(a1) * r, h, sin(a1) * r)]:
+			st.add_vertex(v)
+	return st.commit()
+
+
+static func flower_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 0.8
+	m.backlight_enabled = true
+	m.backlight = Color(0.3, 0.3, 0.25)
+	return m
+
+
 # ------------------------------------------------------------------ trees
 
 ## Adds a triangle whose front face (Godot: clockwise) faces `out`.
-static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, out: Vector3, ca: Color, cb: Color, cc: Color) -> void:
+## `ea/eb/ec` = edge factor per vertex (0 trunk side .. 1 branch tip), stored in UV.x.
+static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, out: Vector3, ca: Color, cb: Color, cc: Color,
+		ea: float = 0.5, eb: float = 0.5, ec: float = 0.5) -> void:
 	var n := (b - a).cross(c - a)
 	if n.dot(out) > 0.0:
 		var t := b
@@ -295,14 +411,20 @@ static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, out: Vecto
 		var tc := cb
 		cb = cc
 		cc = tc
+		var te := eb
+		eb = ec
+		ec = te
 		n = -n
 	n = -n.normalized()
 	st.set_normal(n)
 	st.set_color(ca)
+	st.set_uv(Vector2(ea, 0.0))
 	st.add_vertex(a)
 	st.set_color(cb)
+	st.set_uv(Vector2(eb, 0.0))
 	st.add_vertex(b)
 	st.set_color(cc)
+	st.set_uv(Vector2(ec, 0.0))
 	st.add_vertex(c)
 
 
@@ -313,13 +435,13 @@ static func pine_crown_mesh(seed_value: int = 3) -> ArrayMesh:
 	rng.seed = seed_value
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var tiers := 8
-	var seg := 14
+	var tiers := 12
+	var seg := 16
 	for t in tiers:
 		var f := float(t) / float(tiers - 1)
-		var base_y := lerpf(0.2, 0.86, f)
-		var height := lerpf(0.24, 0.15, f)
-		var rad := lerpf(0.42, 0.08, pow(f, 0.9)) * rng.randf_range(0.9, 1.08)
+		var base_y := lerpf(0.17, 0.88, f)
+		var height := lerpf(0.2, 0.12, f)
+		var rad := lerpf(0.44, 0.06, pow(f, 0.85)) * rng.randf_range(0.86, 1.1)
 		var apex := Vector3(rng.randf_range(-0.012, 0.012), base_y + height, rng.randf_range(-0.012, 0.012))
 		var under := Vector3(0, base_y + height * 0.4, 0)
 		var rot := rng.randf() * TAU
@@ -339,8 +461,8 @@ static func pine_crown_mesh(seed_value: int = 3) -> ArrayMesh:
 			var p1: Vector3 = ring[(i + 1) % seg]
 			var mid := (p0 + p1) * 0.5
 			var side := Vector3(mid.x, 0.0, mid.z).normalized()
-			_tri(st, p0, p1, apex, side + Vector3.UP * 0.6, c_tip, c_tip, c_apex)
-			_tri(st, p0, p1, under, side - Vector3.UP * 0.8, c_tip, c_tip, c_under)
+			_tri(st, p0, p1, apex, side + Vector3.UP * 0.6, c_tip, c_tip, c_apex, 1.0, 1.0, 0.0)
+			_tri(st, p0, p1, under, side - Vector3.UP * 0.8, c_tip, c_tip, c_under, 1.0, 1.0, 0.25)
 	return st.commit()
 
 
@@ -561,11 +683,13 @@ void fragment() {
 	float depth = smoothstep(0.0, 0.75, edge);
 	float flecks = texture(flow_noise, flow * vec2(3.0, 2.0)).r;
 	float foam = (1.0 - smoothstep(0.025, 0.18, edge)) * smoothstep(0.52, 0.7, flecks);
-	vec3 shallow = vec3(0.14, 0.18, 0.13);
-	vec3 deep = vec3(0.025, 0.085, 0.075);
+	vec3 shallow = vec3(0.16, 0.25, 0.17);
+	vec3 deep = vec3(0.015, 0.09, 0.1);
 	ALBEDO = mix(mix(shallow, deep, depth), vec3(0.63, 0.67, 0.58), foam * 0.6);
-	ROUGHNESS = mix(0.12, 0.28, foam);
-	SPECULAR = 0.65;
+	ROUGHNESS = mix(0.05, 0.3, foam);
+	SPECULAR = 0.8;
+	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	ALBEDO = mix(ALBEDO, vec3(0.55, 0.68, 0.78), fres * 0.35);   // sky sheen at grazing angles
 	NORMAL_MAP_DEPTH = mix(0.12, 0.3, depth);
 	ALPHA = smoothstep(0.0, 0.055, edge) * mix(0.38, 0.88, depth);
 }

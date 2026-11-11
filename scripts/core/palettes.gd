@@ -20,6 +20,7 @@ static func player() -> Dictionary:
 		"boots": M.solid(Color(0.3, 0.24, 0.17), 0.75),
 		"headgear": "helmet",
 		"goggles": true,
+		"nvg": true,
 	}
 
 

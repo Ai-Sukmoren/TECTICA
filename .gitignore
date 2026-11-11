@@ -1,0 +1,8 @@
+# Godot cache / imports (rebuilt automatically)
+.godot/
+*.tmp
+# local backups, logs and builds
+*.bak
+*.log
+build/
+/android/

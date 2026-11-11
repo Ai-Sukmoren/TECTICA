@@ -201,6 +201,7 @@ func alive_players() -> Array:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		print("[quit] window close request from the OS")
 		Net.leave()   # also removes the Tailscale Funnel mapping when hosting online
 
 

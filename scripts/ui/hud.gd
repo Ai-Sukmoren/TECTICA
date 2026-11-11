@@ -255,6 +255,7 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 		9:
 			_sign_out()
 		10:
+			print("[quit] title menu QUIT (menu_index=%d)" % menu_index)
 			get_tree().quit()
 
 
@@ -1615,6 +1616,7 @@ func _auth_activate(i: int) -> void:
 		3:
 			_auth_submit(true)
 		4:
+			print("[quit] sign-in QUIT row")
 			get_tree().quit()
 
 

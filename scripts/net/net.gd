@@ -215,17 +215,34 @@ static func read_launch_link() -> void:
 			pending_join = String(args[i + 1])
 
 
+static var _reg_thread: Thread
+
+
 ## Exported Windows builds register tectica:// (per user, no admin) so a
-## clicked invite link opens the game and joins.
+## clicked invite link opens the game and joins. Runs on a background thread
+## and only when the entry is missing / points at another copy of the game,
+## so it can never hold up startup.
 static func register_link_handler() -> void:
 	if not OS.has_feature("windows") or not OS.has_feature("template"):
 		return
+	if _reg_thread != null:
+		return
+	_reg_thread = Thread.new()
+	_reg_thread.start(_register_job)
+
+
+static func _register_job() -> void:
 	var exe := OS.get_executable_path().replace("/", "\\")
 	var base := "HKCU\\Software\\Classes\\tectica"
-	OS.execute("reg", ["add", base, "/ve", "/d", "URL:TECTICA invite", "/f"])
-	OS.execute("reg", ["add", base, "/v", "URL Protocol", "/d", "", "/f"])
+	var out: Array = []
+	OS.execute("reg", ["query", base + "\\shell\\open\\command", "/ve"], out, true)
+	if "\n".join(out).find(exe) >= 0:
+		return   # already registered for this copy
+	# every value is passed with /d and /f, so reg never stops to ask (Yes/No)
+	OS.execute("reg", ["add", base, "/ve", "/d", "URL:TECTICA invite", "/f"], [], true)
+	OS.execute("reg", ["add", base, "/v", "URL Protocol", "/t", "REG_SZ", "/d", "1", "/f"], [], true)
 	# reg.exe needs the inner quotes escaped (\") so paths with spaces survive
-	OS.execute("reg", ["add", base + "\\shell\\open\\command", "/ve", "/d", "\\\"" + exe + "\\\" \\\"%1\\\"", "/f"])
+	OS.execute("reg", ["add", base + "\\shell\\open\\command", "/ve", "/d", "\\\"" + exe + "\\\" \\\"%1\\\"", "/f"], [], true)
 
 
 ## `online` = WebSocket server published through Tailscale Funnel.

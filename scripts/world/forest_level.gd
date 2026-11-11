@@ -44,6 +44,9 @@ var _mat_log: Material
 var _mat_plank: Material
 var _mat_roof: Material
 var _mat_hesco: Material
+var _mat_trim: Material      # roof-level timber (fades with the roof)
+var _mat_stone: Material     # chimneys (fade with the roof)
+var _mat_canvas: Material
 ## detail vegetation only shown on HIGH / ULTRA
 var _dense_nodes: Array = []
 var _ground_img: Image
@@ -52,20 +55,24 @@ var _ground_tex: ImageTexture
 
 func build() -> void:
 	seed(1337)   # same forest every time
-	_mat_wall = M.concrete("wall", Color(0.4, 0.41, 0.4), 0.4)
+	_mat_wall = Nature.concrete_material(Color(0.5, 0.5, 0.47))
 	_mat_wall_trim = M.solid(Color(0.2, 0.21, 0.2), 0.8)
 	_mat_crate = M.wood("crate", Color(0.46, 0.4, 0.28))
 	_mat_crate_frame = M.wood("crate_frame", Color(0.34, 0.29, 0.2))
 	_mat_sandbag = M.fabric("sandbag", Color(0.52, 0.47, 0.36), 4.0)
-	_mat_concrete = M.concrete("barrier", Color(0.55, 0.55, 0.53), 0.6)
+	_mat_concrete = Nature.concrete_material(Color(0.6, 0.6, 0.57))
 	_mat_metal = M.painted_metal("metal_grey", Color(0.3, 0.32, 0.33))
 	_mat_bark = M.wood("bark", Color(0.27, 0.2, 0.15))
 	_mat_rock = Nature.rock_material()
 	_mat_log = M.wood("log", Color(0.38, 0.28, 0.18))
-	_mat_plank = M.wood("plank", Color(0.42, 0.32, 0.22))
+	_mat_plank = Nature.plank_material(Color(0.5, 0.37, 0.24))
 	_mat_roof = Nature.roof_material(Color(0.27, 0.21, 0.17))
-	_mat_hesco = M.fabric("hesco", Color(0.5, 0.45, 0.33), 3.0)
+	_mat_hesco = Nature.hesco_material()
 	Nature.fade_materials = Nature.fade_materials.filter(func(m): return m == _mat_roof)
+	_mat_trim = Nature.fade_material(Color(0.36, 0.26, 0.17), 2.2)
+	_mat_stone = Nature.fade_material(Color(0.42, 0.41, 0.38), 1.3, 0.95)
+	_mat_canvas = Nature.fade_material(Color(0.33, 0.36, 0.23), 3.0)
+	_mat_canvas.set_shader_parameter("rows", 1.1)
 
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Navigation"
@@ -425,7 +432,56 @@ func _cabin(center: Vector3, w: float, d: float, rot: float, door_w: float = 1.3
 		slab.rotation.x = s * pitch
 		root.add_child(slab)
 	_floor_patch(center + Vector3(0, 0.01, 0), Vector2(w - 0.2, d - 0.2), _mat_plank).rotation.y = rot
+	_cabin_details(root, w, d, h, door_w, pitch, half_d)
 	_room_light(center + Vector3(0, 2.25, 0), rot, maxf(w, d), "interior")
+
+
+## Everything that turns the box into a cabin: log walls on the gable sides,
+## gable ends, ridge beam, eave boards, windows that glow at night, door
+## frame + step, chimney and a stone footing. Parts above head height use
+## fade materials so they vanish with the roof in top-down view.
+func _cabin_details(root: Node3D, w: float, d: float, h: float, door_w: float, pitch: float, half_d: float) -> void:
+	var rise := tan(pitch) * half_d
+	# log courses on the two side walls, half a course out of step with front / back
+	for y in range(0, 6):
+		for sx in [-1.0, 1.0]:
+			_mesh(root, ML.cylinder(0.13, 0.13, d + 0.56, 10), _mat_log, Vector3(sx * (w * 0.5 + 0.14), 0.41 + y * 0.42 - 0.21, 0), Vector3(PI * 0.5, 0, 0))
+	# gable ends
+	var gable := SurfaceTool.new()
+	gable.begin(Mesh.PRIMITIVE_TRIANGLES)
+	gable.set_normal(Vector3.RIGHT)
+	for v in [Vector3(0, 0, -half_d), Vector3(0, rise, 0), Vector3(0, 0, half_d)]:
+		gable.add_vertex(v)
+	var gmesh := gable.commit()
+	for sx in [-1.0, 1.0]:
+		_mesh(root, gmesh, _mat_trim, Vector3(sx * (w * 0.5 + 0.02), h, 0))
+	# ridge beam + eave boards
+	_mesh(root, ML.cylinder(0.11, 0.11, w + 1.1, 10), _mat_trim, Vector3(0, h + rise + 0.06, 0), Vector3(0, 0, PI * 0.5))
+	for sz in [-1.0, 1.0]:
+		_mesh(root, ML.box(Vector3(w + 0.9, 0.18, 0.06)), _mat_trim, Vector3(0, h - 0.02, sz * (half_d + 0.02)))
+	# windows on the side walls (warm glass that reads as lit at night)
+	var frame := M.solid(Color(0.16, 0.12, 0.09), 0.8)
+	var glass := M.emissive("cabin_window", Color(1.0, 0.72, 0.38), 0.55)
+	for sx in [-1.0, 1.0]:
+		var wx: float = sx * (w * 0.5 + 0.27)
+		_mesh(root, ML.box(Vector3(0.08, 0.95, 1.15)), frame, Vector3(wx, 1.45, 0.0))
+		_mesh(root, ML.box(Vector3(0.1, 0.74, 0.94)), glass, Vector3(wx, 1.45, 0.0))
+		_mesh(root, ML.box(Vector3(0.12, 0.74, 0.05)), frame, Vector3(wx, 1.45, 0.0))
+		_mesh(root, ML.box(Vector3(0.12, 0.05, 0.94)), frame, Vector3(wx, 1.45, 0.0))
+		_mesh(root, ML.box(Vector3(0.2, 0.06, 1.25)), frame, Vector3(wx + sx * 0.03, 0.95, 0.0))
+	# door frame, lintel and a plank step
+	for sx in [-1.0, 1.0]:
+		_mesh(root, ML.box(Vector3(0.16, 2.2, 0.34)), frame, Vector3(sx * (door_w * 0.5 + 0.06), 1.1, d * 0.5 + 0.02))
+	_mesh(root, ML.box(Vector3(door_w + 0.5, 0.2, 0.36)), frame, Vector3(0, 2.25, d * 0.5 + 0.02))
+	_mesh(root, ML.box(Vector3(door_w + 0.7, 0.14, 0.8)), _mat_plank, Vector3(0, 0.07, d * 0.5 + 0.55))
+	# stone footing
+	for sz in [-1.0, 1.0]:
+		_mesh(root, ML.box(Vector3(w + 0.7, 0.26, 0.16)), _mat_rock, Vector3(0, 0.1, sz * (d * 0.5 + 0.3)))
+	for sx in [-1.0, 1.0]:
+		_mesh(root, ML.box(Vector3(0.16, 0.26, d + 0.7)), _mat_rock, Vector3(sx * (w * 0.5 + 0.3), 0.1, 0))
+	# fieldstone chimney through the back slope
+	_mesh(root, ML.box(Vector3(0.7, h + rise + 0.5, 0.7)), _mat_stone, Vector3(w * 0.28, (h + rise + 0.5) * 0.5, -d * 0.5 - 0.2))
+	_mesh(root, ML.box(Vector3(0.86, 0.14, 0.86)), _mat_stone, Vector3(w * 0.28, h + rise + 0.55, -d * 0.5 - 0.2))
 
 
 func _log_pile(p: Vector3, rot: float, count: int) -> void:
@@ -542,6 +598,16 @@ func _watchtower(p: Vector3, rot: float, searchlight: bool) -> void:
 			cs.position.y = 2.3
 			post.add_child(cs)
 	_mesh(root, ML.box(Vector3(2.7, 0.14, 2.7)), _mat_plank, Vector3(0, 3.4, 0))
+	# cross bracing on every side, and a ladder up the front
+	for k in 4:
+		var bb := Basis(Vector3.UP, k * PI * 0.5)
+		for dz in [-1.0, 1.0]:
+			_mesh(root, ML.box(Vector3(0.09, 3.85, 0.07)), _mat_plank, bb * Vector3(0, 1.7, 1.12), Vector3(0, k * PI * 0.5, dz * 0.6))
+		_mesh(root, ML.box(Vector3(2.3, 0.1, 0.08)), _mat_plank, bb * Vector3(0, 0.35, 1.12), Vector3(0, k * PI * 0.5, 0))
+	for sx in [-1.0, 1.0]:
+		_mesh(root, ML.box(Vector3(0.07, 3.5, 0.07)), _mat_plank, Vector3(sx * 0.27, 1.72, 1.36), Vector3(0.09, 0, 0))
+	for i in 9:
+		_mesh(root, ML.cylinder(0.022, 0.022, 0.54, 8), _mat_log, Vector3(0, 0.35 + i * 0.36, 1.5 - i * 0.033), Vector3(0, 0, PI * 0.5))
 	for k in 4:
 		var b := Basis(Vector3.UP, k * PI * 0.5)
 		_mesh(root, ML.box(Vector3(2.7, 0.9, 0.08)), _mat_plank, b * Vector3(0, 3.9, 1.33), Vector3(0, k * PI * 0.5, 0))
@@ -643,11 +709,19 @@ func _tent(p: Vector3, rot: float) -> void:
 	_box_shape(b, Vector3(4.2, 2.2, 3.2), Vector3(0, 1.1, 0))
 	var prism := MeshInstance3D.new()
 	prism.mesh = ML.cylinder(1.9, 1.9, 4.2, 3)
-	prism.material_override = Nature.fade_material(Color(0.3, 0.33, 0.22), 3.0)
+	prism.material_override = _mat_canvas
 	prism.position = Vector3(0, 0.95, 0)
 	prism.rotation = Vector3(0, 0, PI * 0.5)
 	prism.scale = Vector3(1, 1, 0.9)
 	b.add_child(prism)
+	# ridge poles, guy ropes with pegs, and a darker door flap
+	var rope := M.solid(Color(0.62, 0.58, 0.45), 0.9)
+	for sx in [-1.0, 1.0]:
+		_mesh(b, ML.cylinder(0.035, 0.035, 2.0, 8), _mat_log, Vector3(sx * 2.12, 1.0, 0))
+		for sz in [-1.0, 1.0]:
+			_mesh(b, ML.cylinder(0.012, 0.012, 2.75, 6), rope, Vector3(sx * 2.9, 0.98, sz * 0.75), Vector3(sz * 0.36, 0, sx * -0.72))
+			_mesh(b, ML.cylinder(0.02, 0.012, 0.26, 6), _mat_log, Vector3(sx * 3.72, 0.08, sz * 1.42), Vector3(0, 0, sx * 0.4))
+	_mesh(b, ML.box(Vector3(0.04, 1.5, 1.1)), M.fabric("tent_flap", Color(0.2, 0.22, 0.15), 5.0), Vector3(2.11, 0.75, 0.0))
 	_room_light(p + Basis(Vector3.UP, rot) * Vector3(0, 1.9, 1.9), rot, 3.0, "outpost_interior")
 
 
@@ -716,6 +790,9 @@ func _build_outpost() -> void:
 	_wall(bk, 0.0, Vector3(3.5, 0, 0), Vector3(t, 2.4, 5.2), _mat_wall)
 	_wall(bk, 0.0, Vector3(-2.3, 0, 2.6), Vector3(2.8, 2.4, t), _mat_wall)
 	_wall(bk, 0.0, Vector3(2.3, 0, 2.6), Vector3(2.8, 2.4, t), _mat_wall)
+	for sx in [-1.0, 1.0]:
+		_mesh(self, ML.box(Vector3(0.12, 2.3, 0.5)), _mat_metal, bk + Vector3(sx * 0.9, 1.15, 2.6))
+	_mesh(self, ML.box(Vector3(1.92, 0.14, 0.5)), _mat_metal, bk + Vector3(0, 2.3, 2.6))
 	var slab := MeshInstance3D.new()
 	slab.mesh = ML.box(Vector3(7.6, 0.3, 5.8))
 	slab.material_override = Nature.fade_material(Color(0.4, 0.41, 0.4), 1.0, 0.9)

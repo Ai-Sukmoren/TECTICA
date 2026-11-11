@@ -44,6 +44,12 @@ static func rbox(size: Vector3, radius: float = -1.0) -> ArrayMesh:
 	return m
 
 
+## Box with a small machined bevel (weapons, hardware): edges catch the light.
+static func bbox(size: Vector3) -> ArrayMesh:
+	var smallest := minf(minf(size.x, size.y), size.z)
+	return rbox(size, clampf(smallest * 0.22, 0.0008, 0.0045))
+
+
 static func capsule(radius: float, height: float) -> CapsuleMesh:
 	var key := "cap_%.3f_%.3f" % [radius, height]
 	if not _cache.has(key):

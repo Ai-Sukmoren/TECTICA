@@ -633,6 +633,136 @@ static func bush_mesh(seed_value: int = 9) -> ArrayMesh:
 	return st.commit()
 
 
+# ------------------------------------------------------------------ building materials
+
+## Shared: world-space UVs on the dominant face (u across, v up; top faces use xz).
+const FACE_UV := """
+varying vec3 wp;
+varying vec3 wn;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wn = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+vec2 face_uv() {
+	vec3 an = abs(wn);
+	return an.y > 0.6 ? wp.xz : (an.x > an.z ? vec2(wp.z, wp.y) : vec2(wp.x, wp.y));
+}
+float hash1(float x) { return fract(sin(x * 91.7) * 43758.5453); }
+"""
+
+## Sawn timber: individual boards with their own tone, long grain, knots and dark seams.
+const PLANK_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.42, 0.32, 0.22);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float board = 0.19;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	float bi = floor(uv.x / board);
+	float bf = fract(uv.x / board);
+	float h = hash1(bi);
+	float grain = texture(noise, vec2(uv.x * 1.1 + h * 7.0, uv.y * 0.11)).r;
+	float knots = texture(noise, uv * 0.55 + h * 3.0).r;
+	vec3 col = base_color * (0.7 + 0.45 * h) * (0.72 + 0.56 * grain);
+	col = mix(col, col * 0.4, smoothstep(0.76, 0.85, knots) * 0.55);
+	col = mix(col, col * vec3(0.8, 0.85, 0.8), smoothstep(0.55, 0.9, texture(noise, uv * 0.07).r) * 0.35);   // grey weathering
+	float seam = smoothstep(0.0, 0.04, bf) * smoothstep(0.0, 0.04, 1.0 - bf);
+	col *= mix(0.3, 1.0, seam);
+	ALBEDO = col;
+	ROUGHNESS = 0.86;
+	SPECULAR = 0.25;
+	AO = mix(0.55, 1.0, seam);
+	AO_LIGHT_AFFECT = 0.5;
+}
+"""
+
+## Cast concrete: formwork panel lines, tie holes, rain streaks and blotchy curing.
+const CONCRETE_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.5, 0.5, 0.48);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	bool wall = abs(wn.y) <= 0.6;
+	float n = texture(noise, uv * 0.16).r;
+	float fine = texture(noise, uv * 1.5).r;
+	vec3 col = base_color * (0.78 + 0.34 * n) * (0.9 + 0.2 * fine);
+	vec2 pg = uv / vec2(1.25, 0.62);
+	vec2 pf = fract(pg);
+	float line = min(min(pf.x, 1.0 - pf.x) * 1.25, min(pf.y, 1.0 - pf.y) * 0.62);
+	col *= mix(0.68, 1.0, smoothstep(0.0, 0.014, line));
+	float tie = length((pf - vec2(0.12, 0.5)) * vec2(1.25, 0.62));
+	col *= mix(0.55, 1.0, smoothstep(0.018, 0.03, tie));
+	if (wall) {
+		float streak = texture(noise, vec2(uv.x * 0.9, uv.y * 0.045)).r;
+		col *= 1.0 - smoothstep(0.55, 0.8, streak) * 0.25;
+	}
+	ALBEDO = col;
+	ROUGHNESS = 0.93;
+	SPECULAR = 0.2;
+}
+"""
+
+## HESCO bastion: tan geotextile behind galvanised weld mesh, gravel fill on top.
+const HESCO_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.52, 0.47, 0.35);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	float n = texture(noise, uv * 0.45).r;
+	float fine = texture(noise, uv * 2.6).r;
+	if (wn.y > 0.6) {
+		// open top: packed earth and gravel
+		vec3 dirt = mix(vec3(0.3, 0.25, 0.18), vec3(0.45, 0.4, 0.31), n) * (0.75 + 0.5 * fine);
+		ALBEDO = mix(dirt, vec3(0.55, 0.54, 0.5), step(0.72, fine) * 0.6);
+		ROUGHNESS = 0.97;
+	} else {
+		// bulging, wrinkled fabric
+		vec3 col = base_color * (0.74 + 0.4 * n) * (0.92 + 0.16 * fine);
+		col *= mix(0.8, 1.05, smoothstep(0.0, 0.5, fract(uv.y / 0.72)));     // sag shadow per course
+		vec2 g = fract(uv / 0.076);
+		float wx = 1.0 - smoothstep(0.0, 0.085, min(g.x, 1.0 - g.x));
+		float wy = 1.0 - smoothstep(0.0, 0.085, min(g.y, 1.0 - g.y));
+		float wire = max(wx, wy);
+		ALBEDO = mix(col, vec3(0.34, 0.36, 0.36), wire * 0.8);
+		METALLIC = wire * 0.7;
+		ROUGHNESS = mix(0.95, 0.45, wire);
+	}
+}
+"""
+
+
+static func _face_material(code: String, color: Color, noise_seed: int) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = code % FACE_UV
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("base_color", color)
+	m.set_shader_parameter("noise", _noise(0.05, noise_seed))
+	return m
+
+
+static func plank_material(color: Color, board: float = 0.19) -> ShaderMaterial:
+	var m := _face_material(PLANK_SHADER, color, 61)
+	m.set_shader_parameter("board", board)
+	return m
+
+
+static func concrete_material(color: Color) -> ShaderMaterial:
+	return _face_material(CONCRETE_SHADER, color, 67)
+
+
+static func hesco_material(color: Color = Color(0.52, 0.47, 0.35)) -> ShaderMaterial:
+	return _face_material(HESCO_SHADER, color, 73)
+
+
 # ------------------------------------------------------------------ far hills
 
 const FAR_HILLS_SHADER := """

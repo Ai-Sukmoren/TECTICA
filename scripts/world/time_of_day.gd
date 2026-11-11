@@ -115,12 +115,12 @@ func _apply(delta: float) -> void:
 	sky_mat.set_shader_parameter("sun_vis", smoothstep(-4.0, 1.0, elev))
 
 	# --- ambient, fog, exposure
-	var amb_day := Color(0.46, 0.58, 0.8)   # cool sky fill: shade goes blue, sunlight stays warm
+	var amb_day := Color(0.58, 0.64, 0.74)  # cool (not blue) sky fill; sunlight stays warm
 	var amb := amb_day.lerp(Color(0.75, 0.55, 0.45), golden).lerp(Color(0.16, 0.22, 0.42), night)
 	if red_tint > 0.0:
 		amb = amb.lerp(Color(0.6, 0.3, 0.28), red_tint * 0.5)
 	env.ambient_light_color = amb
-	env.ambient_light_energy = lerpf(0.52, 0.5, night)
+	env.ambient_light_energy = lerpf(0.6, 0.5, night)
 	var morning := clampf(1.0 - absf(hour - 6.8) / 2.0, 0.0, 1.0)
 	env.volumetric_fog_density = 0.003 + morning * 0.008 + golden * 0.005 + night * 0.005 + red_tint * 0.012
 	env.volumetric_fog_albedo = hor.lerp(amb, 0.5).lerp(Color(0.8, 0.78, 0.7), 0.35 * (1.0 - night))

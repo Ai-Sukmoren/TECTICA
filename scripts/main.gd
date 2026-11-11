@@ -963,6 +963,15 @@ func on_net_kill(victim: Node, killer: String, headshot: bool) -> void:
 		hud.add_feed(("HEADSHOT  ·  " if headshot else "") + "TANGO DOWN  ·  +%d CR" % cr, Color(1.0, 0.55, 0.45))
 
 
+## The local operator's jump kick connected.
+func on_kick_hit(target: Node) -> void:
+	var killed: bool = target.get("is_dead") == true
+	hud.on_hit(killed, false)
+	if killed:
+		Collection.add_credits(15)
+		hud.add_feed("KICK KILL  ·  +15 CR", Color(1.0, 0.55, 0.45))
+
+
 ## Another peer's shot was replayed here.
 func on_remote_shot(shooter: Node, ends: Array) -> void:
 	if player == null or ends.is_empty():

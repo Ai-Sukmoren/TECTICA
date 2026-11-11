@@ -21,6 +21,7 @@ static func setup() -> void:
 	_act("sprint", [KEY_SHIFT], [JOY_BUTTON_LEFT_STICK])
 	_act("crouch", [KEY_C, KEY_CTRL], [JOY_BUTTON_B])
 	_act("vault", [KEY_SPACE], [JOY_BUTTON_A])
+	_act("kick", [KEY_V], [JOY_BUTTON_DPAD_RIGHT])
 	_act("reload", [KEY_R], [JOY_BUTTON_X])
 	_act("peek_left", [KEY_Q], [JOY_BUTTON_LEFT_SHOULDER])
 	_act("peek_right", [KEY_E], [JOY_BUTTON_RIGHT_SHOULDER])

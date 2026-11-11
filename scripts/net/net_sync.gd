@@ -273,6 +273,8 @@ func _apply_event(node: Node, kind: String, args: Array) -> void:
 			node.rig.play_vault(float(args[0]), float(args[1]), args[2])
 		"attack":
 			node.rig.play_attack(float(args[0]))
+		"kick":
+			node.rig.play_kick(float(args[0]))
 		"die":
 			node.net_die(args[0], String(args[1]), bool(args[2]))
 		"respawn":
@@ -322,6 +324,36 @@ func s_damage(nm: String, amount: float, pos: Vector3, dir: Vector3, an: String)
 	var t = main.get_node_or_null(nm)
 	if t != null and Net.owns(t) and t.get("is_dead") == false:
 		t.apply_damage(amount, pos, dir, main.get_node_or_null(an) if an != "" else null)
+
+
+## Kick knockback on a body another peer simulates.
+func send_knock(target: Node, v: Vector3) -> void:
+	if multiplayer.is_server():
+		var owner_id := int(target.get("net_owner"))
+		if ready_peers.has(owner_id):
+			s_knock.rpc_id(owner_id, String(target.name), v)
+	elif not awaiting_world:
+		c_knock.rpc_id(1, String(target.name), v)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func c_knock(nm: String, v: Vector3) -> void:
+	var t = main.get_node_or_null(nm)
+	if t == null or t.get("is_dead") == true or v.length() > 30.0:
+		return
+	if Net.owns(t):
+		t.apply_knockback(v)
+	else:
+		var owner_id := int(t.get("net_owner"))
+		if ready_peers.has(owner_id):
+			s_knock.rpc_id(owner_id, nm, v)
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_knock(nm: String, v: Vector3) -> void:
+	var t = main.get_node_or_null(nm)
+	if t != null and Net.owns(t) and t.get("is_dead") == false:
+		t.apply_knockback(v)
 
 
 # ================================================================ props

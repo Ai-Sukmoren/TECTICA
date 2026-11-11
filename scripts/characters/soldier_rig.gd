@@ -68,6 +68,9 @@ var crouch_target := 0.0
 var aim_target := 0.0
 var sprint_target := 0.0
 var air_target := 0.0
+## jump kick timeline (0..1, -1 = idle): chamber the knee, snap the leg out, recover
+var kick_t := -1.0
+var _kick_dur := 0.56
 var air_amt := 0.0
 var lean_target := 0.0
 var fp_mode := false
@@ -467,6 +470,26 @@ func play_vault(duration: float, obstacle_top: float, plant: Vector3) -> void:
 	cancel_reload()
 
 
+func play_kick(duration: float) -> void:
+	kick_t = 0.0
+	_kick_dur = maxf(duration, 0.2)
+	cancel_reload()
+
+
+## Whole-body weight of the kick pose (eases in and out).
+func _kick_w() -> float:
+	if kick_t < 0.0:
+		return 0.0
+	return smoothstep(0.0, 0.14, kick_t) * (1.0 - smoothstep(0.76, 1.0, kick_t))
+
+
+## 0 = knee chambered, 1 = leg fully extended (the strike).
+func _kick_ext() -> float:
+	if kick_t < 0.0:
+		return 0.0
+	return smoothstep(0.16, 0.32, kick_t) * (1.0 - smoothstep(0.6, 0.82, kick_t))
+
+
 func play_attack(duration: float) -> void:
 	attack_t = 0.0
 	_attack_dur = maxf(duration, 0.2)
@@ -566,6 +589,11 @@ func _animate(delta: float) -> void:
 		if vault_t >= 1.0:
 			vault_t = -1.0
 			_hit_vel.x -= 1.6  # landing lurch
+	if kick_t >= 0.0:
+		kick_t += delta / _kick_dur
+		if kick_t >= 1.0:
+			kick_t = -1.0
+			_hit_vel.x -= 1.1  # absorb the landing
 	if throw_t >= 0.0:
 		throw_t += delta / _throw_dur
 		if not _throw_released and throw_t >= 0.42:
@@ -704,6 +732,7 @@ func _update_body(delta: float) -> void:
 	if turning:
 		hip_h -= 0.012 * (0.5 - 0.5 * cos(phase * 2.0))
 	hip_h -= 0.24 * v_tuck + 0.14 * v_land
+	hip_h += 0.07 * _kick_w()
 	hip_h = lerpf(hip_h, 0.42, slide_amt)
 	if zombie_kind == "crawler":
 		hip_h -= 0.15
@@ -722,6 +751,7 @@ func _update_body(delta: float) -> void:
 	roll = clampf(roll, -0.25, 0.25)
 	# vault: dive forward over the planted hand, lean onto the left arm
 	pitch = lerpf(pitch, -0.55, v_tuck) - 0.2 * v_land
+	pitch = lerpf(pitch, lerpf(-0.22, 0.36, _kick_ext()), _kick_w())
 	roll += 0.32 * v_tuck
 	if zombie:
 		var strike := 0.0
@@ -884,7 +914,16 @@ func _update_legs(delta: float) -> void:
 		local = local.lerp(tuck, v_tuck)
 		# airborne: knees tuck, left leg leads
 		var air_pose := Vector3(side * (HIP_HALF + 0.02), ANKLE_H + (0.36 if i == 0 else 0.22), -0.2 if i == 0 else 0.14)
-		local = local.lerp(air_pose, air_amt)
+		var kw := _kick_w()
+		local = local.lerp(air_pose, air_amt * (1.0 - kw))
+		if kw > 0.0:
+			# jump kick: right knee chambers high, then the leg snaps out at hip
+			# height; the left leg folds back under the body as a counterweight
+			var ke := _kick_ext()
+			var kick_pose := Vector3(-0.13, ANKLE_H + 0.42, 0.2).lerp(Vector3(-0.15, ANKLE_H + 0.52, 0.36), ke)
+			if i == 1:
+				kick_pose = Vector3(0.1, ANKLE_H + 0.62, -0.3).lerp(Vector3(0.05, 1.0, -0.94), ke)
+			local = local.lerp(kick_pose, kw)
 		# slide: lead (left) leg extended along the floor, trailing leg folded under
 		var slide_pose := Vector3(-0.07, ANKLE_H, -0.68) if i == 0 else Vector3(0.17, ANKLE_H + 0.03, 0.12)
 		local = local.lerp(slide_pose, slide_amt)
@@ -892,7 +931,10 @@ func _update_legs(delta: float) -> void:
 		var pole := gx.basis * (lb * Vector3(side * 0.15 + 0.6 * v_tuck, 0.0, -1.0)).normalized()
 		_solve_ik(thighs[i], shins[i], THIGH, SHIN, target, pole)
 		var foot: Node3D = feet[i]
-		foot.global_transform = Transform3D(gx.basis * lb * Basis(Vector3.RIGHT, toe * m), foot.global_position)
+		var foot_pitch := toe * m
+		if i == 1:
+			foot_pitch += 0.9 * _kick_ext() * _kick_w()   # sole leads into the target
+		foot.global_transform = Transform3D(gx.basis * lb * Basis(Vector3.RIGHT, foot_pitch), foot.global_position)
 
 
 func _update_arms(delta: float) -> void:
@@ -936,6 +978,9 @@ func _update_arms(delta: float) -> void:
 	var free_want := 0.0
 	if one_hand_sprint and reload_t < 0.0 and throw_t < 0.0 and vault_t < 0.0:
 		free_want = sprint_amt * (1.0 - aim_amt) * (1.0 - slide_amt)
+	var kwa := _kick_w()
+	if kwa > 0.0:
+		free_want = 1.0
 	_free_arm = lerpf(_free_arm, free_want, 1.0 - exp(-14.0 * delta))
 	var r_pole := Vector3(0.8, -1.0, 0.45).lerp(Vector3(0.35, -0.6, 1.0), _free_arm)
 	var l_pole := Vector3(-0.9, -1.0, 0.15 + plant_w * 0.6).lerp(Vector3(-0.3, -0.6, 1.0), _free_arm)
@@ -948,6 +993,9 @@ func _update_arms(delta: float) -> void:
 			var lvl := global_transform.basis * Basis(Vector3.UP, aim_yaw)
 			pump = fp_eye.origin + lvl * Vector3(-0.21, -0.5 + maxf(f, 0.0) * 0.3, -0.12 - f * 0.3)
 		l_pos = l_pos.lerp(pump, _free_arm)
+	if kwa > 0.0 and not fp_mode:
+		# balance arm: thrown out and back, opposite the kicking leg
+		l_pos = l_pos.lerp(chest.global_transform * Vector3(-0.47, 0.03, 0.17), kwa)
 	_solve_ik(shoulders[1], elbows[1], UPPER_ARM, FOREARM, r_xf.origin, (cb * r_pole).normalized())
 	_set_basis(hands[1], r_xf.basis)
 	_solve_ik(shoulders[0], elbows[0], UPPER_ARM, FOREARM, l_pos, (cb * l_pole).normalized())

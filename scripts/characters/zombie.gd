@@ -99,6 +99,13 @@ func apply_damage(amount: float, hit_pos: Vector3, dir: Vector3, attacker: Node)
 	return headshot
 
 
+func apply_knockback(v: Vector3, stun: float = 0.5) -> void:
+	super.apply_knockback(v, stun)
+	_stagger = stun + 0.55   # reels before it comes again
+	_attacking = 0.0
+	_attack_cd = maxf(_attack_cd, 0.8)
+
+
 func die(dir: Vector3) -> void:
 	death_time = Time.get_ticks_msec() / 1000.0
 	super.die(dir)

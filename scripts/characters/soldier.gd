@@ -65,6 +65,9 @@ var _net_vel := Vector3.ZERO
 var _net_yaw := 0.0
 var _net_age := 0.0
 var _net_has := false
+# knockback (kicks): a shove that overrides steering for a moment
+var _knock := Vector3.ZERO
+var _knock_t := 0.0
 
 
 func setup_soldier(palette: Dictionary, weapon_ids: Array, layer: int, mask: int, yaw: float = 0.0) -> void:
@@ -137,6 +140,11 @@ func move_with(desired: Vector3, delta: float) -> void:
 	if not is_on_floor():
 		rate *= 0.3   # limited air control
 	hv = hv.move_toward(desired, rate * delta)
+	if _knock_t > 0.0:
+		# shoved: slide back along the knock, losing speed quickly
+		_knock_t -= delta
+		hv = _knock
+		_knock = _knock.move_toward(Vector3.ZERO, 20.0 * delta)
 	velocity.x = hv.x
 	velocity.z = hv.z
 	if is_on_floor():
@@ -324,6 +332,27 @@ func _on_throw_release() -> void:
 func _on_footstep(pos: Vector3, intensity: float) -> void:
 	var vol := lerpf(-24.0, -11.0, intensity) - (6.0 if crouching else 0.0)
 	Sfx.play(self, "footstep", pos, vol, 0.25)
+
+
+## Shoves this body: `v` is the launch velocity (y lifts it off its feet).
+func apply_knockback(v: Vector3, stun: float = 0.5) -> void:
+	if is_dead:
+		return
+	_knock = Vector3(v.x, 0, v.z)
+	_knock_t = stun
+	if v.y > 0.0:
+		jump_request = v.y
+		air_time = 0.0
+	rig.hit_react(v.normalized(), 70.0)
+
+
+## A melee kick: damage plus knockback, each applied by whoever owns this body.
+func take_kick(amount: float, hit_pos: Vector3, dir: Vector3, attacker: Node, knock: Vector3) -> void:
+	apply_damage(amount, hit_pos, dir, attacker)
+	if Net.owns(self):
+		apply_knockback(knock)
+	elif Net.sync:
+		Net.sync.send_knock(self, knock)
 
 
 ## Called by hitscan weapons. Returns true on a headshot.

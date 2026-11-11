@@ -47,6 +47,18 @@ var _vault_buffer := 0.0
 const JUMP_SPEED := 5.8          # ~0.95 m apex with GRAVITY 18
 const Terrain = preload("res://scripts/world/terrain.gd")
 var _jump_cd := 0.0
+# jump kick (V while sprinting)
+const KICK_TIME := 0.56
+const KICK_SPEED := 10.5
+const KICK_UP := 4.4
+const KICK_DAMAGE := 45.0
+const KICK_KNOCK := 14.5
+var kicking := false
+var _kick_t := 0.0
+var _kick_cd := 0.0
+var _kick_dir := Vector3.FORWARD
+var _kick_hit: Array = []
+var _kick_landed := false
 var _fall_speed := 0.0
 var flashlight_on := false
 var flashlight: SpotLight3D
@@ -267,7 +279,7 @@ func get_fire_origin() -> Vector3:
 ## Aim is updated every rendered frame (not once per physics tick), so the
 ## operator turns with the mouse / stick with no added latency.
 func _process(delta: float) -> void:
-	if rig == null or puppet or is_dead or vaulting or input_blocked:
+	if rig == null or puppet or is_dead or vaulting or kicking or input_blocked:
 		return
 	_update_aim(delta)
 	rig.aim_yaw = aim_yaw
@@ -307,6 +319,12 @@ func _physics_process(delta: float) -> void:
 		_update_vault(delta)
 		_sync_rig()
 		return
+	_kick_cd = maxf(_kick_cd - delta, 0.0)
+	if kicking:
+		_update_kick(delta)
+		_sync_rig()
+		rig.slide_target = 0.0
+		return
 
 	var iv := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var cam_yaw: float = camera_rig.yaw if camera_rig else 0.0
@@ -329,6 +347,12 @@ func _physics_process(delta: float) -> void:
 	sprinting = sprint_held and wish.length() > 0.2 and not aiming and not firing and not sliding
 	if sprinting and crouching and not sliding:
 		set_crouch(false)
+
+	# ---- jump kick (V / D-pad right while sprinting)
+	if Input.is_action_just_pressed("kick") and sprinting and is_on_floor() and not sliding and _kick_cd <= 0.0:
+		_start_kick(wish.normalized())
+		_sync_rig()
+		return
 
 	# ---- vault over low obstacles (Space / A, or automatically while sprinting)
 	if Input.is_action_just_pressed("vault"):
@@ -638,6 +662,77 @@ func _update_vault(delta: float) -> void:
 		Sfx.play(self, "hit", global_position, -10.0)
 		if using_pad:
 			Input.start_joy_vibration(0, 0.3, 0.2, 0.12)
+
+
+# ------------------------------------------------------------------ jump kick
+
+## Flying kick: launches forward and up; whatever the leg connects with takes
+## damage and is thrown back. Committed - no steering or shooting until it lands.
+func _start_kick(dir: Vector3) -> void:
+	if dir.length() < 0.1:
+		dir = Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	kicking = true
+	_kick_t = 0.0
+	_kick_dir = dir.normalized()
+	_kick_hit.clear()
+	_kick_landed = false
+	aiming = false
+	sprinting = true      # keeps the one-handed carry pose through the kick
+	set_crouch(false)
+	if reload_timer > 0.0:
+		reload_timer = 0.0
+	aim_yaw = atan2(-_kick_dir.x, -_kick_dir.z)
+	_pad_dir = _kick_dir
+	_peek_off = Vector3.ZERO
+	rig.lean_target = 0.0
+	velocity = _kick_dir * KICK_SPEED + Vector3.UP * KICK_UP
+	rig.play_kick(KICK_TIME)
+	Sfx.play(self, "swipe", global_position + Vector3.UP, -2.0, 0.1)
+	if Net.active and Net.sync:
+		Net.sync.send_event(self, "kick", [KICK_TIME])
+
+
+func _update_kick(delta: float) -> void:
+	_kick_t += delta
+	var k := clampf(_kick_t / KICK_TIME, 0.0, 1.0)
+	var sp := lerpf(KICK_SPEED, 5.5, k) * (0.45 if _kick_landed else 1.0)
+	velocity.x = _kick_dir.x * sp
+	velocity.z = _kick_dir.z * sp
+	velocity.y -= GRAVITY * delta
+	move_and_slide()
+	rig.aim_yaw = aim_yaw
+	# the leg is out between ~18 % and ~72 % of the move
+	if k > 0.18 and k < 0.72:
+		var shape := SphereShape3D.new()
+		shape.radius = 0.85
+		var q := PhysicsShapeQueryParameters3D.new()
+		q.shape = shape
+		q.transform = Transform3D(Basis.IDENTITY, global_position + _kick_dir * 0.95 + Vector3.UP * 0.95)
+		q.collision_mask = Layers.ENEMY | (Layers.PLAYER if Net.is_pvp() else 0)
+		q.exclude = [get_rid()]
+		for hit in get_world_3d().direct_space_state.intersect_shape(q, 8):
+			var c = hit.collider
+			if c == null or c == self or c in _kick_hit or not c.has_method("take_kick"):
+				continue
+			if c.get("is_dead") == true or c.get("team") == team:
+				continue
+			_kick_hit.append(c)
+			_kick_landed = true
+			var at: Vector3 = c.global_position + Vector3.UP * 1.1
+			c.take_kick(KICK_DAMAGE, at, _kick_dir, self, _kick_dir * KICK_KNOCK + Vector3.UP * 4.2)
+			Sfx.play(self, "hit", at, 4.0, 0.1)
+			Sfx.play(self, "impact_wood", at, 0.0, 0.2)
+			if camera_rig:
+				camera_rig.add_shake(0.45)
+			if using_pad:
+				Input.start_joy_vibration(0, 0.7, 0.9, 0.18)
+			var m = get_tree().current_scene
+			if m != null and m.has_method("on_kick_hit"):
+				m.on_kick_hit(c)
+	if _kick_t >= KICK_TIME and (is_on_floor() or _kick_t > KICK_TIME + 0.3):
+		kicking = false
+		_kick_cd = 0.55
+		_on_footstep(global_position, 0.9)
 
 
 # ------------------------------------------------------------------ slide

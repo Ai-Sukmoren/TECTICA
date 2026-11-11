@@ -69,7 +69,9 @@ func _process(delta: float) -> void:
 	_t += delta
 	if Input.is_action_just_pressed("cam_rot_left"):
 		_target_yaw += PI * 0.25
-	if Input.is_action_just_pressed("cam_rot_right"):
+	# V / D-pad right is the jump kick while sprinting, camera rotation otherwise
+	var kick_ctx: bool = aim_source != null and (aim_source.sprinting or aim_source.get("kicking") == true)
+	if Input.is_action_just_pressed("cam_rot_right") and not kick_ctx:
 		_target_yaw -= PI * 0.25
 	if Input.is_action_just_pressed("zoom_in"):
 		_target_zoom = 11.0 if _target_zoom > 20.0 else (24.0 if _target_zoom > 14.0 else 17.0)

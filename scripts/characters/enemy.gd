@@ -306,6 +306,12 @@ func apply_damage(amount: float, hit_pos: Vector3, dir: Vector3, attacker: Node)
 	return headshot
 
 
+func apply_knockback(v: Vector3, stun: float = 0.5) -> void:
+	super.apply_knockback(v, stun)
+	reaction_timer = maxf(reaction_timer, 0.9)   # winded: can't shoot back at once
+	_burst_left = 0
+
+
 func die(dir: Vector3) -> void:
 	if torch:
 		torch.visible = false

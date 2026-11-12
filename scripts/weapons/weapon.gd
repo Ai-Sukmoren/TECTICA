@@ -11,6 +11,8 @@ const Layers = preload("res://scripts/core/layers.gd")
 const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
 const Skins = preload("res://scripts/skins/skins.gd")
+const Sticker = preload("res://scripts/skins/sticker.gd")
+const Charm = preload("res://scripts/skins/charm.gd")
 
 var id := ""
 var stats: Dictionary = {}
@@ -25,6 +27,8 @@ var cycle_pending := 0.0
 ## equipped finish ("" = factory)
 var skin := ""
 var _model_root: Node3D
+var charm := ""
+var _charm: Node3D
 
 var grip: Node3D
 var support: Node3D
@@ -77,8 +81,42 @@ func apply_skin(finish: String) -> void:
 	Skins.apply(_model_root, finish, [Model._black, Model._worn])
 
 
+## Places the current finish's sticker (if it has one) per `cfg` (see sticker.gd).
+func apply_sticker(cfg: Dictionary) -> void:
+	var id := String(Skins.FINISHES[skin].get("sticker", "")) if Skins.FINISHES.has(skin) else ""
+	if id == "":
+		Sticker.remove(_model_root)
+		return
+	Sticker.attach(_model_root, id, cfg if cfg is Dictionary else {})
+
+
 func is_pistol() -> bool:
 	return stats.kind == "pistol"
+
+
+func apply_charm(charm_id: String) -> void:
+	var next := Charm.sanitize(charm_id)
+	if next == charm:
+		return
+	if is_instance_valid(_charm):
+		remove_child(_charm)
+		_charm.queue_free()
+	_charm = null
+	charm = next
+	if charm != "":
+		_charm = Charm.new()
+		_charm.setup(charm, is_pistol())
+		# Seat the lanyard stud on the actual receiver / grip surface, including
+		# imported guns, rather than assuming every weapon has the same width.
+		var mount: Vector3 = _charm.position
+		var side := INF
+		for bounds: AABB in Sticker._parts(_model_root):
+			if mount.y >= bounds.position.y and mount.y <= bounds.end.y and mount.z >= bounds.position.z and mount.z <= bounds.end.z:
+				side = minf(side, bounds.position.x)
+		if is_finite(side):
+			mount.x = side - 0.003
+			_charm.position = mount
+		add_child(_charm)
 
 
 func display_name() -> String:
@@ -110,6 +148,8 @@ func finish_reload(tactical: bool) -> void:
 
 ## Hitscan shot (or pellet volley) from `origin` toward `target`. Returns hit info.
 func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg: float) -> Dictionary:
+	if is_instance_valid(_charm):
+		_charm.kick()
 	cooldown = 60.0 / float(stats.rpm)
 	ammo -= 1
 	var total_spread := spread_deg + bloom
@@ -119,7 +159,8 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 	if base_dir.length() < 0.05:
 		base_dir = -global_transform.basis.z
 	base_dir = base_dir.normalized()
-	var result := {"hit": null, "headshot": false, "killed": false, "position": origin + base_dir * float(stats.range), "ends": []}
+	var result := {"hit": null, "headshot": false, "killed": false, "position": origin + base_dir * float(stats.range), "ends": [],
+			"damage": 0.0, "hit_at": Vector3.ZERO}
 	var space := get_world_3d().direct_space_state
 	var pellets := int(stats.get("pellets", 1))
 	var from := muzzle.global_position
@@ -145,6 +186,9 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 				var falloff := clampf(1.0 - maxf(dist - float(stats.falloff_start), 0.0) / 60.0, 0.5, 1.0)
 				var hs: bool = col.apply_damage(float(stats.damage) * falloff, end, dir, shooter)
 				if not col.is_in_group("destructibles") and col.get("destroyed") == null:
+					result.damage += float(stats.damage) * falloff * (2.5 if hs else 1.0)
+					if result.hit == null:
+						result.hit_at = end
 					result.headshot = result.headshot or hs
 					result.hit = col
 					result.killed = result.killed or col.get("is_dead") == true

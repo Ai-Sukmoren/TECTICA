@@ -6,6 +6,7 @@ const Data = preload("res://scripts/weapons/weapon_data.gd")
 const PATH := "user://loadout.cfg"   # per account: Profile.path()
 const Profile = preload("res://scripts/core/profile.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
+const Charm = preload("res://scripts/skins/charm.gd")
 
 static var class_index := 0
 static var classes: Array = []
@@ -32,14 +33,15 @@ static func ensure() -> void:
 			var allowed: Array = Data.PRIMARIES if slot == "primary" else Data.SECONDARIES
 			if id in allowed:
 				var att = cfg.get_value(sec, "att", {})
-				classes[i][slot] = {"id": id, "att": Data.sanitize(id, att if att is Dictionary else {})}
+				classes[i][slot] = {"id": id, "att": Data.sanitize(id, att if att is Dictionary else {}),
+						"charm": Charm.sanitize(String(cfg.get_value(sec, "charm", "")))}
 
 
 static func _preset(i: int) -> Dictionary:
 	var c: Dictionary = Data.CLASSES[i]
 	return {
-		"primary": {"id": c.primary[0], "att": Data.sanitize(c.primary[0], c.primary[1])},
-		"secondary": {"id": c.secondary[0], "att": Data.sanitize(c.secondary[0], c.secondary[1])},
+		"primary": {"id": c.primary[0], "att": Data.sanitize(c.primary[0], c.primary[1]), "charm": ""},
+		"secondary": {"id": c.secondary[0], "att": Data.sanitize(c.secondary[0], c.secondary[1]), "charm": ""},
 	}
 
 
@@ -52,6 +54,7 @@ static func save() -> void:
 			var e: Dictionary = classes[i][slot]
 			cfg.set_value("class%d_%s" % [i, slot], "id", e.id)
 			cfg.set_value("class%d_%s" % [i, slot], "att", e.att)
+			cfg.set_value("class%d_%s" % [i, slot], "charm", Charm.sanitize(String(e.get("charm", ""))))
 	cfg.save(Profile.path("loadout.cfg"))
 
 
@@ -83,7 +86,13 @@ static func cycle_weapon(slot: String, dir: int) -> void:
 	var e: Dictionary = entry(slot)
 	var idx := list.find(e.id)
 	var id: String = list[posmod(idx + dir, list.size())]
-	current()[slot] = {"id": id, "att": Data.sanitize(id, {})}
+	current()[slot] = {"id": id, "att": Data.sanitize(id, {}), "charm": Charm.sanitize(String(e.get("charm", "")))}
+
+
+static func cycle_charm(slot: String, dir: int) -> void:
+	var e := entry(slot)
+	var idx := Charm.IDS.find(Charm.sanitize(String(e.get("charm", ""))))
+	e.charm = Charm.IDS[posmod(idx + dir, Charm.IDS.size())]
 
 
 static func cycle_attachment(slot: String, att_slot: String, dir: int) -> void:
@@ -102,5 +111,5 @@ static func reset_class() -> void:
 ## part of the spec so other multiplayer peers see them too).
 static func weapon_list() -> Array:
 	var c := current()
-	return [[c.primary.id, c.primary.att, Collection.skin_for(String(c.primary.id))],
-			[c.secondary.id, c.secondary.att, Collection.skin_for(String(c.secondary.id))]]
+	return [[c.primary.id, c.primary.att, Collection.skin_for(String(c.primary.id)), Collection.sticker_for(String(c.primary.id)), Charm.sanitize(String(c.primary.get("charm", "")))],
+			[c.secondary.id, c.secondary.att, Collection.skin_for(String(c.secondary.id)), Collection.sticker_for(String(c.secondary.id)), Charm.sanitize(String(c.secondary.get("charm", "")))]]

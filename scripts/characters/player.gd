@@ -73,15 +73,35 @@ var name_tag: Label3D
 var _net_flags := 0
 var _net_weapon := 0
 var _net_lean := 0.0
+var _net_inspecting := false
 
 
 ## `loadout` = weapon specs (another peer's operator brings its own);
 ## `remote` builds a network-driven puppet with a name tag.
+## Outfit (character skin) this operator wears.
+var outfit := "multicam"
+
+
+## Weapon specs plus this machine's outfit, as sent to other players.
+static func net_loadout() -> Array:
+	return Loadout.weapon_list() + [{"outfit": preload("res://scripts/skins/collection.gd").outfit}]
+
+
 func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: String = "") -> void:
 	var specs: Array = Loadout.weapon_list()
+	var outfit_id: String = preload("res://scripts/skins/collection.gd").outfit
 	if loadout is Array and not (loadout as Array).is_empty():
-		specs = loadout
-	setup_soldier(Palettes.player(), specs, Layers.PLAYER, 0 if remote else Layers.WORLD | Layers.ENEMY, yaw)
+		# another peer's loadout ends with its outfit: {"outfit": id}
+		specs = []
+		outfit_id = "multicam"
+		for s in loadout:
+			if s is Dictionary and (s as Dictionary).has("outfit"):
+				outfit_id = String(s.outfit)
+			else:
+				specs.append(s)
+	outfit = outfit_id
+	setup_soldier(Palettes.outfit(outfit_id), specs, Layers.PLAYER, 0 if remote else Layers.WORLD | Layers.ENEMY, yaw)
+	use_character_model(Color.WHITE)
 	puppet = remote
 	display_name = tag
 	team = 0
@@ -102,6 +122,7 @@ func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: S
 	flashlight.visible = false
 	rig.weapon_anchor.add_child(flashlight)
 	_build_torch()
+	_build_chem_lights()
 	rig.one_hand_sprint = true  # sprint with the gun in the right hand only
 	if remote and tag != "":
 		name_tag = Label3D.new()
@@ -128,6 +149,7 @@ func set_tag_style(friendly: bool) -> void:
 
 func net_pack() -> Array:
 	var f := (1 if crouching else 0) | (2 if aiming else 0) | (4 if sprinting else 0) 			| (8 if sliding else 0) | (16 if flashlight_on else 0) | (32 if vaulting else 0)
+	f |= 64 if rig.inspect_t >= 0.0 else 0
 	return [global_position, velocity, aim_yaw, fp_pitch, f, weapon_index, rig.lean_target, health, _peek_off]
 
 
@@ -156,12 +178,18 @@ func _puppet_physics(delta: float) -> void:
 	if ((f & 16) != 0) != flashlight_on:
 		set_flashlight((f & 16) != 0)
 	vaulting = (f & 32) != 0
-	if _net_weapon != weapon_index and switch_timer <= 0.0 and _net_weapon < weapons.size():
+	if _net_weapon != weapon_index and switch_timer <= 0.0 and _net_weapon >= 0 and _net_weapon < weapons.size():
 		weapon_index = _net_weapon
 		_equip_current()
 	_sync_rig()
 	rig.lean_target = _net_lean
 	rig.slide_target = 1.0 if sliding else 0.0
+	if (f & 64) != 0:
+		if not _net_inspecting:
+			rig.play_inspect()
+	else:
+		rig.cancel_inspect()
+	_net_inspecting = (f & 64) != 0
 	if name_tag:
 		name_tag.visible = not is_dead
 
@@ -207,6 +235,33 @@ func _update_torch_lens() -> void:
 func _equip_current() -> void:
 	super._equip_current()
 	_place_torch()
+
+
+## Green chem lights on the shoulder strap and the back of the vest, so every
+## operator stays readable in the dark (soft glow, no shadows, cheap).
+const CHEM_COLOR := Color(0.35, 1.0, 0.45)
+
+func _build_chem_lights() -> void:
+	var glow := M.emissive("chem_light", CHEM_COLOR, 4.0)
+	for spot in [[Vector3(-0.12, 0.13, -0.175), Vector3(0.25, 0, 0.2)], [Vector3(0.1, 0.16, 0.2), Vector3(-0.2, 0, -0.15)]]:
+		var stick := MeshInstance3D.new()
+		stick.name = "ChemLight"
+		stick.mesh = ML.cylinder(0.011, 0.011, 0.11, 8)
+		stick.material_override = glow
+		stick.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		stick.position = spot[0]
+		stick.rotation = spot[1]
+		rig.chest.add_child(stick)
+	var light := OmniLight3D.new()
+	light.name = "ChemGlow"
+	light.light_color = CHEM_COLOR
+	light.light_energy = 0.55
+	light.omni_range = 3.2
+	light.omni_attenuation = 1.6
+	light.shadow_enabled = false
+	light.light_volumetric_fog_energy = 0.0
+	light.position = Vector3(0, 0.15, 0)
+	rig.chest.add_child(light)
 
 
 func set_flashlight(on: bool) -> void:
@@ -260,6 +315,7 @@ func apply_loadout() -> void:
 
 
 func set_first_person(on: bool) -> void:
+	rig.cancel_inspect()
 	first_person = on and not is_dead
 	rig.set_first_person(first_person)
 	if camera_rig:
@@ -293,9 +349,18 @@ func _physics_process(delta: float) -> void:
 		_puppet_physics(delta)
 		return
 	_vault_cooldown = maxf(_vault_cooldown - delta, 0.0)
-	if input_blocked and not is_dead and not vaulting:
+	if input_blocked and not is_dead and not vaulting and not kicking:
+		rig.cancel_inspect()
+		aiming = false
+		sprinting = false
+		sliding = false
+		_vault_buffer = 0.0
+		_peek_off = Vector3.ZERO
 		move_with(Vector3.ZERO, delta)
 		_sync_rig()
+		rig.lean_target = 0.0
+		rig.slide_target = 0.0
+		_update_scope_visibility()
 		return
 	var ctx := _interact_context()
 	if Input.is_action_just_pressed("toggle_view") and not ctx:
@@ -341,12 +406,26 @@ func _physics_process(delta: float) -> void:
 		elif not sliding:
 			set_crouch(not crouching)
 	var firing := Input.is_action_pressed("fire")
+	# Inspection is cosmetic. Every combat input wins, even if the requested
+	# action cannot start (for example reload with a full magazine).
+	var interrupt_inspect := firing or aiming or Input.is_action_pressed("sprint") \
+			or Input.is_action_just_pressed("reload") or Input.is_action_just_pressed("grenade") \
+			or Input.is_action_just_pressed("switch_weapon") or Input.is_action_just_pressed("weapon_1") \
+			or Input.is_action_just_pressed("weapon_2") or Input.is_action_just_pressed("vault") \
+			or Input.is_action_just_pressed("kick") or sliding
+	if interrupt_inspect:
+		rig.cancel_inspect()
 	var sprint_held := Input.is_action_pressed("sprint")
 	if using_pad and sprinting and iv.length() > 0.5:
 		sprint_held = true  # L3 toggles sprint on gamepad; keep it while stick is pushed
 	sprinting = sprint_held and wish.length() > 0.2 and not aiming and not firing and not sliding
 	if sprinting and crouching and not sliding:
 		set_crouch(false)
+	if not interrupt_inspect and Input.is_action_just_pressed("inspect") and can_act() and not sprinting:
+		# Read this tick's aim/sprint state, including a just-released trigger.
+		_sync_rig()
+		if rig.play_inspect():
+			Sfx.play(self, "switch", global_position + Vector3.UP * 1.4, -14.0, 0.05)
 
 	# ---- jump kick (V / D-pad right while sprinting)
 	if Input.is_action_just_pressed("kick") and sprinting and is_on_floor() and not sliding and _kick_cd <= 0.0:
@@ -415,6 +494,8 @@ func _physics_process(delta: float) -> void:
 
 	if Input.is_action_just_pressed("grenade"):
 		_throw()
+	if Input.is_action_just_pressed("flashbang"):
+		_throw("flash")
 	if Input.is_action_just_pressed("reload") and not ctx:
 		start_reload()
 	if Input.is_action_just_pressed("weapon_1"):
@@ -720,12 +801,19 @@ func _update_kick(delta: float) -> void:
 			_kick_landed = true
 			var at: Vector3 = c.global_position + Vector3.UP * 1.1
 			c.take_kick(KICK_DAMAGE, at, _kick_dir, self, _kick_dir * KICK_KNOCK + Vector3.UP * 4.2)
-			Sfx.play(self, "hit", at, 4.0, 0.1)
-			Sfx.play(self, "impact_wood", at, 0.0, 0.2)
+			var killed: bool = c.get("is_dead") == true
+			Sfx.play(self, "hit", at, 6.0, 0.1)
+			Sfx.play(self, "impact_wood", at, 2.0, 0.2)
+			# impact burst: dust and grit off the boots, blood on the target
+			FX.chips(self, at, -_kick_dir, Color(0.45, 0.4, 0.33), 14, 0.035, 10, 1.6)
+			FX.blood(self, at, _kick_dir)
 			if camera_rig:
-				camera_rig.add_shake(0.45)
+				camera_rig.add_shake(1.0 if killed else 0.75)
 			if using_pad:
-				Input.start_joy_vibration(0, 0.7, 0.9, 0.18)
+				Input.start_joy_vibration(0, 0.9, 1.0, 0.3 if killed else 0.2)
+			var hud_node = get_tree().current_scene.get_node_or_null("HUD") if get_tree().current_scene else null
+			if hud_node != null and hud_node.has_method("slowmo"):
+				hud_node.slowmo(0.3 if killed else 0.45, 0.35 if killed else 0.18)
 			var m = get_tree().current_scene
 			if m != null and m.has_method("on_kick_hit"):
 				m.on_kick_hit(c)
@@ -794,7 +882,7 @@ func _fire() -> void:
 			Input.start_joy_vibration(0, s * 2.0, s * 1.2, 0.06)
 
 
-func _throw() -> void:
+func _throw(kind: String = "frag") -> void:
 	var target := aim_point
 	var flat := target - global_position
 	flat.y = 0.0
@@ -805,7 +893,7 @@ func _throw() -> void:
 	target = global_position + flat
 	if first_person:
 		target.y = clampf(aim_point.y, 0.0, 2.0)
-	if throw_grenade(target):
+	if throw_grenade(target, kind):
 		aim_yaw = atan2(-flat.x, -flat.z) if not first_person else aim_yaw
 
 
@@ -819,3 +907,14 @@ func _on_footstep(pos: Vector3, intensity: float) -> void:
 		radius = 4.5
 	if radius > 0.0:
 		get_tree().call_group("enemies", "hear_footstep", pos, radius)
+
+
+## Flashed: white-out on screen and ringing ears (local operator only).
+func flashbang(seconds: float, strength: float) -> void:
+	super.flashbang(seconds, strength)
+	if puppet:
+		return
+	var m = get_tree().current_scene
+	var h = m.get_node_or_null("HUD") if m else null
+	if h != null and h.has_method("flash_white"):
+		h.flash_white(seconds, strength)

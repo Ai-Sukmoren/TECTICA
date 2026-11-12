@@ -170,6 +170,7 @@ static func blood_pool(ctx: Node, pos: Vector3) -> void:
 	mi.scale = Vector3.ONE * 0.1
 	var tw := mi.create_tween()
 	tw.tween_property(mi, "scale", Vector3.ONE * randf_range(1.3, 1.8), 6.0).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	_track(mi)   # pools used to pile up forever (one per kill) and slowed long zombie runs
 
 
 static func _decal(root: Node, pos: Vector3, normal: Vector3, size: float, _kind: String, mat: Material) -> void:
@@ -185,6 +186,11 @@ static func _decal(root: Node, pos: Vector3, normal: Vector3, size: float, _kind
 	mi.global_transform = Transform3D(Basis.looking_at(-normal, up), p)
 	mi.rotate_object_local(Vector3.FORWARD, randf() * TAU)
 	mi.scale = Vector3.ONE * size
+	_track(mi)
+
+
+## Keeps the total of ground marks (decals + blood pools) under MAX_DECALS.
+static func _track(mi: Node) -> void:
 	_decals.append(mi)
 	while _decals.size() > MAX_DECALS:
 		var old = _decals.pop_front()
@@ -238,7 +244,8 @@ static func explosion(ctx: Node, pos: Vector3) -> void:
 	light.light_color = Color(1.0, 0.62, 0.3)
 	light.light_energy = 14.0
 	light.omni_range = 14.0
-	light.shadow_enabled = true
+	# a shadowed omni light renders the scene 6 more times: ULTRA shadows only
+	light.shadow_enabled = int(preload("res://scripts/core/settings.gd").v.shadows) >= 3
 	root.add_child(light)
 	light.global_position = pos + Vector3.UP * 0.8
 	var lt := light.create_tween()

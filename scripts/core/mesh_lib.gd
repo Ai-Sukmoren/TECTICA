@@ -5,7 +5,7 @@ static var _cache: Dictionary = {}
 
 
 static func box(size: Vector3) -> BoxMesh:
-	var key := "box_%.3f_%.3f_%.3f" % [size.x, size.y, size.z]
+	var key := "box_%.6f_%.6f_%.6f" % [size.x, size.y, size.z]
 	if not _cache.has(key):
 		var m := BoxMesh.new()
 		m.size = size
@@ -17,7 +17,10 @@ static func box(size: Vector3) -> BoxMesh:
 ## rounded shell). `radius` < 0 picks ~28% of the smallest side, max 3 cm.
 static func rbox(size: Vector3, radius: float = -1.0) -> ArrayMesh:
 	var r := radius if radius >= 0.0 else minf(minf(minf(size.x, size.y), size.z) * 0.28, 0.03)
-	var key := "rbox_%.3f_%.3f_%.3f_%.3f" % [size.x, size.y, size.z, r]
+	# Thin weapon plates must never have a bevel wider than their half-width.
+	# A negative inner box otherwise inverts the faces of sub-millimetre detail.
+	r = clampf(r, 0.0, minf(size.x, minf(size.y, size.z)) * 0.5)
+	var key := "rbox_%.6f_%.6f_%.6f_%.6f" % [size.x, size.y, size.z, r]
 	if _cache.has(key):
 		return _cache[key]
 	var b := BoxMesh.new()
@@ -51,7 +54,7 @@ static func bbox(size: Vector3) -> ArrayMesh:
 
 
 static func capsule(radius: float, height: float) -> CapsuleMesh:
-	var key := "cap_%.3f_%.3f" % [radius, height]
+	var key := "cap_%.6f_%.6f" % [radius, height]
 	if not _cache.has(key):
 		var m := CapsuleMesh.new()
 		m.radius = radius
@@ -63,7 +66,7 @@ static func capsule(radius: float, height: float) -> CapsuleMesh:
 
 
 static func cylinder(top: float, bottom: float, height: float, segments: int = 16) -> CylinderMesh:
-	var key := "cyl_%.3f_%.3f_%.3f_%d" % [top, bottom, height, segments]
+	var key := "cyl_%.6f_%.6f_%.6f_%d" % [top, bottom, height, segments]
 	if not _cache.has(key):
 		var m := CylinderMesh.new()
 		m.top_radius = top
@@ -76,7 +79,7 @@ static func cylinder(top: float, bottom: float, height: float, segments: int = 1
 
 
 static func sphere(radius: float, hemisphere: bool = false, segments: int = 18) -> SphereMesh:
-	var key := "sph_%.3f_%s_%d" % [radius, hemisphere, segments]
+	var key := "sph_%.6f_%s_%d" % [radius, hemisphere, segments]
 	if not _cache.has(key):
 		var m := SphereMesh.new()
 		m.radius = radius
@@ -89,7 +92,7 @@ static func sphere(radius: float, hemisphere: bool = false, segments: int = 18) 
 
 
 static func quad(size: Vector2) -> QuadMesh:
-	var key := "quad_%.3f_%.3f" % [size.x, size.y]
+	var key := "quad_%.6f_%.6f" % [size.x, size.y]
 	if not _cache.has(key):
 		var m := QuadMesh.new()
 		m.size = size
@@ -98,7 +101,7 @@ static func quad(size: Vector2) -> QuadMesh:
 
 
 static func plane(size: Vector2) -> PlaneMesh:
-	var key := "plane_%.3f_%.3f" % [size.x, size.y]
+	var key := "plane_%.6f_%.6f" % [size.x, size.y]
 	if not _cache.has(key):
 		var m := PlaneMesh.new()
 		m.size = size

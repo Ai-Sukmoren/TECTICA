@@ -4,6 +4,11 @@ extends RefCounted
 const M = preload("res://scripts/core/materials.gd")
 
 
+## The operator in an outfit (character skin, see outfits.gd).
+static func outfit(id: String) -> Dictionary:
+	return preload("res://scripts/skins/outfits.gd").palette(id)
+
+
 ## Special-forces operator: woodland multicam, ranger-green plate carrier,
 ## coyote gear and a tan helmet.
 static func player() -> Dictionary:

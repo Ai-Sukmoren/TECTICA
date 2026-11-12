@@ -32,7 +32,7 @@ func _process(_delta: float) -> bool:
 				p.try_fire(p.global_position + Vector3(0, 1.2, -10))
 		360:
 			var e = main.enemies[2]
-			e.apply_damage(500.0, e.global_position + Vector3(0, 1.7, 0), Vector3(0, 0, -1), p)
+			e.apply_damage(500.0, e.global_position + Vector3(0, 1.1, 0), Vector3(0, 0, -1), p)   # body: helmets stop headshots
 			print("[test] killed enemy 2 dead=", e.is_dead)
 	if frame == 600:
 		var states := []

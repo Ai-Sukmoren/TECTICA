@@ -7,18 +7,19 @@ extends CanvasLayer
 const LOGO_PATH := "res://assets/logo.png"
 const Gunsmith = preload("res://scripts/ui/gunsmith.gd")
 const Armory = preload("res://scripts/ui/armory.gd")
+const AdminDashboard = preload("res://scripts/ui/admin_dashboard.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Profile = preload("res://scripts/core/profile.gd")
 const Loadout = preload("res://scripts/core/loadout.gd")
 const WData = preload("res://scripts/weapons/weapon_data.gd")
 const Settings = preload("res://scripts/core/settings.gd")
+const Progression = preload("res://scripts/core/progression.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const PAUSE_ITEMS := ["RESUME", "SETTINGS", "RESTART", "QUIT TO TITLE"]
 const Campaign = preload("res://scripts/modes/campaign.gd")
 const MODES := ["ch1", "ch2", "zombie"]
 const Net = preload("res://scripts/net/net.gd")
 const PlayerScript = preload("res://scripts/characters/player.gd")
-const ARROW_ITEMS := [3, 4, 5, 6, 7]
 
 const Retro = preload("res://scripts/ui/retro.gd")
 const ACCENT := Retro.ACCENT
@@ -50,6 +51,12 @@ var _tab_rects: Array = []
 var _settings_idx: Array = []
 var pause_index := 0
 var _dmg_dirs: Array = []
+## Flashbang white-out: seconds left and total.
+var _flash_t := 0.0
+var _flash_len := 1.0
+## Floating damage numbers: {pos, text, t, head, kill}
+var _dmg_nums: Array = []
+const DMG_NUM_LIFE := 0.9
 var _heartbeat := 0.0
 var _settings_rects: Array = []
 var _pause_rects: Array = []
@@ -88,6 +95,7 @@ class Overlay extends Control:
 var overlay: Overlay
 var gunsmith: Gunsmith
 var armory: Armory
+var admin_dash: AdminDashboard
 
 
 func setup(p_main: Node) -> void:
@@ -124,12 +132,16 @@ func setup(p_main: Node) -> void:
 	armory = Armory.new()
 	add_child(armory)
 	armory.setup(self)
+	admin_dash = AdminDashboard.new()
+	add_child(admin_dash)
+	admin_dash.setup(self)
 
 	menu_index = last_menu_index
+	Profile.seed_admin()
 	if not Profile.signed_in():
 		_auth_user = Profile.last_user()
 		_auth_row = 1 if _auth_user != "" else 0
-		if Profile.accounts().is_empty():
+		if Profile.accounts().filter(func(a): return String(a).to_lower() != Profile.ADMIN_NAME).is_empty():
 			_auth_msg = "NO ACCOUNTS YET  ·  PICK A USERNAME + %d-DIGIT PASSWORD, THEN CREATE ACCOUNT" % Profile.PIN_LEN
 	if Net.pending_join != "" and not Net.active:
 		# launched from a clicked invite link: straight to joining
@@ -149,6 +161,10 @@ func setup(p_main: Node) -> void:
 	# title screen: the world is visible but frozen until DEPLOY
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	menu_cam = preload("res://scripts/ui/menu_camera.gd").new()
+	menu_cam.name = "MenuCamera"
+	main.add_child(menu_cam)
+	menu_cam.setup(main)
 
 
 func _load_logo() -> Texture2D:
@@ -164,15 +180,75 @@ func _load_logo() -> Texture2D:
 
 # ================================================================ events
 
-func on_hit(killed: bool, headshot: bool) -> void:
+func on_hit(killed: bool, headshot: bool, damage: float = 0.0, at: Vector3 = Vector3.ZERO, target: Object = null) -> void:
 	hit_marker = 0.25
 	hit_kill = killed
 	hit_head = headshot
 	var ear: Vector3 = player.global_position + Vector3.UP * 1.6
+	if headshot:
+		Sfx.play(player, "headshot", ear, -7.0, 0.04)
 	if killed:
 		Sfx.play(player, "kill", ear, -6.0 if not headshot else -2.0, 0.0)
-	else:
+		# kill confirm: a camera punch and (single-player) a split-second freeze
+		if camera_rig:
+			camera_rig.add_shake(0.45 if headshot else 0.3)
+		_hitstop(0.06 if headshot else 0.04)
+	elif not headshot:
 		Sfx.play(player, "hitmarker", ear, -10.0, 0.05)
+	if damage > 0.0 and at != Vector3.ZERO and bool(Settings.v.get("damage_numbers", true)):
+		# rapid hits on the same target add up into one number that pops again
+		var tid := target.get_instance_id() if target != null else 0
+		for n in _dmg_nums:
+			if tid != 0 and n.id == tid and n.t < 0.35 and not n.kill:
+				n.value += damage
+				n.text = str(int(round(n.value)))
+				n.t = 0.0
+				n.pos = at + Vector3(0, 0.15, 0)
+				n.head = n.head or headshot
+				n.kill = killed
+				return
+		_dmg_nums.append({"pos": at + Vector3(randf_range(-0.12, 0.12), 0.15, randf_range(-0.12, 0.12)),
+				"text": str(int(round(damage))), "value": damage, "id": tid, "t": 0.0, "head": headshot, "kill": killed})
+		if _dmg_nums.size() > 24:
+			_dmg_nums.pop_front()
+
+
+## Blinded by a flashbang: white screen, muffled sound, ringing ears.
+func flash_white(seconds: float, strength: float) -> void:
+	_flash_len = maxf(seconds, 0.3)
+	_flash_t = _flash_len
+	if player:
+		Sfx.play(player, "tinnitus", player.global_position + Vector3.UP * 1.6, lerpf(-14.0, -4.0, strength), 0.0)
+	var bus := AudioServer.get_bus_index("SFX")
+	if bus >= 0:
+		var base := AudioServer.get_bus_volume_db(bus)
+		AudioServer.set_bus_volume_db(bus, base - 14.0 * strength)
+		var tw := create_tween().set_ignore_time_scale(true)
+		tw.tween_method(func(v: float): AudioServer.set_bus_volume_db(bus, v), base - 14.0 * strength, base, seconds)
+
+
+## Freezes the action for a moment on a kill. Never in multiplayer: other
+## players' games must keep running at full speed.
+func _hitstop(sec: float) -> void:
+	slowmo(0.06, sec, false)
+
+
+var _slowmo_tw: Tween
+
+
+## Slows the game to `scale` for `sec` real seconds, then eases back
+## (dropkick impacts, kill freeze). Single-player only.
+func slowmo(scale: float, sec: float, ease_back: bool = true) -> void:
+	if Net.active or Engine.time_scale < scale:
+		return
+	if _slowmo_tw and _slowmo_tw.is_valid():
+		_slowmo_tw.kill()
+	Engine.time_scale = scale
+	_slowmo_tw = create_tween().set_ignore_time_scale(true)
+	_slowmo_tw.tween_interval(sec)
+	if ease_back:
+		_slowmo_tw.tween_method(func(v: float): Engine.time_scale = v, scale, 1.0, 0.15)
+	_slowmo_tw.tween_callback(func(): Engine.time_scale = 1.0)
 
 
 func on_player_damaged(amount: float, attacker: Node = null) -> void:
@@ -200,20 +276,43 @@ func add_feed(text: String, color: Color = TEXT) -> void:
 		feed.pop_back()
 
 
-func _menu_items() -> Array:
-	return [
-		"DEPLOY",
-		"MULTIPLAYER  ·  CO-OP / PVP",
-		"ARMORY  ·  SKIN PACKS   CR " + str(Collection.credits),
-		"MODE:  " + _mode_label(main.mode),
-		"LOADOUT:  " + Loadout.class_label() + "  ·  GUNSMITH",
-		"VIEW:  " + ("FIRST PERSON" if main.start_first_person else "TACTICAL TOP-DOWN"),
-		"GRAPHICS:  " + Settings.PRESETS[main.quality],
-		"MUSIC:  " + ("OFF" if main.music.muted else "ON"),
-		"SETTINGS",
-		"ACCOUNT:  " + Profile.current.to_upper() + "  ·  SIGN OUT",
-		"QUIT",
+## Title menu rows in navigation order. Each: id, section, label, value
+## (shown right-aligned), arrow (A/D or the arrows change it), big (DEPLOY).
+func _menu_entries() -> Array:
+	var e: Array = [
+		{"id": "deploy", "sec": "PLAY", "label": "DEPLOY", "big": true},
+		{"id": "mode", "sec": "PLAY", "label": "MISSION", "value": _mode_label(main.mode), "arrow": true},
+		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode == "zombie" else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode == "zombie"},
+		{"id": "mp", "sec": "PLAY", "label": "MULTIPLAYER", "value": "CO-OP  /  PVP"},
+		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
+		{"id": "armory", "sec": "OPERATOR", "label": "ARMORY", "value": "CR " + str(Collection.credits)},
+		{"id": "view", "sec": "SYSTEM", "label": "VIEW", "value": "FIRST PERSON" if main.start_first_person else "TOP-DOWN", "arrow": true},
+		{"id": "graphics", "sec": "SYSTEM", "label": "GRAPHICS", "value": Settings.PRESETS[main.quality], "arrow": true},
+		{"id": "music", "sec": "SYSTEM", "label": "MUSIC", "value": "OFF" if main.music.muted else "ON", "arrow": true},
+		{"id": "settings", "sec": "SYSTEM", "label": "SETTINGS"},
 	]
+	if Profile.is_admin():
+		e.append({"id": "admin", "sec": "SYSTEM", "label": "ADMIN DASHBOARD"})
+	e.append({"id": "account", "sec": "SYSTEM", "label": "SIGN OUT", "value": Profile.current.to_upper()})
+	e.append({"id": "quit", "sec": "SYSTEM", "label": "QUIT"})
+	return e
+
+
+func _menu_items() -> Array:
+	return _menu_entries()
+
+
+func _menu_index_of(id: String) -> int:
+	var e := _menu_entries()
+	for i in e.size():
+		if String(e[i].id) == id:
+			return i
+	return 0
+
+
+func _menu_arrow(i: int) -> bool:
+	var e := _menu_entries()
+	return i >= 0 and i < e.size() and bool(e[i].get("arrow", false))
 
 
 func _mode_label(m: String) -> String:
@@ -227,40 +326,58 @@ func _mode_label(m: String) -> String:
 
 
 func _menu_activate(i: int, dir: int = 0) -> void:
-	match i:
-		0:
+	var e := _menu_entries()
+	if i < 0 or i >= e.size():
+		return
+	match String(e[i].id):
+		"deploy":
 			_deploy()
-		1:
+		"mp":
 			_mp_open()
-		2:
+		"map":
+			if main.mode == "zombie":
+				last_menu_index = i
+				var ids: Array = main.MAPS.keys()
+				main.set_map(ids[posmod(ids.find(main.map_id) + (dir if dir != 0 else 1), ids.size())])
+		"armory":
 			armory.open()
-		3:
-			last_menu_index = 3
+		"mode":
+			last_menu_index = i
 			main.set_mode(MODES[posmod(MODES.find(main.mode) + (dir if dir != 0 else 1), MODES.size())])
-		4:
+		"loadout":
 			if dir == 0:
 				gunsmith.open()
 			else:
 				Loadout.cycle_class(dir)
 				Loadout.save()
-		5:
+		"view":
 			main.start_first_person = not main.start_first_person
-		6:
-			main.set_quality(posmod(main.quality + (dir if dir != 0 else 1), 3))
-		7:
+		"graphics":
+			main.set_quality(posmod(main.quality + (dir if dir != 0 else 1), Settings.CUSTOM))
+		"music":
 			main.music.toggle_mute()
-		8:
+		"settings":
 			settings_open = true
 			settings_row = 0
-		9:
+		"admin":
+			admin_dash.open()
+		"account":
 			_sign_out()
-		10:
+		"quit":
 			print("[quit] title menu QUIT (menu_index=%d)" % menu_index)
+			Settings.mark_clean_exit()
 			get_tree().quit()
+
+
+## Cinematic title-screen camera (freed on deploy).
+var menu_cam: Camera3D
 
 
 func _deploy() -> void:
 	title = false
+	if is_instance_valid(menu_cam):
+		menu_cam.queue_free()
+		menu_cam = null
 	briefing_t = 0.0
 	help_timer = 18.0
 	get_tree().paused = false
@@ -271,6 +388,11 @@ func _deploy() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if main != null and main.killcam_active() and (event.is_action_pressed("ui_accept") or event.is_action_pressed("vault")
+			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT)):
+		main.killcam.finish()
+		get_viewport().set_input_as_handled()
+		return
 	if settings_open:
 		_settings_input(event)
 		return
@@ -283,6 +405,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if title and mp_open:
 		_mp_input(event)
+		return
+	if title and admin_dash.is_open:
+		if admin_dash.handle(event):
+			admin_dash.close()
 		return
 	if title and armory.is_open:
 		if armory.handle(event):
@@ -297,10 +423,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
 			menu_index = posmod(menu_index + 1, items.size())
 		elif event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
-			if menu_index in ARROW_ITEMS:
+			if _menu_arrow(menu_index):
 				_menu_activate(menu_index, -1)
 		elif event.is_action_pressed("ui_right") or event.is_action_pressed("move_right"):
-			if menu_index in ARROW_ITEMS:
+			if _menu_arrow(menu_index):
 				_menu_activate(menu_index, 1)
 		elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
 			_menu_activate(menu_index)
@@ -321,7 +447,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_debug"):
 		debug_visible = not debug_visible
 	elif event.is_action_pressed("quality"):
-		main.set_quality(posmod(main.quality + 1, 3))
+		main.set_quality(posmod(main.quality + 1, Settings.CUSTOM))
 		add_feed("GRAPHICS  ·  " + Settings.PRESETS[main.quality], DIM)
 	elif event.is_action_pressed("music"):
 		main.music.toggle_mute()
@@ -350,6 +476,10 @@ func _process(delta: float) -> void:
 	_time += delta
 	PlayerScript.input_blocked = Net.active and (mp_pause or settings_open)
 	hit_marker = maxf(hit_marker - delta, 0.0)
+	_flash_t = maxf(_flash_t - delta, 0.0)
+	for n in _dmg_nums:
+		n.t += delta
+	_dmg_nums = _dmg_nums.filter(func(n): return n.t < DMG_NUM_LIFE)
 	damage_flash = maxf(damage_flash - delta * 0.9, 0.0)
 	help_timer -= delta
 	_banner_t = maxf(_banner_t - delta, 0.0)
@@ -376,7 +506,21 @@ func _process(delta: float) -> void:
 			blend_trail.pop_back()
 	if not title and not get_tree().paused:
 		_update_spotting(delta)
+	_show_progression()
 	overlay.queue_redraw()
+
+
+## Level-ups, weapon levels and finished challenges from progression.gd.
+func _show_progression() -> void:
+	while not Progression.pending.is_empty():
+		var e: Array = Progression.pending.pop_front()
+		var kind := String(e[1])
+		var col := Color(1.0, 0.82, 0.3) if kind == "level" else (Color(0.5, 0.9, 1.0) if kind == "weapon" else Color(0.55, 1.0, 0.6))
+		add_feed(String(e[0]), col)
+		if kind == "level":
+			wave_banner("RANK UP")
+		if player != null:
+			Sfx.play(player, "kill" if kind != "weapon" else "mag_in", player.global_position + Vector3.UP, -2.0, 0.0)
 
 
 ## Marks hostiles the operator has line of sight to (shown on the radar).
@@ -450,10 +594,17 @@ func _draw_overlay(c: Control) -> void:
 	var v := maxf(damage_flash, low if not player.is_dead else 0.0)
 	if v > 0.01:
 		c.draw_texture_rect(_vignette, Rect2(Vector2.ZERO, vp), false, Color(0.6, 0.0, 0.0, v * 0.85))
+	if main.killcam_active():
+		_draw_killcam(c, vp)   # the kill cam replaces the whole HUD while it runs
+		return
 
 	if title:
 		_draw_title(c, vp)
 		return
+	if _flash_t > 0.0:
+		# full white for the first part, then a slow fade back to sight
+		var k := _flash_t / _flash_len
+		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(1, 1, 0.97, clampf(k * 1.6, 0.0, 1.0)))
 
 	# Quiet backing plates keep telemetry readable over bright surfaces.
 	for panel in [Rect2(vp.x - 344, 24, 328, 126), Rect2(16, vp.y - 100, 224, 82)]:
@@ -461,6 +612,7 @@ func _draw_overlay(c: Control) -> void:
 		c.draw_rect(panel, Color(0.42, 0.66, 0.69, 0.24), false, 1.0)
 		c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
 	_draw_enemy_markers(c)
+	_draw_damage_numbers(c)
 	_brackets(c, Rect2(Vector2(14, 14), vp - Vector2(28, 28)), 26.0, Color(TEXT, 0.25), 1.5)
 	_draw_compass(c, vp)
 	_draw_radar(c, Vector2(vp.x - 128, vp.y - 140), 100.0)
@@ -476,6 +628,7 @@ func _draw_overlay(c: Control) -> void:
 	var wname := String(w.stats.name)
 	if w.skin != "":
 		wname += "  ·  " + String(preload("res://scripts/skins/skins.gd").finish_name(w.skin)).to_upper()
+	wname += "  ·  LV %d" % Progression.weapon_level(String(w.id))
 	_text(c, Vector2(vp.x - 330, 46), wname, 15, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	_text(c, Vector2(vp.x - 330, 86), "%d" % w.ammo, 42, ammo_col, HORIZONTAL_ALIGNMENT_RIGHT, 230, true)
 	_text(c, Vector2(vp.x - 95, 86), "/ %d" % w.reserve, 18, DIM)
@@ -500,7 +653,10 @@ func _draw_overlay(c: Control) -> void:
 		_text(c, Vector2(vp.x - 330, 140), "TACTICAL RELOAD" if player.reload_tactical else "RELOADING", 12, WARN, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	elif w.ammo == 0:
 		_text(c, Vector2(vp.x - 330, 140), "EMPTY  ·  RELOAD", 12, DANGER, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
-	_text(c, Vector2(vp.x - 330, 160), "FRAG  x%d   [G]" % player.grenades, 12, WARN if player.grenades > 0 else Color(DIM, 0.5), HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
+	else:
+		_text(c, Vector2(vp.x - 330, 140), "INSPECTING  ·  AIM / FIRE TO CANCEL" if player.rig.inspect_t >= 0.0 else "[%s]  INSPECT WEAPON" % Settings.Controls.short("inspect"), 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300)
+	_text(c, Vector2(vp.x - 330, 160), "FRAG  x%d   [%s]" % [player.grenades, Settings.Controls.short("grenade")], 12, WARN if player.grenades > 0 else Color(DIM, 0.5), HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
+	_text(c, Vector2(vp.x - 330, 178), "FLASH  x%d   [%s]" % [player.flashbangs, Settings.Controls.short("flashbang")], 12, TEXT if player.flashbangs > 0 else Color(DIM, 0.5), HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	for i in feed.size():
 		var f = feed[i]
 		var col: Color = f.color
@@ -535,6 +691,8 @@ func _draw_overlay(c: Control) -> void:
 					11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 			_draw_waypoint(c, vp)
 			_draw_interact(c, vp)
+	if dir_node != null and dir_node.boss_frac >= 0.0:
+		_draw_boss_bar(c, vp, dir_node.boss_frac, dir_node.boss_name)
 	if _banner_t > 0.0:
 		var ba := clampf(_banner_t, 0.0, 1.0) * clampf((3.0 - _banner_t) * 4.0, 0.0, 1.0)
 		_text(c, Vector2(0, vp.y * 0.3), _banner, 48, Color(RED, ba), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
@@ -553,7 +711,7 @@ func _draw_overlay(c: Control) -> void:
 	if player.sprinting:
 		stance += "  ·  SPRINT"
 	if player.kicking:
-		stance = "JUMP KICK"
+		stance = "DROPKICK"
 	if player.vaulting:
 		stance = "VAULT"
 	if absf(player.rig.lean_amt) > 0.4:
@@ -574,7 +732,7 @@ func _draw_overlay(c: Control) -> void:
 		_draw_briefing(c, vp)
 	elif help_timer > 0.0:
 		var a := clampf(help_timer / 2.0, 0.0, 1.0)
-		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Shift sprint  ·  V jump-kick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  F interact / first person  ·  Z/V rotate  ·  M music"
+		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Shift sprint  ·  V dropkick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  F interact / first person  ·  Z/V rotate  ·  M music"
 		if player.using_pad:
 			help = "L-stick move  ·  R-stick aim  ·  RT fire  ·  LT ADS  ·  L3 sprint  ·  A vault  ·  LB/RB peek  ·  B crouch  ·  X reload / interact  ·  Y weapon  ·  Back flashlight  ·  R3 first person  ·  Start pause"
 		_text(c, Vector2(0, vp.y - 26), help, 12, Color(TEXT, a * 0.75), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -652,38 +810,222 @@ func _draw_title(c: Control, vp: Vector2) -> void:
 	if armory.is_open:
 		armory.draw(c, vp)
 		return
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.028, 0.04, 0.60))
+	if admin_dash.is_open:
+		admin_dash.draw(c, vp)
+		return
+	_draw_main_menu(c, vp)
+
+
+## Title screen: command panel on the left (logo + grouped menu), mission and
+## operator cards on the right, status bar along the bottom. The frozen world
+## stays visible behind it.
+func _draw_main_menu(c: Control, vp: Vector2) -> void:
+	var panel_w := clampf(vp.x * 0.34, 400.0, 520.0)
+	if is_instance_valid(menu_cam) and float(menu_cam.fade) > 0.01:
+		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, float(menu_cam.fade)))
+	# world dimmed, left panel solid, soft edge between them
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.01, 0.02, 0.03, 0.28))
+	c.draw_rect(Rect2(0, 0, panel_w, vp.y), Color(0.012, 0.02, 0.028, 0.86))
+	for k in 24:
+		c.draw_rect(Rect2(panel_w + k * 4.0, 0, 4.0, vp.y), Color(0.012, 0.02, 0.028, 0.86 * (1.0 - (k + 1) / 24.0)))
+	c.draw_rect(Rect2(panel_w - 2, 0, 2, vp.y), Color(RED, 0.55))
 	var y := 0.0
 	while y < vp.y:
-		c.draw_line(Vector2(0, y), Vector2(vp.x, y), Color(0, 0, 0, 0.05), 1.0)
+		c.draw_line(Vector2(0, y), Vector2(vp.x, y), Color(0, 0, 0, 0.045), 1.0)
 		y += 3.0
-	var pulse := 0.92 + 0.08 * sin(_time * 2.0)
-	var logo_w := minf(vp.x * 0.62, 980.0)
-	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.3), logo_w, pulse)
-	var sub := "ZOMBIE SURVIVAL  //  OUTBREAK"
-	if main.is_campaign():
-		var ci := Campaign.chapter_info(main.mode)
-		sub = "CHAPTER %d  //  %s" % [int(ci.num), String(ci.name)]
-	_text(c, Vector2(0, vp.y * 0.3 + logo_w * 0.2), sub, 15, Color(RED, 0.95), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-	if main.is_zombie_mode() and main.director.best_wave > 0:
-		_text(c, Vector2(0, vp.y * 0.3 + logo_w * 0.2 + 22), "BEST  ·  WAVE %d  ·  SCORE %d" % [main.director.best_wave, main.director.best_score], 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
-	var items := _menu_items()
+	# logo + context line
+	var pad := 44.0
+	var logo_w := panel_w - pad * 2.0
+	var pulse := 0.94 + 0.06 * sin(_time * 2.0)
+	var logo_h := logo_w * (float(_logo.get_height()) / float(_logo.get_width()) if _logo != null else 0.22)
+	_draw_logo(c, Vector2(pad + logo_w * 0.5, 40.0 + logo_h * 0.5), logo_w, pulse)
+	var beta_rect := Rect2(panel_w - pad - 70.0, 40.0 + logo_h + 7.0, 70.0, 24.0)
+	c.draw_rect(beta_rect, Color(0.025, 0.035, 0.045, 0.95))
+	c.draw_rect(beta_rect, Color(WARN, 0.9), false, 1.0)
+	_text(c, beta_rect.position + Vector2(0, 17), "BETA", 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, beta_rect.size.x, true)
+	var sub := "TACTICAL OPERATIONS"
+	_text(c, Vector2(pad, 40.0 + logo_h + 26.0), sub, 13, Color(RED, 0.95), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+
+	# grouped menu
+	var entries := _menu_entries()
 	_menu_rects.clear()
-	var top := vp.y * 0.54
-	for i in items.size():
-		var r := Rect2(vp.x * 0.5 - 170, top + i * 46 - 28, 340, 38)
+	var row_w := panel_w - pad * 2.0
+	var top := 40.0 + logo_h + 56.0
+	var avail := vp.y - top - 70.0
+	var row_h := clampf(avail / (entries.size() + 3.6), 30.0, 40.0)
+	var cy := top
+	var sec := ""
+	for i in entries.size():
+		var e: Dictionary = entries[i]
+		if String(e.sec) != sec:
+			sec = String(e.sec)
+			cy += 10.0
+			_text(c, Vector2(pad, cy + 12.0), sec, 11, Color(DIM, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			c.draw_line(Vector2(pad + 8.0 + sec.length() * 8.5, cy + 8.0), Vector2(pad + row_w, cy + 8.0), Color(DIM, 0.25), 1.0)
+			cy += 20.0
+		var big := bool(e.get("big", false))
+		var h := row_h * (1.45 if big else 1.0)
+		var r := Rect2(pad, cy, row_w, h - 4.0)
 		_menu_rects.append(r)
 		var sel := i == menu_index
-		if sel:
-			c.draw_rect(r, Color(RED, 0.22))
-			_brackets(c, r, 10.0, RED, 2.0)
-		var label: String = items[i]
-		if sel and i in ARROW_ITEMS:
-			label = "<  " + label + "  >"
-		_text(c, Vector2(r.position.x, r.position.y + 26), label, 18, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
-	_text(c, Vector2(0, vp.y - 40), "W/S or D-pad select   ·   A/D change   ·   Enter / Space / A confirm", 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
-	_brackets(c, Rect2(Vector2(24, 24), vp - Vector2(48, 48)), 40.0, Color(TEXT, 0.3), 1.5)
+		if big:
+			c.draw_rect(r, Color(RED, 0.92 if sel else 0.7))
+			if sel:
+				c.draw_rect(Rect2(r.position + Vector2(0, r.size.y - 3.0), Vector2(r.size.x, 3.0)), Color(1, 1, 1, 0.5))
+			_text(c, Vector2(r.position.x + 18.0, r.position.y + r.size.y * 0.5 + 10.0), String(e.label), 26, Color(1, 1, 1, 0.97), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			_text(c, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 6.0), "ENTER  ▶", 13, Color(1, 1, 1, 0.85),
+					HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 18.0, true)
+		else:
+			if sel:
+				c.draw_rect(r, Color(RED, 0.18))
+				c.draw_rect(Rect2(r.position, Vector2(3.0, r.size.y)), RED)
+			var ty := r.position.y + r.size.y * 0.5 + 6.0
+			_text(c, Vector2(r.position.x + 14.0, ty), String(e.label), 16, TEXT if sel else Color(TEXT, 0.72), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			var val := String(e.get("value", ""))
+			if val != "":
+				if sel and bool(e.get("arrow", false)):
+					val = "‹  " + val + "  ›"
+				_text(c, Vector2(r.position.x, ty - 1.0), val, 13, ACCENT if sel else DIM, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 12.0, sel)
+		cy += h
+
+	# right-hand cards (hidden when the window is narrow)
+	if vp.x - panel_w > 560.0:
+		var cw := clampf(vp.x * 0.26, 340.0, 440.0)
+		var cx := vp.x - cw - 48.0
+		var card_y := 64.0
+		card_y = _menu_card(c, Rect2(cx, card_y, cw, 0), "MISSION", _mission_lines()) + 18.0
+		card_y = _menu_card(c, Rect2(cx, card_y, cw, 0), "OPERATOR", _operator_lines()) + 18.0
+		_menu_card(c, Rect2(cx, card_y, cw, 0), "DAILY CHALLENGES", _daily_lines())
+
+	# status bar
+	c.draw_rect(Rect2(0, vp.y - 44.0, vp.x, 44.0), Color(0, 0, 0, 0.55))
+	c.draw_line(Vector2(0, vp.y - 44.0), Vector2(vp.x, vp.y - 44.0), Color(TEXT, 0.12), 1.0)
+	_text(c, Vector2(pad, vp.y - 17.0), "W/S  SELECT     A/D  CHANGE     ENTER  CONFIRM     MOUSE  CLICK", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var ver := "v" + String(ProjectSettings.get_setting("application/config/version", "1.5.0-beta")).to_upper()
+	_text(c, Vector2(vp.x - 420.0, vp.y - 17.0), ver + "  ·  BETA BUILD", 11, Color(WARN, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 380.0, true)
+	if Settings.crash_recovered:
+		var nr := Rect2(panel_w + 40.0, vp.y - 104.0, vp.x - panel_w - 80.0, 48.0)
+		c.draw_rect(nr, Color(0.06, 0.03, 0.0, 0.9))
+		c.draw_rect(nr, Color(WARN, 0.9), false, 1.0)
+		_text(c, Vector2(nr.position.x, nr.position.y + 20.0), "LAST SESSION ENDED WITH THE PC SHUTTING OFF  ·  GRAPHICS SWITCHED TO SAFE (60 FPS)", 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, nr.size.x, true)
+		_text(c, Vector2(nr.position.x, nr.position.y + 38.0), "THIS POINTS TO A POWER / HARDWARE FAULT  ·  YOU CAN RAISE QUALITY AGAIN IN SETTINGS", 10, Color(TEXT, 0.75), HORIZONTAL_ALIGNMENT_CENTER, nr.size.x, true)
+
+
+## Boss health bar under the wave line. The trailing light segment drains
+## behind the real value so big hits read clearly.
+var _boss_trail := 1.0
+
+
+func _draw_boss_bar(c: Control, vp: Vector2, frac: float, boss_name: String) -> void:
+	_boss_trail = maxf(frac, move_toward(_boss_trail, frac, get_process_delta_time() * 0.35))
+	var w := minf(560.0, vp.x * 0.5)
+	var r := Rect2((vp.x - w) * 0.5, 140.0, w, 10.0)
+	var rage := frac <= 0.5
+	_text(c, Vector2(0, r.position.y - 6.0), boss_name + ("  ·  ENRAGED" if rage else ""), 13, RED if rage else TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	c.draw_rect(r.grow(2.0), Color(0, 0, 0, 0.6))
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x * _boss_trail, r.size.y)), Color(1.0, 0.85, 0.7, 0.55))
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x * frac, r.size.y)), Color(RED, 0.95))
+	c.draw_line(r.position + Vector2(r.size.x * 0.5, -2), r.position + Vector2(r.size.x * 0.5, r.size.y + 2), Color(TEXT, 0.5), 1.0)
+	c.draw_rect(r.grow(2.0), Color(TEXT, 0.35), false, 1.0)
+
+
+## Kill cam overlay: letterbox, KILLCAM tag and the killer card.
+func _draw_killcam(c: Control, vp: Vector2) -> void:
+	var kc = main.killcam
+	var k: float = clampf(float(kc.t) / 0.4, 0.0, 1.0) * clampf((float(kc.TIME) - float(kc.t)) / 0.3, 0.0, 1.0)
+	var bar := 70.0 * k
+	c.draw_rect(Rect2(0, 0, vp.x, bar), Color(0, 0, 0, 0.92))
+	c.draw_rect(Rect2(0, vp.y - bar, vp.x, bar), Color(0, 0, 0, 0.92))
+	if int(_time * 2.5) % 2 == 0:
+		c.draw_circle(Vector2(48, 44), 7.0, Color(RED, k))
+	_text(c, Vector2(64, 52), "KILLCAM", 22, Color(RED, k), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var info: Dictionary = kc.info
+	var w := minf(560.0, vp.x * 0.6)
+	var r := Rect2((vp.x - w) * 0.5, vp.y - bar - 118.0, w, 96.0)
+	c.draw_rect(r, Color(0.02, 0.03, 0.04, 0.85 * k))
+	c.draw_rect(Rect2(r.position, Vector2(6, r.size.y)), Color(RED, k))
+	_text(c, r.position + Vector2(22, 26), "KILLED BY", 12, Color(DIM, k), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, r.position + Vector2(22, 60), String(info.get("name", "")), 30, Color(TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var parts: Array = ["%d M" % int(round(float(info.get("dist", 0.0))))]
+	if String(info.get("weapon", "")) != "":
+		parts.append(String(info.weapon))
+	parts.append("HP LEFT %d%%" % int(round(float(info.get("hp", 0.0)) * 100.0)))
+	_text(c, r.position + Vector2(22, 84), "   ·   ".join(parts), 13, Color(WARN, k), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var hpw := r.size.x - 44.0
+	c.draw_rect(Rect2(r.position.x + 22, r.end.y - 6, hpw, 3), Color(1, 1, 1, 0.12 * k))
+	c.draw_rect(Rect2(r.position.x + 22, r.end.y - 6, hpw * float(info.get("hp", 0.0)), 3), Color(RED, k))
+	_text(c, Vector2(0, vp.y - bar * 0.5 + 6), "SPACE / CLICK  SKIP", 11, Color(DIM, k), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+## Lines for the daily challenges card.
+func _daily_lines() -> Array:
+	Progression.ensure()
+	var out: Array = []
+	for ch in Progression.daily:
+		var done := bool(ch.done)
+		var line := "%s   %d/%d" % [Progression.challenge_text(ch), int(ch.progress), int(ch.goal)]
+		out.append([("DONE  " if done else "") + line, 13, ACCENT if done else TEXT])
+		out.append(["   REWARD  CR %d  ·  %d XP" % [Progression.REWARD_CR[int(ch.tier)], Progression.REWARD_XP[int(ch.tier)]], 10, Color(DIM, 0.9)])
+	out.append(["New challenges every day at midnight.", 10, Color(DIM, 0.7)])
+	return out
+
+
+## Lines for the mission card: [text, size, color].
+func _mission_lines() -> Array:
+	if main.is_zombie_mode():
+		var out: Array = [["ZOMBIE SURVIVAL", 26, TEXT], [String(main.MAPS[main.map_id]) + "  ·  OUTBREAK", 12, RED]]
+		out.append(["Survive endless waves after dark.", 13, Color(TEXT, 0.8)])
+		if main.director != null and main.director.best_wave > 0:
+			out.append(["BEST  WAVE %d   ·   SCORE %d" % [main.director.best_wave, main.director.best_score], 13, ACCENT])
+		return out
+	var ci := Campaign.chapter_info(main.mode)
+	var lines: Array = [
+		["CHAPTER %d" % int(ci.num), 12, RED],
+		[String(ci.name), 28, TEXT],
+		[String(ci.location), 12, Color(TEXT, 0.75)],
+		["%02d00 HRS LOCAL" % int(float(ci.hour)), 12, DIM],
+	]
+	if Campaign.completed.has(main.mode):
+		lines.append(["COMPLETED  ·  GRADE " + String(Campaign.completed[main.mode]), 13, ACCENT])
+	else:
+		lines.append(["NOT YET COMPLETED", 13, WARN])
+	return lines
+
+
+func _operator_lines() -> Array:
+	var cur := Loadout.current()
+	var pri := String(WData.WEAPONS[cur.primary.id].name)
+	var sec := String(WData.WEAPONS[cur.secondary.id].name)
+	var lvl := Progression.level()
+	var lp: Array = Progression.level_progress()
+	var xp_line := "MAX LEVEL" if int(lp[1]) == 0 else "XP  %d / %d" % [int(lp[0]), int(lp[1])]
+	return [
+		[Profile.current.to_upper(), 24, TEXT],
+		["LV %d  ·  %s  ·  %s" % [lvl, Progression.rank_name(lvl), xp_line], 12, WARN],
+		[Loadout.class_label() + "  ·  " + Loadout.class_desc(), 12, Color(TEXT, 0.75)],
+		["PRIMARY     " + pri, 13, TEXT],
+		["SECONDARY   " + sec, 13, TEXT],
+		["CREDITS  %d     SKINS  %d" % [Collection.credits, Collection.total_owned()], 13, ACCENT],
+	]
+
+
+## Draws a titled card sized to its lines; returns its bottom edge.
+func _menu_card(c: Control, r: Rect2, heading: String, lines: Array) -> float:
+	var h := 60.0
+	for l in lines:
+		h += float(l[1]) + 12.0
+	r.size.y = h
+	c.draw_rect(r, Color(0.012, 0.02, 0.028, 0.78))
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x, 2.0)), Color(RED, 0.8))
+	_brackets(c, r, 12.0, Color(TEXT, 0.25), 1.0)
+	_text(c, r.position + Vector2(18, 28), heading, 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var y := r.position.y + 44.0
+	for l in lines:
+		y += float(l[1]) + 6.0
+		_text(c, Vector2(r.position.x + 18.0, y), String(l[0]), int(l[1]), l[2], HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 36.0, int(l[1]) >= 16)
+		y += 6.0
+	return r.end.y
 
 
 func _draw_briefing(c: Control, vp: Vector2) -> void:
@@ -694,10 +1036,10 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(0, vp.y - bar_h, vp.x, bar_h), Color(0, 0, 0, 0.85))
 	var lines := [
 		["TECTICA  //  ZOMBIE SURVIVAL", RED, 20],
-		["LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN", TEXT, 14],
-		["SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES", TEXT, 14],
+		["LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN" if main.map_id == "town" else "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN", TEXT, 14],
+		["SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET" if main.map_id == "town" else "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES", TEXT, 14],
 		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
-		["INTEL      HEADSHOTS SAVE AMMO - RESUPPLY BETWEEN WAVES  -  [T] FLASHLIGHT", TEXT, 14],
+		["INTEL      HEADSHOTS SAVE AMMO - RESUPPLY BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
 		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
 	] if main.is_zombie_mode() else (_pvp_briefing() if main.mode == "pvp" else _campaign_briefing())
 	var chars := int(t * 75.0)
@@ -718,7 +1060,7 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 func _pvp_briefing() -> Array:
 	return [
 		["TECTICA  //  DEATHMATCH", RED, 20],
-		["LOCATION   PINEWOOD VALLEY", TEXT, 14],
+		["LOCATION   " + String(main.MAPS[main.map_id]), TEXT, 14],
 		["OBJECTIVE  FIRST TO %d KILLS  -  10 MINUTES" % main.PVP_KILL_LIMIT, TEXT, 14],
 		["INTEL      SHOTS SHOW YOU ON THEIR RADAR  -  BUSHES HIDE YOU", TEXT, 14],
 		["ROE        FREE FOR ALL", ACCENT, 14],
@@ -813,13 +1155,13 @@ func _draw_compass(c: Control, vp: Vector2) -> void:
 	_text(c, Vector2(cx - 30, y + 22), "%03d" % int(heading), 11, TEXT, HORIZONTAL_ALIGNMENT_CENTER, 60, true)
 
 
-func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
-	var sc := radius / 24.0
-	var view_yaw: float = player.aim_yaw if player.first_person else camera_rig.yaw
-	var inv := Basis(Vector3.UP, -view_yaw)
-	var ppos: Vector3 = player.global_position
-	c.draw_circle(center, radius + 3.0, Color(0, 0, 0, 0.55))
-	c.draw_circle(center, radius, Color(0.06, 0.09, 0.07, 0.75))
+var _radar_key := Vector4.INF
+var _radar_shapes: Array = []
+
+
+## Radar map shapes in screen space: [polygon, color] or [point, color, radius].
+func _build_radar_shapes(center: Vector2, radius: float, sc: float, inv: Basis, ppos: Vector3) -> Array:
+	var out: Array = []
 	var circle := PackedVector2Array()
 	for i in 40:
 		circle.append(center + Vector2.RIGHT.rotated(TAU * i / 40.0) * radius)
@@ -838,13 +1180,34 @@ func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
 		for clipped in Geometry2D.intersect_polygons(poly, circle):
 			if clipped.size() < 3 or Geometry2D.triangulate_polygon(clipped).is_empty():
 				continue
-			c.draw_colored_polygon(clipped, Color(0.55, 0.7, 0.55, 0.55) if r.tall else Color(0.5, 0.6, 0.45, 0.3))
+			out.append([clipped, Color(0.55, 0.7, 0.55, 0.55) if r.tall else Color(0.5, 0.6, 0.45, 0.3)])
 	if main.level.has_method("trees_near"):
 		for t in main.level.trees_near(ppos, 24.0):
 			var lt: Vector3 = inv * (Vector3(t.x, 0, t.y) - ppos)
 			var tp := center + Vector2(lt.x, lt.z) * sc
 			if tp.distance_to(center) < radius - 2.0:
-				c.draw_circle(tp, maxf(t.z * sc * 2.2, 1.6), Color(0.35, 0.55, 0.3, 0.55))
+				out.append([tp, Color(0.35, 0.55, 0.3, 0.55), maxf(t.z * sc * 2.2, 1.6)])
+	return out
+
+
+func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
+	var sc := radius / 24.0
+	var view_yaw: float = player.aim_yaw if player.first_person else camera_rig.yaw
+	var inv := Basis(Vector3.UP, -view_yaw)
+	var ppos: Vector3 = player.global_position
+	c.draw_circle(center, radius + 3.0, Color(0, 0, 0, 0.55))
+	c.draw_circle(center, radius, Color(0.06, 0.09, 0.07, 0.75))
+	# buildings + trees: clipping and triangulating every outline is costly,
+	# so the shapes are rebuilt only when the view moves or turns noticeably
+	var rkey := Vector4(snappedf(ppos.x, 0.15), snappedf(ppos.z, 0.15), snappedf(view_yaw, 0.01), center.x + center.y * 10000.0)
+	if rkey != _radar_key:
+		_radar_key = rkey
+		_radar_shapes = _build_radar_shapes(center, radius, sc, inv, ppos)
+	for sh in _radar_shapes:
+		if sh[0] is PackedVector2Array:
+			c.draw_colored_polygon(sh[0], sh[1])
+		else:
+			c.draw_circle(sh[0], sh[2], sh[1])
 	if main.campaign != null and main.campaign.objective_pos() != null:
 		var lo: Vector3 = inv * ((main.campaign.objective_pos() as Vector3) - ppos)
 		var op := center + Vector2(lo.x, lo.z) * sc
@@ -898,6 +1261,29 @@ func _draw_debug(c: Control) -> void:
 	c.draw_rect(Rect2(24, 130, 300, 22 + lines.size() * 18), Color(0.03, 0.04, 0.04, 0.6))
 	for i in lines.size():
 		_text(c, Vector2(34, 150 + i * 18), lines[i][0], 13, lines[i][1])
+
+
+## Numbers pop up where the round landed, rise and fade. Gold = headshot,
+## red = the shot that killed.
+func _draw_damage_numbers(c: Control) -> void:
+	if _dmg_nums.is_empty() or camera_rig == null:
+		return
+	var cam: Camera3D = camera_rig.active_camera()
+	if cam == null:
+		return
+	for n in _dmg_nums:
+		var t: float = n.t
+		var p: Vector3 = n.pos + Vector3.UP * (0.25 + t * 0.9)
+		if cam.is_position_behind(p):
+			continue
+		var sp := cam.unproject_position(p)
+		var pop := 1.0 + 0.35 * maxf(0.0, 1.0 - t / 0.12)
+		var size := int((22.0 if n.head else 17.0) * pop)
+		var col: Color = DANGER if n.kill else (WARN if n.head else Color(1, 1, 1))
+		col.a = clampf((DMG_NUM_LIFE - t) / 0.35, 0.0, 1.0)
+		var txt: String = n.text + ("!" if n.head else "")
+		_text(c, sp + Vector2(-60 + 1.5, 1.5), txt, size, Color(0, 0, 0, col.a * 0.7), HORIZONTAL_ALIGNMENT_CENTER, 120, true)
+		_text(c, sp + Vector2(-60, 0), txt, size, col, HORIZONTAL_ALIGNMENT_CENTER, 120, true)
 
 
 func _draw_reticle(c: Control) -> void:
@@ -1119,9 +1505,30 @@ func _pause_input(event: InputEvent) -> void:
 				_pause_activate(i)
 
 
+## Action waiting for its new key on the CONTROLS tab ("" = none).
+var _binding := ""
+
+
 func _settings_input(event: InputEvent) -> void:
 	var rows: Array = Settings.rows(settings_tab)
 	var n: int = rows.size() + 1
+	if _binding != "":
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_ESCAPE:
+				_binding = ""
+			elif Settings.Controls.rebind(_binding, event):
+				_binding = ""
+				Sfx.play(player, "mag_in", player.global_position, -4.0, 0.0)
+		elif event is InputEventMouseButton and event.pressed:
+			if Settings.Controls.rebind(_binding, event):
+				_binding = ""
+				Sfx.play(player, "mag_in", player.global_position, -4.0, 0.0)
+		get_viewport().set_input_as_handled()
+		return
+	var on_bind: bool = settings_row < rows.size() and Settings.is_bind(rows[settings_row])
+	if on_bind and (event.is_action_pressed("ui_accept") or (event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER, KEY_KP_ENTER])):
+		_bind_row(rows[settings_row])
+		return
 	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel") or event.is_action_pressed("crouch"):
 		_close_settings()
 	elif event.is_action_pressed("peek_left") or event.is_action_pressed("cam_rot_left"):
@@ -1164,6 +1571,8 @@ func _settings_input(event: InputEvent) -> void:
 					settings_row = idx
 					if idx >= rows.size():
 						_close_settings()
+					elif Settings.is_bind(rows[idx]):
+						_bind_row(rows[idx])
 					else:
 						_settings_adjust(rows[idx], -1 if event.position.x < r.position.x + r.size.x * 0.5 else 1)
 
@@ -1173,7 +1582,17 @@ func _settings_rects_index(i: int, row_count: int) -> int:
 	return mini(int(_settings_idx[i]) if i < _settings_idx.size() else row_count, row_count)
 
 
+## Enter on a CONTROLS row: wait for a key, or reset everything.
+func _bind_row(row: Array) -> void:
+	if String(row[2]) == "reset":
+		Settings.Controls.reset_all()
+		Sfx.play(player, "mag_in", player.global_position, -4.0, 0.0)
+		return
+	_binding = String(row[0])
+
+
 func _settings_set_tab(t: int) -> void:
+	_binding = ""
 	settings_tab = posmod(t, Settings.TABS.size())
 	settings_row = 0
 	_settings_scroll = 0
@@ -1254,7 +1673,15 @@ func _draw_settings(c: Control, vp: Vector2) -> void:
 			var row: Array = rows[i]
 			_text(c, Vector2(x0 + 14, y), row[1], 15, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 			var val := Settings.label_value(row)
-			_text(c, Vector2(x0, y), ("<  " + val + "  >") if sel else val, 15, WARN if sel else TEXT, HORIZONTAL_ALIGNMENT_RIGHT, w - 14, true)
+			if Settings.is_bind(row):
+				var clash: Array = Settings.Controls.conflicts(String(row[0])) if row[2] == "bind" else []
+				if _binding == String(row[0]):
+					val = "PRESS A KEY OR MOUSE BUTTON  ·  ESC CANCEL"
+				elif not clash.is_empty():
+					val = val + "   (ALSO " + String(clash[0]) + ")"
+				_text(c, Vector2(x0, y), val, 15, WARN if _binding == String(row[0]) else (DANGER if not clash.is_empty() else (TEXT if not sel else WARN)), HORIZONTAL_ALIGNMENT_RIGHT, w - 14, true)
+			else:
+				_text(c, Vector2(x0, y), ("<  " + val + "  >") if sel else val, 15, WARN if sel else TEXT, HORIZONTAL_ALIGNMENT_RIGHT, w - 14, true)
 			var k := Settings.slider_frac(row)
 			if k >= 0.0:
 				var bx := x0 + w * 0.47
@@ -1263,7 +1690,10 @@ func _draw_settings(c: Control, vp: Vector2) -> void:
 		else:
 			_text(c, Vector2(x0 + 14, y), "SAVE & BACK", 15, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		y += row_h
-	_text(c, Vector2(0, vp.y - 30), "Q/E or LB/RB tabs   ·   W/S select   ·   A/D or click adjust   ·   Esc / B back", 13, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	var hint := "Q/E or LB/RB tabs   ·   W/S select   ·   A/D or click adjust   ·   Esc / B back"
+	if Settings.TABS[settings_tab] == "CONTROLS":
+		hint = "Q/E tabs   ·   W/S select   ·   Enter or click  rebind   ·   Esc back   ·   controller buttons stay as they are"
+	_text(c, Vector2(0, vp.y - 30), hint, 13, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
 
 # ================================================================ threat indicators
@@ -1545,6 +1975,7 @@ func _auth_submit(create: bool) -> void:
 ## Load the signed-in account's progress: reset the cached saves, rebuild the title.
 func _switch_profile() -> void:
 	Collection._loaded = false
+	Progression.reset_cache()
 	Collection.credits = Collection.START_CREDITS
 	Collection.owned = {}
 	Collection.equipped = {}
@@ -1619,6 +2050,7 @@ func _auth_activate(i: int) -> void:
 			_auth_submit(true)
 		4:
 			print("[quit] sign-in QUIT row")
+			Settings.mark_clean_exit()
 			get_tree().quit()
 
 

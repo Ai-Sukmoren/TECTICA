@@ -10,6 +10,8 @@ extends Node
 ##   health             60 * (1 + 0.18(n-1))       runner x0.8, brute x3
 ##   damage             8 + 1.2n                   brute x2
 ##   weighted roster and variant stats are defined in zombie_types.gd
+##   boss               every 5th wave one Juggernaut joins after 3 spawns:
+##                      slam (close), charge (7-22 m, dazed by walls), enrages at 50%
 
 const Types = preload("res://scripts/characters/zombie_types.gd")
 const Zombie = preload("res://scripts/characters/zombie.gd")
@@ -30,6 +32,11 @@ var headshots := 0
 var score := 0
 var _spawn_cd := 0.0
 var _variant := 0
+## Boss wave: the Juggernaut still has to arrive (it joins a few spawns in).
+var _boss_pending := false
+## Live boss health 0..1 (-1: no boss). Host computes it; clients get it in net_state.
+var boss_frac := -1.0
+var boss_name := "JUGGERNAUT"
 
 
 func setup(p_main: Node) -> void:
@@ -45,7 +52,7 @@ func alive() -> int:
 
 
 func remaining() -> int:
-	return alive() + to_spawn
+	return alive() + to_spawn + (1 if _boss_pending else 0)
 
 
 ## Headshot bonus (kills themselves are counted from the zombie's died signal,
@@ -56,9 +63,24 @@ func on_kill(headshot: bool) -> void:
 		score += 50
 
 
-func _on_zombie_died(_z: Node) -> void:
+func _on_zombie_died(z: Node) -> void:
 	kills += 1
 	score += 100
+	if z.get("kind") == "boss":
+		score += Types.BOSS_SCORE
+		if Net.sync:
+			Net.sync.game_event("wave", ["boss_down", wave])
+		boss_down()
+
+
+## The Juggernaut fell: credits and a moment of slow-mo on every peer.
+func boss_down() -> void:
+	boss_frac = -1.0
+	preload("res://scripts/skins/collection.gd").add_credits(Types.BOSS_CREDITS)
+	main.hud.add_feed("%s DOWN  ·  +%d SCORE  ·  +%d CR" % [boss_name, Types.BOSS_SCORE, Types.BOSS_CREDITS], Color(1.0, 0.8, 0.3))
+	main.hud.wave_banner("%s DOWN" % boss_name)
+	main.hud.slowmo(0.3, 0.7)
+	preload("res://scripts/core/progression.gd").on_boss_kill()
 
 
 func on_player_died() -> void:
@@ -88,12 +110,25 @@ func _physics_process(delta: float) -> void:
 			interval *= 1.6
 			break
 	_spawn_cd -= delta
-	if to_spawn > 0 and _spawn_cd <= 0.0 and alive() < max_alive:
+	if _boss_pending and _spawn_cd <= 0.0 and (6 + 4 * wave) - to_spawn >= 3:
+		_spawn_cd = interval
+		if _spawn_one("boss"):
+			_boss_pending = false
+	elif to_spawn > 0 and _spawn_cd <= 0.0 and alive() < max_alive:
 		_spawn_cd = interval
 		if _spawn_one():
 			to_spawn -= 1
-	if to_spawn == 0 and alive() == 0:
+	_update_boss_frac()
+	if to_spawn == 0 and alive() == 0 and not _boss_pending:
 		_end_wave()
+
+
+func _update_boss_frac() -> void:
+	boss_frac = -1.0
+	for e in main.enemies:
+		if is_instance_valid(e) and not e.is_dead and e.get("kind") == "boss":
+			boss_frac = clampf(e.health / e.max_health, 0.0, 1.0)
+			return
 
 
 func _begin_wave() -> void:
@@ -101,6 +136,7 @@ func _begin_wave() -> void:
 	active = true
 	to_spawn = 6 + 4 * wave
 	_spawn_cd = 0.5
+	_boss_pending = Types.is_boss_wave(wave)
 	_announce_wave()
 	if Net.sync:
 		Net.sync.game_event("wave", ["begin", wave, to_spawn])
@@ -113,6 +149,10 @@ func _announce_wave() -> void:
 		3: main.hud.add_feed("CRAWLERS  ·  WATCH THE GROUND", Color(0.7, 0.9, 0.3))
 		5: main.hud.add_feed("ARMORED  ·  AIM FOR HEAD OR FLANK", Color(0.6, 0.8, 1.0))
 		6: main.hud.add_feed("BERSERKERS  ·  WOUNDED INFECTED ENRAGE", Color(1.0, 0.35, 0.12))
+	if Types.is_boss_wave(wave):
+		main.hud.wave_banner("WAVE %d  ·  BOSS" % wave)
+		main.hud.add_feed("%s INBOUND  ·  AIM HIGH  ·  BAIT ITS CHARGE INTO A WALL" % boss_name, Color(1.0, 0.25, 0.2))
+		Sfx.play(main, "groan", main.player.global_position + Vector3(0, 6, 0), 2.0, 0.05)
 
 
 func _end_wave() -> void:
@@ -136,8 +176,10 @@ func apply_wave_end() -> void:
 		w.reserve = maxi(w.reserve, int(w.stats.reserve) * 2)
 	main.refresh_ammo()
 	p.grenades = mini(p.grenades + 2, 5)
+	p.flashbangs = mini(p.flashbangs + 1, 3)
 	var cr := 20 * wave
 	preload("res://scripts/skins/collection.gd").add_credits(cr)
+	preload("res://scripts/core/progression.gd").on_wave_cleared(wave, String(main.get("map_id")) if main.get("map_id") != null else "forest")
 	main.hud.add_feed("WAVE %d CLEARED  ·  +35 HP  ·  AMMO & FRAGS  ·  +%d CR" % [wave, cr], Color(0.55, 1.0, 0.6))
 	main.hud.wave_banner("WAVE %d CLEARED" % wave)
 	Sfx.play(main, "mag_in", p.global_position, 0.0)
@@ -151,6 +193,8 @@ func net_event(args: Array) -> void:
 			to_spawn = int(args[2])
 			active = true
 			_announce_wave()
+		"boss_down":
+			boss_down()
 		"end":
 			wave = int(args[1])
 			active = false
@@ -159,7 +203,7 @@ func net_event(args: Array) -> void:
 
 
 func net_state() -> Array:
-	return [wave, active, timer, to_spawn, kills, score, headshots]
+	return [wave, active, timer, to_spawn, kills, score, headshots, boss_frac]
 
 
 func apply_net_state(s: Array) -> void:
@@ -170,6 +214,7 @@ func apply_net_state(s: Array) -> void:
 	kills = int(s[4])
 	score = int(s[5])
 	headshots = int(s[6])
+	boss_frac = float(s[7]) if s.size() > 7 else -1.0
 
 
 ## A host-spawned zombie on a client.
@@ -184,7 +229,7 @@ func spawn_puppet(nm: String, pos: Vector3, args: Array) -> void:
 	main.enemies.append(z)
 
 
-func _spawn_one() -> bool:
+func _spawn_one(force_kind: String = "") -> bool:
 	var alive_ops: Array = main.alive_players()
 	if alive_ops.is_empty():
 		return false
@@ -212,7 +257,7 @@ func _spawn_one() -> bool:
 	pos = NavigationServer3D.map_get_closest_point(map, pos)
 	pos.y = Terrain.height(pos.x, pos.z) + 0.05
 
-	var kind := Types.pick(wave, randf())
+	var kind := force_kind if force_kind != "" else Types.pick(wave, randf())
 	var stats := Types.stats(kind, wave)
 	var hp: float = stats.hp
 	var dmg: float = stats.damage
@@ -236,12 +281,30 @@ func _spawn_one() -> bool:
 	return true
 
 
-## Frees corpses after a while so long runs stay fast.
+## Frees corpses after a while (and keeps at most MAX_CORPSES) so long runs stay fast.
+const CORPSE_TIME := 8.0
+const MAX_CORPSES := 10
+var _cleanup_t := 0.0
+
+
 func _cleanup() -> void:
+	_cleanup_t -= get_physics_process_delta_time()
+	if _cleanup_t > 0.0:
+		return
+	_cleanup_t = 0.5
 	var now := Time.get_ticks_msec() / 1000.0
+	var corpses: Array = []
 	for e in main.enemies.duplicate():
 		if not is_instance_valid(e):
 			main.enemies.erase(e)
-		elif e.is_dead and e.get("death_time") != null and e.death_time > 0.0 and now - e.death_time > 15.0:
-			main.enemies.erase(e)
-			e.queue_free()
+		elif e.is_dead and e.get("death_time") != null and e.death_time > 0.0:
+			if now - e.death_time > CORPSE_TIME:
+				main.enemies.erase(e)
+				e.queue_free()
+			else:
+				corpses.append(e)
+	if corpses.size() > MAX_CORPSES:
+		corpses.sort_custom(func(a, b): return a.death_time < b.death_time)
+		for i in corpses.size() - MAX_CORPSES:
+			main.enemies.erase(corpses[i])
+			corpses[i].queue_free()

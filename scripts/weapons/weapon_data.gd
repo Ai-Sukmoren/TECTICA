@@ -36,6 +36,8 @@ const ATTACHMENTS := {
 		"extended": {"name": "Extended Mag", "mag": 1.5, "reload": 1.15, "reload_empty": 1.15, "mobility": 0.98},
 		"drum": {"name": "Drum Mag", "mag": 2.0, "reload": 1.4, "reload_empty": 1.4, "mobility": 0.94, "ads_speed": 0.88},
 		"fast": {"name": "Fast Mag", "reload": 0.72, "reload_empty": 0.72},
+		# armor-piercing: headshots punch straight through helmets
+		"ap": {"name": "AP Rounds", "pierce": true, "damage": 0.9, "mag": 0.8},
 	},
 	"stock": {
 		"standard": {"name": "Standard Stock"},
@@ -58,7 +60,7 @@ const WEAPONS := {
 		"suppressed": false, "noise_radius": 34.0, "shake": 0.1, "sound": "shot_rifle", "volume": -4.0,
 		"mobility": 1.0, "ads_speed": 1.0,
 		"options": {"optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "drum", "fast"], "stock": ["standard", "light", "heavy"]},
+				"magazine": ["standard", "extended", "drum", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
 		"defaults": {"optic": "reddot", "muzzle": "none", "underbarrel": "vgrip", "magazine": "standard", "stock": "standard"},
 	},
 	"ak47": {
@@ -71,7 +73,7 @@ const WEAPONS := {
 		"suppressed": false, "noise_radius": 38.0, "shake": 0.13, "sound": "shot_loud", "volume": -3.0,
 		"mobility": 0.97, "ads_speed": 0.95,
 		"options": {"optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "drum", "fast"], "stock": ["standard", "light", "heavy"]},
+				"magazine": ["standard", "extended", "drum", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"as_val": {
@@ -84,7 +86,7 @@ const WEAPONS := {
 		"suppressed": true, "noise_radius": 11.0, "shake": 0.11, "sound": "shot_suppressed", "volume": -2.0,
 		"mobility": 1.02, "ads_speed": 1.05, "flash": 0.4,
 		"options": {"optic": ["iron", "reddot", "holo", "acog"], "muzzle": ["integral"], "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "fast"], "stock": ["standard", "light", "heavy"]},
+				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
 		"defaults": {"optic": "reddot", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"mp7": {
@@ -97,13 +99,27 @@ const WEAPONS := {
 		"suppressed": false, "noise_radius": 30.0, "shake": 0.07, "sound": "shot_smg", "volume": -5.0,
 		"mobility": 1.1, "ads_speed": 1.3,
 		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "fast"], "stock": ["standard", "light", "heavy"]},
+				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
 		"defaults": {"optic": "holo", "muzzle": "suppressor", "underbarrel": "agrip", "magazine": "standard", "stock": "standard"},
+	},
+	# asset pack 4 (alstraInfinite PPS Shooter Essentials) models
+	"mgp7": {
+		"name": "MGP7", "category": "SMG", "kind": "rifle", "model": "mgp7",
+		"mag": 30, "reserve": 180, "rpm": 820, "auto": true, "pellets": 1,
+		"damage": 25.0, "range": 55.0, "falloff_start": 20.0,
+		"spread_hip": 2.4, "spread_aim": 0.8, "spread_move": 1.5,
+		"bloom_add": 0.25, "bloom_max": 2.6, "bloom_recover": 8.0,
+		"recoil": 0.62, "reload": 2.0, "reload_empty": 2.5,
+		"suppressed": false, "noise_radius": 30.0, "shake": 0.08, "sound": "shot_smg", "volume": -4.0,
+		"mobility": 1.08, "ads_speed": 1.25,
+		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": ["none", "suppressor", "compensator", "flash_hider"],
+				"underbarrel": ["none", "vgrip", "agrip", "laser"], "magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard"]},
+		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"awp": {
 		"name": "AWP", "category": "SNIPER", "kind": "rifle", "model": "awp",
 		"mag": 5, "reserve": 30, "rpm": 42, "auto": false, "pellets": 1,
-		"damage": 120.0, "range": 160.0, "falloff_start": 120.0,
+		"damage": 120.0, "range": 160.0, "falloff_start": 120.0, "pierce": true,
 		"spread_hip": 7.0, "spread_aim": 0.05, "spread_move": 6.0,
 		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
 		"recoil": 3.0, "reload": 3.4, "reload_empty": 3.8,
@@ -136,7 +152,7 @@ const WEAPONS := {
 		"suppressed": false, "noise_radius": 40.0, "shake": 0.12, "sound": "shot_rifle", "volume": -3.0,
 		"mobility": 0.82, "ads_speed": 0.7,
 		"options": {"optic": ["iron", "reddot", "holo", "acog"], "muzzle": ["none", "flash_hider", "compensator", "suppressor"],
-				"underbarrel": ["bipod", "vgrip", "none"], "magazine": ["standard", "extended"], "stock": ["standard", "heavy"]},
+				"underbarrel": ["bipod", "vgrip", "none"], "magazine": ["standard", "extended", "ap"], "stock": ["standard", "heavy"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "bipod", "magazine": "standard", "stock": "standard"},
 	},
 	"mk23": {
@@ -149,7 +165,20 @@ const WEAPONS := {
 		"suppressed": false, "noise_radius": 28.0, "shake": 0.16, "sound": "shot_pistol", "volume": -1.0,
 		"mobility": 1.05, "ads_speed": 1.3,
 		"options": {"optic": ["iron", "reddot"], "muzzle": ["none", "suppressor", "compensator"], "underbarrel": ["none", "laser"],
-				"magazine": ["standard", "extended", "fast"], "stock": ["standard"]},
+				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard"]},
+		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
+	"zc57": {
+		"name": "ZC57", "category": "PISTOL", "kind": "pistol", "model": "zc57",
+		"mag": 15, "reserve": 90, "rpm": 420, "auto": false, "pellets": 1,
+		"damage": 34.0, "range": 45.0, "falloff_start": 16.0,
+		"spread_hip": 2.0, "spread_aim": 0.7, "spread_move": 1.6,
+		"bloom_add": 0.7, "bloom_max": 3.0, "bloom_recover": 7.5,
+		"recoil": 0.95, "reload": 1.5, "reload_empty": 1.8,
+		"suppressed": false, "noise_radius": 27.0, "shake": 0.12, "sound": "shot_pistol", "volume": -2.0,
+		"mobility": 1.06, "ads_speed": 1.35,
+		"options": {"optic": ["iron", "reddot"], "muzzle": ["none", "suppressor", "compensator"], "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"g18": {
@@ -180,8 +209,8 @@ const WEAPONS := {
 	},
 }
 
-const PRIMARIES := ["m4a1", "ak47", "as_val", "mp7", "awp", "m870", "m249"]
-const SECONDARIES := ["mk23", "g18"]
+const PRIMARIES := ["m4a1", "ak47", "as_val", "mp7", "mgp7", "awp", "m870", "m249"]
+const SECONDARIES := ["mk23", "g18", "zc57"]
 
 const CLASSES := [
 	{"name": "ASSAULT", "desc": "Balanced rifleman for any range.",
@@ -228,6 +257,7 @@ static func compute(id: String, att: Dictionary) -> Dictionary:
 	s["flash"] = float(s.get("flash", 1.0))
 	s["recoil_crouch"] = 1.0
 	s["cycle"] = String(s.get("cycle", ""))
+	s["pierce"] = bool(s.get("pierce", false))
 	var a := sanitize(id, att)
 	for slot in SLOTS:
 		var mods: Dictionary = ATTACHMENTS[slot][a[slot]]

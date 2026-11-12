@@ -20,6 +20,7 @@ const FX = preload("res://scripts/fx/fx.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 const Weapon = preload("res://scripts/weapons/weapon.gd")
+const ModelSkin = preload("res://scripts/characters/model_skin.gd")
 
 signal footstep(pos: Vector3, intensity: float)
 signal throw_release
@@ -68,7 +69,7 @@ var crouch_target := 0.0
 var aim_target := 0.0
 var sprint_target := 0.0
 var air_target := 0.0
-## jump kick timeline (0..1, -1 = idle): chamber the knee, snap the leg out, recover
+## dropkick timeline (0..1, -1 = idle): tip back flat, tuck both knees, both legs out, recover
 var kick_t := -1.0
 var _kick_dur := 0.56
 var air_amt := 0.0
@@ -146,6 +147,11 @@ var _reload_empty := false
 var _reload_ev := {}
 var switch_t := -1.0
 var _switch_dur := 0.7
+## Cosmetic only: combat/movement can interrupt at any point with no lockout.
+var inspect_t := -1.0
+## Starting duration: two readable holds in 2.6 s. Regression checks require
+## completion at every tested frame rate; shorten if the holds feel sluggish.
+const INSPECT_DURATION := 2.6
 var death_t := -1.0
 var _death_dir := Vector3.FORWARD
 var _death_hip := HIP_STAND
@@ -156,6 +162,8 @@ var hips: Node3D
 var spine: Node3D
 var chest: Node3D
 var head: Node3D
+## Detachable helmet (null when the palette has no helmet or it was knocked off).
+var helmet_node: Node3D
 var thighs: Array = []
 var shins: Array = []
 var feet: Array = []
@@ -168,6 +176,9 @@ var thigh_slot: Node3D
 var hand_mag: Node3D
 var weapon: Weapon
 var palette: Dictionary
+## Skinned model that copies this rig's pose (null = procedural body is drawn).
+var model_skin: ModelSkin
+var _body_meshes: Array[MeshInstance3D] = []
 
 
 # =====================================================================
@@ -321,6 +332,9 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 	match String(p.headgear):
 		"helmet":
 			var hm: Material = p.helmet
+			var hg := h
+			h = _node(hg, "Helmet", Vector3.ZERO)
+			helmet_node = h
 			_mesh(h, ML.sphere(0.145, true, 20), hm, Vector3(0, 0.015, 0.0), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
 			_mesh(h, ML.cylinder(0.147, 0.15, 0.04, 20), hm, Vector3(0, 0.0, 0.0), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
 			_mesh(h, ML.rbox(Vector3(0.055, 0.045, 0.03)), detail, Vector3(0, 0.08, -0.16))
@@ -343,6 +357,7 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 				for sx in [-1, 1]:
 					_mesh(h, ML.cylinder(0.021, 0.024, 0.085, 12), detail, Vector3(sx * 0.03, 0.175, -0.15), Vector3(0.5, 0, 0))
 					_mesh(h, ML.cylinder(0.019, 0.019, 0.006, 12), M.solid(Color(0.1, 0.25, 0.18), 0.1, 0.6), Vector3(sx * 0.03, 0.212, -0.129), Vector3(0.5, 0, 0))
+			h = hg
 		"cap":
 			_mesh(h, ML.cylinder(0.105, 0.112, 0.08, 16), p.camo, Vector3(0, 0.07, 0))
 			_mesh(h, ML.rbox(Vector3(0.15, 0.012, 0.09)), p.camo, Vector3(0, 0.035, -0.135))
@@ -380,6 +395,119 @@ func _mesh(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3,
 #  PUBLIC API
 # =====================================================================
 
+## Swaps the procedural body for a skinned character model (see model_skin.gd).
+## The rig keeps animating invisibly and the model copies its pose; guns,
+## the hand magazine and grenade stay on the rig's (invisible) hands.
+func use_model(path: String, tint: Color = Color.WHITE, hide_meshes: Array = []) -> bool:
+	var s := ModelSkin.new()
+	s.name = "ModelSkin"
+	s.process_priority = 50   # after this rig animates
+	add_child(s)
+	if not s.setup(self, path, tint, hide_meshes):
+		s.queue_free()
+		return false
+	model_skin = s
+	_body_meshes.clear()
+	for n in pivot.find_children("*", "MeshInstance3D", true, false):
+		if _is_gear(n):
+			continue
+		_body_meshes.append(n)
+	_apply_model_visibility()
+	return true
+
+
+## Fuses the static meshes that share a bone and a material into one mesh, so
+## a body draws ~35 parts instead of ~100 (and as many fewer shadow passes).
+## Bones keep animating: only meshes that never move relative to their bone
+## are merged. Merged meshes are cached, since most bodies share geometry.
+static var _merge_cache := {}
+
+func merge_static_parts(exclude: Array = []) -> int:
+	var groups := {}
+	for n in pivot.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi in exclude or _is_gear(mi) or mi.get_child_count() > 0 or not mi.visible:
+			continue
+		if mi.mesh == null or mi.mesh.get_surface_count() != 1 or mi.material_override == null or mi.material_overlay != null:
+			continue
+		var key := "%d|%d|%d" % [mi.get_parent().get_instance_id(), mi.material_override.get_instance_id(), mi.cast_shadow]
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append(mi)
+	var removed := 0
+	for key in groups:
+		var parts: Array = groups[key]
+		if parts.size() < 2:
+			continue
+		var first := parts[0] as MeshInstance3D
+		var parent := first.get_parent()
+		var sig := ""
+		for mi in parts:
+			sig += "%d%s;" % [mi.mesh.get_instance_id(), mi.transform]
+		var h := sig.hash()
+		var mesh: Mesh = _merge_cache.get(h)
+		if mesh == null:
+			var st := SurfaceTool.new()
+			for mi in parts:
+				st.append_from(mi.mesh, 0, mi.transform)
+			mesh = st.commit()
+			if _merge_cache.size() > 400:
+				_merge_cache.clear()
+			_merge_cache[h] = mesh
+		var merged := MeshInstance3D.new()
+		merged.name = "Merged"
+		merged.mesh = mesh
+		merged.material_override = first.material_override
+		merged.cast_shadow = first.cast_shadow
+		# the fused mesh fades at the farthest range of its parts (0 = never)
+		var fade := 0.0
+		for mi in parts:
+			if mi.visibility_range_end <= 0.0:
+				fade = 0.0
+				break
+			fade = maxf(fade, mi.visibility_range_end)
+		merged.visibility_range_end = fade
+		merged.layers = first.layers
+		merged.gi_mode = first.gi_mode
+		parent.add_child(merged)
+		for mi in parts:
+			parent.remove_child(mi)
+			mi.queue_free()
+			removed += 1
+		removed -= 1
+	return removed
+
+
+## Guns, the hand magazine and the grenade are not part of the body.
+func _is_gear(n: Node) -> bool:
+	if n == _grenade_mesh:
+		return true
+	var p := n.get_parent()
+	while p != null and p != self:
+		if p is Weapon or p == hand_mag:
+			return true
+		p = p.get_parent()
+	return false
+
+
+func _apply_model_visibility() -> void:
+	if model_skin == null:
+		return
+	model_skin.set_first_person(fp_mode)
+	var arm_roots: Array = shoulders
+	for mi in _body_meshes:
+		if not is_instance_valid(mi):
+			continue
+		var on_arm := false
+		for sh in arm_roots:
+			if (sh as Node).is_ancestor_of(mi):
+				on_arm = true
+				break
+		# first person keeps the rig's arms (they hold the gun up to the eye)
+		mi.visible = fp_mode and on_arm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 ## Hides the head from the eye camera while keeping its shadow.
 func set_first_person(on: bool) -> void:
 	fp_mode = on
@@ -393,6 +521,42 @@ func set_first_person(on: bool) -> void:
 		for n in parent.get_children():
 			if n is MeshInstance3D:
 				(n as MeshInstance3D).cast_shadow = mode
+	_apply_model_visibility()
+
+
+## Knocks the helmet off: it tumbles away as debris and despawns.
+func drop_helmet(dir: Vector3) -> void:
+	if helmet_node == null or not is_inside_tree():
+		return
+	var hn := helmet_node
+	helmet_node = null
+	var xf := hn.global_transform
+	var body := RigidBody3D.new()
+	body.collision_layer = 8    # Layers.DEBRIS
+	body.collision_mask = 1 | 8
+	body.mass = 1.2
+	body.angular_damp = 1.0
+	var cs := CollisionShape3D.new()
+	var sh := SphereShape3D.new()
+	sh.radius = 0.13
+	cs.shape = sh
+	body.add_child(cs)
+	var root := get_tree().current_scene
+	hn.get_parent().remove_child(hn)
+	body.add_child(hn)
+	hn.transform = Transform3D.IDENTITY
+	for n in hn.find_children("*", "MeshInstance3D", true, false):
+		(n as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(n as MeshInstance3D).visible = true   # hidden while worn when a model skin is used
+	root.add_child(body)
+	body.global_transform = Transform3D(xf.basis.orthonormalized(), xf.origin)
+	body.reset_physics_interpolation()
+	var flat := Vector3(dir.x, 0, dir.z).normalized()
+	body.linear_velocity = flat * randf_range(2.5, 4.0) + Vector3.UP * randf_range(2.5, 3.5)
+	body.angular_velocity = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 10.0
+	get_tree().create_timer(12.0).timeout.connect(func():
+		if is_instance_valid(body):
+			body.queue_free())
 
 
 func snap_yaw(yaw: float) -> void:
@@ -401,6 +565,7 @@ func snap_yaw(yaw: float) -> void:
 
 
 func set_weapon(active: Weapon, others: Array) -> void:
+	cancel_inspect()
 	weapon = active
 	cycle_t = -1.0
 	_pump_base = active.pump.position if active.pump != null else Vector3.ZERO
@@ -426,6 +591,7 @@ func _attach(n: Node3D, parent: Node3D) -> void:
 
 
 func add_recoil(strength: float) -> void:
+	cancel_inspect()
 	_recoil_pos_v += strength * 1.2
 	_recoil_rot_v += strength * 9.0
 	_recoil_yaw_v += randf_range(-1.0, 1.0) * strength * 4.0
@@ -440,6 +606,7 @@ func hit_react(dir: Vector3, strength: float) -> void:
 
 
 func play_reload(duration: float, empty: bool) -> void:
+	cancel_inspect()
 	reload_t = 0.0
 	_reload_dur = maxf(duration, 0.1)
 	_reload_empty = empty
@@ -457,12 +624,14 @@ func cancel_reload() -> void:
 
 
 func play_switch(duration: float) -> void:
+	cancel_inspect()
 	switch_t = 0.0
 	_switch_dur = duration
 
 
 ## Side vault: left hand plants on `plant` (world), legs tuck to the right.
 func play_vault(duration: float, obstacle_top: float, plant: Vector3) -> void:
+	cancel_inspect()
 	vault_t = 0.0
 	_vault_dur = maxf(duration, 0.2)
 	_vault_peak = maxf(obstacle_top - 0.42, 0.18)
@@ -471,6 +640,7 @@ func play_vault(duration: float, obstacle_top: float, plant: Vector3) -> void:
 
 
 func play_kick(duration: float) -> void:
+	cancel_inspect()
 	kick_t = 0.0
 	_kick_dur = maxf(duration, 0.2)
 	cancel_reload()
@@ -496,6 +666,7 @@ func play_attack(duration: float) -> void:
 
 
 func play_throw(duration: float) -> void:
+	cancel_inspect()
 	throw_t = 0.0
 	_throw_dur = duration
 	_throw_released = false
@@ -531,6 +702,7 @@ func _vw(a: float, b: float, c: float, d: float) -> float:
 func play_death(dir: Vector3) -> void:
 	if dead:
 		return
+	cancel_inspect()
 	dead = true
 	death_t = 0.0
 	vault_t = -1.0
@@ -560,6 +732,35 @@ func debug_info() -> Dictionary:
 #  UPDATE
 # =====================================================================
 
+## AI bodies animate less often when far away or off screen (set by
+## soldier.optimize_detail). The body still follows its physics position
+## every frame; only the pose updates are spread out.
+var lod_enabled := false
+var _lod_acc := 0.0
+var _lod_phase := randi() % 12
+static var _lod_cam: Camera3D
+static var _lod_cam_frame := -1
+const LOD_NEAR := 18.0     # full rate inside this distance
+const LOD_MID := 35.0      # every 2nd frame up to here, every 3rd beyond
+const LOD_HIDDEN := 40.0   # off screen: every 4th frame, every 6th beyond this
+
+
+func _lod_interval() -> int:
+	var f := Engine.get_process_frames()
+	if f != _lod_cam_frame:
+		_lod_cam_frame = f
+		_lod_cam = get_viewport().get_camera_3d()
+	if _lod_cam == null:
+		return 1
+	var p := global_position
+	var d := _lod_cam.global_position.distance_to(p)
+	if d < LOD_NEAR:
+		return 1
+	if not _lod_cam.is_position_in_frustum(p + Vector3.UP):
+		return 4 if d < LOD_HIDDEN else 6
+	return 2 if d < LOD_MID else 3
+
+
 func _process(delta: float) -> void:
 	# All procedural rigs update on render frames. Sample the physics body once
 	# and keep the complete skeleton outside inherited physics interpolation.
@@ -571,10 +772,19 @@ func _process(delta: float) -> void:
 	global_transform = body.get_global_transform_interpolated().scaled_local(_render_scale)
 	if hips == null:
 		return
+	if lod_enabled:
+		_lod_acc += delta
+		var every := _lod_interval()
+		if every > 1 and (Engine.get_process_frames() + _lod_phase) % every != 0:
+			return
+		delta = _lod_acc
+		_lod_acc = 0.0
 	# Preserve elapsed animation time at low FPS; small integration steps keep
 	# recoil and hit springs stable without slowing reloads, vaults or deaths.
 	var elapsed := minf(delta, 0.25)
-	var steps := maxi(1, int(ceil(elapsed * 60.0)))
+	# at most 3 sub-steps: when the game is already slow, extra animation
+	# passes on every body would only make the next frame slower still
+	var steps := clampi(int(ceil(elapsed * 60.0)), 1, 3)
 	for step in steps:
 		_animate(elapsed / steps)
 
@@ -617,7 +827,10 @@ func _update_state(delta: float) -> void:
 	crouch_amt = lerpf(crouch_amt, crouch_target, 1.0 - exp(-9.0 * delta))
 	aim_amt = lerpf(aim_amt, aim_target, 1.0 - exp(-16.0 * ads_speed * delta))
 	slide_amt = lerpf(slide_amt, slide_target, 1.0 - exp(-(14.0 if slide_target > slide_amt else 6.0) * delta))
-	sprint_amt = lerpf(sprint_amt, sprint_target, 1.0 - exp(-7.0 * delta))
+	# Starting value: match ADS response on sprint exit so the gun is ready
+	# within 0.2 s (residual < 5%); increase exit rate if that check fails.
+	var sprint_rate := 16.0 if sprint_target < sprint_amt else 7.0
+	sprint_amt = lerpf(sprint_amt, sprint_target, 1.0 - exp(-sprint_rate * delta))
 	var lt := 0.0 if (vault_t >= 0.0 or sprint_target > 0.5) else lean_target
 	lean_amt = lerpf(lean_amt, lt, 1.0 - exp(-9.0 * delta))
 	# weapon sway lag from aim angular velocity (critically damped spring)
@@ -723,7 +936,15 @@ func _update_body(delta: float) -> void:
 	var lift := 0.0
 	if vault_t >= 0.0:
 		lift = _vault_peak * pow(sin(PI * clampf((vault_t - 0.04) / 0.86, 0.0, 1.0)), 0.85)
-	pivot.position.y = lift
+	# dropkick: the whole body tips back until it lies flat in the air (like
+	# sleeping on its back), rotating around the hips and riding a little higher
+	var dk := _kick_w()
+	if dk > 0.0:
+		var hc := Vector3(0, HIP_STAND, 0)
+		var tip := Basis(lb * Vector3.RIGHT, 1.25 * dk)
+		pivot.transform = Transform3D(tip, Vector3(0, lift + 0.22 * dk, 0) + hc - tip * hc)
+	else:
+		pivot.transform = Transform3D(Basis.IDENTITY, Vector3(0, lift, 0))
 
 	# hips: walking rises at mid-stance, running compresses at mid-stance
 	var bob_amp := lerpf(0.022, 0.06, run) * m
@@ -751,7 +972,7 @@ func _update_body(delta: float) -> void:
 	roll = clampf(roll, -0.25, 0.25)
 	# vault: dive forward over the planted hand, lean onto the left arm
 	pitch = lerpf(pitch, -0.55, v_tuck) - 0.2 * v_land
-	pitch = lerpf(pitch, lerpf(-0.22, 0.36, _kick_ext()), _kick_w())
+	pitch = lerpf(pitch, lerpf(-0.5, -0.25, _kick_ext()), _kick_w())   # chin tucked toward the target
 	roll += 0.32 * v_tuck
 	if zombie:
 		var strike := 0.0
@@ -804,6 +1025,44 @@ func _weapon_pose(kind: String, pose_name: String) -> Transform3D:
 	return hip * _pose(kind, "ready").affine_inverse() * _pose(kind, pose_name)
 
 
+func play_inspect() -> bool:
+	if weapon == null or dead or inspect_t >= 0.0 or reload_t >= 0.0 or switch_t >= 0.0 \
+			or throw_t >= 0.0 or vault_t >= 0.0 or kick_t >= 0.0 or cycle_t >= 0.0 \
+			or aim_target > 0.0 or sprint_target > 0.0 or slide_target > 0.0:
+		return false
+	inspect_t = 0.0
+	return true
+
+
+func cancel_inspect() -> void:
+	if inspect_t < 0.0:
+		return
+	inspect_t = -1.0
+	# Update the muzzle immediately, before the same physics tick can fire.
+	if weapon != null and is_inside_tree():
+		_update_weapon_pose(0.0)
+		_update_arms(0.0)
+
+
+## Lift, hold the receiver side, roll to show the opposite side, return.
+## The hand targets remain attached to the gun; the eye never follows it.
+## Starting pose offsets: both receiver sides must stay inside the camera,
+## with positive eye-space clearance. Reduce angles if long guns clip hands.
+func _inspect_pose(kind: String, base: Transform3D) -> Transform3D:
+	var pistol := kind == "pistol"
+	var position_a := Vector3(0.08, -0.08, -0.42) if pistol else Vector3(0.22, -0.08, -0.6)
+	var position_b := Vector3(-0.02, -0.08, -0.44) if pistol else Vector3(-0.12, -0.08, -0.6)
+	if not fp_mode:
+		position_a += Vector3(-0.05, 0.15, 0.2)
+		position_b += Vector3(0.05, 0.15, 0.2)
+	var a := Transform3D(Basis.from_euler(Vector3(0.08, 1.12, -0.28)), position_a)
+	var b := Transform3D(Basis.from_euler(Vector3(0.12, -1.05, 0.24)), position_b)
+	var reveal := smoothstep(0.0, 0.18, inspect_t)
+	var roll := smoothstep(0.38, 0.64, inspect_t)
+	var recover := 1.0 - smoothstep(0.8, 1.0, inspect_t)
+	return base.interpolate_with(a.interpolate_with(b, roll), reveal * recover)
+
+
 func _update_weapon_pose(delta: float) -> void:
 	if weapon == null:
 		return
@@ -823,6 +1082,15 @@ func _update_weapon_pose(delta: float) -> void:
 		var hip := Transform3D(Basis.from_euler(fp.hip[1]), fp.hip[0])
 		var ads := Transform3D(Basis.IDENTITY, weapon.ads_offset)
 		xf = hip.interpolate_with(ads, aim_amt)
+	if inspect_t >= 0.0:
+		if aim_target > 0.0 or sprint_target > 0.0 or slide_target > 0.0:
+			inspect_t = -1.0
+		else:
+			inspect_t += delta / INSPECT_DURATION
+			if inspect_t >= 1.0:
+				inspect_t = -1.0
+			else:
+				xf = _inspect_pose(kind, xf)
 	xf = xf.interpolate_with(_weapon_pose(kind, "sprint_1h" if one_hand_sprint else "sprint"), sprint_amt * (1.0 - aim_amt))
 	# third person only: first person keeps the gun gait-independent of the eye
 	if one_hand_sprint and not fp_mode:
@@ -917,13 +1185,12 @@ func _update_legs(delta: float) -> void:
 		var kw := _kick_w()
 		local = local.lerp(air_pose, air_amt * (1.0 - kw))
 		if kw > 0.0:
-			# jump kick: right knee chambers high, then the leg snaps out at hip
-			# height; the left leg folds back under the body as a counterweight
+			# dropkick: both knees tuck to the chest, then both legs shoot out
+			# together, feet side by side (the pivot has tipped the body back)
 			var ke := _kick_ext()
-			var kick_pose := Vector3(-0.13, ANKLE_H + 0.42, 0.2).lerp(Vector3(-0.15, ANKLE_H + 0.52, 0.36), ke)
-			if i == 1:
-				kick_pose = Vector3(0.1, ANKLE_H + 0.62, -0.3).lerp(Vector3(0.05, 1.0, -0.94), ke)
-			local = local.lerp(kick_pose, kw)
+			var tucked := Vector3(side * 0.12, ANKLE_H + 0.55, -0.28)
+			var shot := Vector3(side * 0.11, ANKLE_H + 0.1, -0.3)
+			local = local.lerp(tucked.lerp(shot, ke), kw)
 		# slide: lead (left) leg extended along the floor, trailing leg folded under
 		var slide_pose := Vector3(-0.07, ANKLE_H, -0.68) if i == 0 else Vector3(0.17, ANKLE_H + 0.03, 0.12)
 		local = local.lerp(slide_pose, slide_amt)
@@ -932,8 +1199,7 @@ func _update_legs(delta: float) -> void:
 		_solve_ik(thighs[i], shins[i], THIGH, SHIN, target, pole)
 		var foot: Node3D = feet[i]
 		var foot_pitch := toe * m
-		if i == 1:
-			foot_pitch += 0.9 * _kick_ext() * _kick_w()   # sole leads into the target
+		foot_pitch += 0.9 * _kick_ext() * _kick_w()   # both soles lead into the target
 		foot.global_transform = Transform3D(gx.basis * lb * Basis(Vector3.RIGHT, foot_pitch), foot.global_position)
 
 
@@ -994,8 +1260,8 @@ func _update_arms(delta: float) -> void:
 			pump = fp_eye.origin + lvl * Vector3(-0.21, -0.5 + maxf(f, 0.0) * 0.3, -0.12 - f * 0.3)
 		l_pos = l_pos.lerp(pump, _free_arm)
 	if kwa > 0.0 and not fp_mode:
-		# balance arm: thrown out and back, opposite the kicking leg
-		l_pos = l_pos.lerp(chest.global_transform * Vector3(-0.47, 0.03, 0.17), kwa)
+		# free arm flung out wide for balance while lying flat in the air
+		l_pos = l_pos.lerp(chest.global_transform * Vector3(-0.52, 0.08, 0.05), kwa)
 	_solve_ik(shoulders[1], elbows[1], UPPER_ARM, FOREARM, r_xf.origin, (cb * r_pole).normalized())
 	_set_basis(hands[1], r_xf.basis)
 	_solve_ik(shoulders[0], elbows[0], UPPER_ARM, FOREARM, l_pos, (cb * l_pole).normalized())
@@ -1125,8 +1391,10 @@ func _update_death(delta: float) -> void:
 	pivot.transform = Transform3D(Basis(axis, fall * 1.47), Vector3(0, 0.13 * minf(fall, 1.0), 0))
 	# slump torso and head, limp arms
 	var slump := smoothstep(0.0, 0.9, t)
-	spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(-0.35, 0.2, 0.15)), slump * 0.15)
-	head.basis = head.basis.slerp(Basis.from_euler(Vector3(-0.5, 0.4, 0.3)), slump * 0.15)
+	# Preserve the existing 60 Hz response at every render frequency.
+	var slump_blend := 1.0 - pow(1.0 - slump * 0.15, delta * 60.0)
+	spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(-0.35, 0.2, 0.15)), slump_blend)
+	head.basis = head.basis.slerp(Basis.from_euler(Vector3(-0.5, 0.4, 0.3)), slump_blend)
 	if t < 1.3:
 		var down := pivot.global_transform.basis * Vector3.DOWN
 		var cb := chest.global_transform.basis

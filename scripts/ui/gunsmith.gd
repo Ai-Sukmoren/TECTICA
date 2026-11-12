@@ -8,6 +8,7 @@ const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Skins = preload("res://scripts/skins/skins.gd")
+const Charm = preload("res://scripts/skins/charm.gd")
 
 var hud
 var is_open := false
@@ -74,10 +75,12 @@ func _build_rows() -> void:
 	_rows = [{"t": "class"}, {"t": "weapon", "s": "primary"}]
 	for a in Data.SLOTS:
 		_rows.append({"t": "att", "s": "primary", "a": a})
+	_rows.append({"t": "charm", "s": "primary"})
 	_rows.append({"t": "weapon", "s": "secondary"})
 	for a in Data.SLOTS:
 		if a != "stock":
 			_rows.append({"t": "att", "s": "secondary", "a": a})
+	_rows.append({"t": "charm", "s": "secondary"})
 	_rows.append({"t": "reset"})
 	_rows.append({"t": "back"})
 
@@ -97,6 +100,8 @@ func _change(i: int, dir: int) -> void:
 			Loadout.cycle_weapon(r.s, dir)
 		"att":
 			Loadout.cycle_attachment(r.s, r.a, dir)
+		"charm":
+			Loadout.cycle_charm(r.s, dir)
 		_:
 			return
 	Sfx.play(hud, "switch", Vector3.ZERO, -12.0, 0.0)
@@ -154,7 +159,7 @@ func _process(delta: float) -> void:
 	_build_rows()
 	var e: Dictionary = Loadout.entry(_focus_slot())
 	var sk := Collection.skin_for(String(e.id))
-	var key := str(e.id) + str(e.att) + sk
+	var key := str(e.id) + str(e.att) + sk + String(e.get("charm", ""))
 	if key != _preview_key:
 		_preview_key = key
 		for c in _pivot.get_children():
@@ -162,6 +167,7 @@ func _process(delta: float) -> void:
 		var w := Weapon.new()
 		w.setup(String(e.id), e.att)
 		w.apply_skin(sk)
+		w.apply_charm(String(e.get("charm", "")))
 		_pivot.add_child(w)
 		var pistol := w.is_pistol()
 		w.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
@@ -182,6 +188,7 @@ func draw(c: Control, vp: Vector2) -> void:
 	# --- rows
 	_row_rects.clear()
 	var y := 140.0
+	var row_step := minf(32.0, (vp.y - 220.0) / _rows.size())
 	for i in _rows.size():
 		var r: Dictionary = _rows[i]
 		var indent := 0.0
@@ -207,12 +214,16 @@ func draw(c: Control, vp: Vector2) -> void:
 				value = String(Data.ATTACHMENTS[r.a][e2.att[r.a]].name)
 				if opts.size() <= 1:
 					value += "   (FIXED)"
+			"charm":
+				indent = 22.0
+				label = "WEAPON CHARM"
+				value = Charm.label(String(Loadout.entry(r.s).get("charm", "")))
 			"reset":
 				label = "RESET CLASS TO DEFAULT"
 				y += 12.0
 			"back":
 				label = "SAVE & BACK"
-		var rect := Rect2(60 + indent, y - 20, 560 - indent, 28)
+		var rect := Rect2(60 + indent, y - 20, 560 - indent, row_step - 2)
 		_row_rects.append(rect)
 		var sel := i == row
 		if sel:
@@ -223,7 +234,7 @@ func draw(c: Control, vp: Vector2) -> void:
 		if value != "":
 			var shown := ("<  " + value + "  >") if sel else value
 			hud._text(c, Vector2(rect.position.x + 170, y), shown, 14 if head else 13, hud.WARN if sel else col, HORIZONTAL_ALIGNMENT_LEFT, -1, head)
-		y += 32.0
+		y += row_step
 
 	# --- preview
 	var pr := Rect2(vp.x * 0.42, 110, vp.x * 0.54, vp.x * 0.27)
@@ -235,7 +246,7 @@ func draw(c: Control, vp: Vector2) -> void:
 	var st := Data.compute(e3.id, e3.att)
 	var base := Data.compute(e3.id, Data.WEAPONS[e3.id].defaults)
 	hud._text(c, pr.position + Vector2(18, 34), String(st.name), 28, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-	hud._text(c, pr.position + Vector2(18, 56), String(st.category) + ("   ·   SUPPRESSED" if st.suppressed else ""), 12, hud.DIM)
+	hud._text(c, pr.position + Vector2(18, 56), String(st.category) + ("   ·   SUPPRESSED" if st.suppressed else "") + ("   ·   ARMOR-PIERCING" if st.get("pierce", false) else ""), 12, hud.DIM)
 	var sk2 := Collection.skin_for(String(e3.id))
 	hud._text(c, pr.position + Vector2(18, 76), "SKIN  ·  " + (Skins.finish_name(sk2).to_upper() if sk2 != "" else "FACTORY  (ARMORY TO CHANGE)"), 12,
 			Skins.RARITY_COLORS[Skins.rarity_of(sk2)] if sk2 != "" else hud.DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)

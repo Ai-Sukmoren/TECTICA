@@ -10,6 +10,8 @@ var zoom := 17.0
 var cam: Camera3D
 var fp_cam: Camera3D
 var first_person := false
+## Another camera (kill cam) owns the screen: don't take it back.
+var override := false
 
 var _target_yaw := 0.0
 var _target_zoom := 17.0
@@ -107,7 +109,9 @@ func _process(delta: float) -> void:
 
 	# first-person eye camera, driven by the rig's head (with physics interpolation offset)
 	var fp_active: bool = first_person and target != null and target.rig != null and target.rig.fp_mode
-	if fp_active:
+	if override:
+		pass
+	elif fp_active:
 		if not fp_cam.current:
 			fp_cam.current = true
 		var eye: Transform3D = target.rig.fp_eye

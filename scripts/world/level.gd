@@ -7,6 +7,7 @@ const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 const Destructible = preload("res://scripts/world/destructible.gd")
+const PP = preload("res://scripts/core/pack_props.gd")
 
 const WALL_H := 2.6
 const WALL_T := 0.4
@@ -162,6 +163,7 @@ func sandbags(pos: Vector3, length: float, rot_y: float = 0.0, rows: int = 3) ->
 	var b := _body(pos, rot_y, "sand")
 	_box_shape(b, Vector3(length, height, 0.6), Vector3(0, height * 0.5, 0))
 	var bag := ML.capsule(0.15, 0.55)
+	var use_pack := PP.available("sandbag")   # asset pack 4 bag model
 	var n := int(length / 0.5)
 	for r in rows:
 		var off := 0.25 if r % 2 == 1 else 0.0
@@ -169,6 +171,10 @@ func sandbags(pos: Vector3, length: float, rot_y: float = 0.0, rows: int = 3) ->
 		for i in count:
 			var x := -length * 0.5 + 0.27 + i * 0.5 + off
 			for z in [-0.13, 0.13]:
+				if use_pack:
+					PP.add(b, "sandbag", Vector3(x, r * 0.24, z + randf_range(-0.02, 0.02)),
+							randf_range(-0.12, 0.12), 0.0, Vector3(0.52, 0.25, 0.27))
+					continue
 				_mesh(b, bag, _mat_sandbag, Vector3(x, 0.12 + r * 0.24, z + randf_range(-0.02, 0.02)),
 						Vector3(randf_range(-0.05, 0.05), randf_range(-0.12, 0.12), PI * 0.5), Vector3(1.0, 1.0, 0.62))
 	_add_cover(pos, Vector3(length, height, 0.6), rot_y, b)
@@ -184,6 +190,9 @@ func barrel(pos: Vector3, color: Color) -> void:
 	cs.shape = cyl
 	cs.position.y = 0.45
 	b.add_child(cs)
+	if color.r > 0.5 and not PP.add(b, "fuel_barrel", Vector3.ZERO, randf() * TAU, 0.0, Vector3(0.6, 0.9, 0.6)).is_empty():
+		b.finalize()   # red/white fuel drum from asset pack 4
+		return
 	var mat := M.painted_metal("barrel_%s" % color.to_html(), color)
 	_mesh(b, ML.cylinder(0.29, 0.29, 0.9, 18), mat, Vector3(0, 0.45, 0))
 	for y in [0.06, 0.3, 0.6, 0.84]:
@@ -269,6 +278,11 @@ func desk(pos: Vector3, rot_y: float, monitor: bool = true) -> void:
 		_mesh(b, ML.box(Vector3(0.55, 0.36, 0.04)), M.solid(Color(0.05, 0.05, 0.05), 0.4), Vector3(-0.3, 1.04, 0.2))
 		_mesh(b, ML.box(Vector3(0.5, 0.31, 0.01)), M.emissive("screen", Color(0.2, 0.55, 0.45), 1.6), Vector3(-0.3, 1.04, 0.177))
 		_mesh(b, ML.box(Vector3(0.45, 0.02, 0.16)), M.solid(Color(0.08, 0.08, 0.08), 0.6), Vector3(0.2, 0.83, -0.1))
+	# asset pack 4 clutter: field radio, med kit / canteen
+	PP.add(b, "radio", Vector3(0.62, 0.82, 0.18), -0.4, 0.43)
+	PP.add(b, "medkit" if monitor else "canteen", Vector3(0.55, 0.82, -0.2), 0.3, 0.3 if monitor else 0.18)
+	if not monitor:
+		PP.add(b, "knife", Vector3(-0.3, 0.82, 0.0), 0.0, 0.0, Vector3(0, 0.04, 0.3))
 	b.finalize()
 
 
@@ -628,6 +642,11 @@ func apply_quality(q: int) -> void:
 	for entry in lights:
 		var l: OmniLight3D = entry.light
 		l.shadow_enabled = (q == 2) or (q == 1 and entry.shadow)
+		if not l.distance_fade_enabled:
+			l.distance_fade_enabled = true   # only very far away
+			l.distance_fade_begin = 70.0
+			l.distance_fade_length = 15.0
+		l.distance_fade_shadow = 24.0 if q < 2 else 34.0   # far lights skip the shadow pass
 	for p in _dust:
 		p.visible = q >= 1
 		p.emitting = q >= 1
@@ -694,7 +713,8 @@ func is_cover_good(c: Dictionary, threat: Vector3) -> bool:
 	return p.distance_to(threat) > 4.0 and is_covered(p, threat)
 
 
-func find_cover(agent: Node3D, threat: Vector3):
+## retreat: only cover further from the threat than the agent is now, ideally ~20 m out.
+func find_cover(agent: Node3D, threat: Vector3, retreat: bool = false):
 	if not _cover_validated:
 		_validate_cover()
 	var best = null
@@ -714,11 +734,13 @@ func find_cover(agent: Node3D, threat: Vector3):
 		var d_threat := p.distance_to(threat)
 		if d_threat < 5.0 or d_threat > 26.0:
 			continue
+		if retreat and d_threat < my_threat_dist + 2.0:
+			continue
 		var to_threat := threat - p
 		to_threat.y = 0.0
 		if to_threat.normalized().dot(-(c.normal as Vector3)) < 0.35:
 			continue
-		var score := d_self + absf(d_threat - 12.0) * 0.6
+		var score := d_self + absf(d_threat - (20.0 if retreat else 12.0)) * 0.6
 		if d_threat < my_threat_dist - 4.0:
 			score += 6.0
 		if score < best_score and is_covered(p, threat):

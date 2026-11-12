@@ -8,6 +8,8 @@ extends RefCounted
 
 static func setup() -> void:
 	Input.use_accumulated_input = false
+	if not InputMap.has_action("inspect"):
+		_act("inspect", [KEY_I])
 	if InputMap.has_action("flashlight"):
 		return
 	_act("move_forward", [KEY_W, KEY_UP], [], [[JOY_AXIS_LEFT_Y, -1.0]])
@@ -33,6 +35,7 @@ static func setup() -> void:
 	_act("zoom_in", [], [JOY_BUTTON_DPAD_UP])
 	_act("zoom_out", [], [])
 	_act("grenade", [KEY_G], [JOY_BUTTON_DPAD_DOWN])
+	_act("flashbang", [KEY_H], [])
 	_act("toggle_debug", [KEY_F1])
 	_act("flashlight", [KEY_T], [JOY_BUTTON_BACK])
 	_act("interact", [KEY_F], [JOY_BUTTON_X])
@@ -45,6 +48,8 @@ static func setup() -> void:
 	_act("aim", [], [], [[JOY_AXIS_TRIGGER_LEFT, 1.0]])
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
+	# the player's own key bindings (settings > CONTROLS)
+	preload("res://scripts/core/controls.gd").init_after_defaults()
 
 
 static func _act(action: String, keys: Array, buttons: Array = [], axes: Array = []) -> void:

@@ -53,6 +53,14 @@ var _ground_img: Image
 var _ground_tex: ImageTexture
 
 
+## Map-change caches. The forest is generated from fixed seeds, so the costly
+## parts (terrain heights, ~200k grass instances, navigation) are identical on
+## every load: build them once, reuse them on restarts and chapter changes.
+static var _heights_cache := PackedFloat32Array()
+static var _grass_cache: Array = []      # [mesh, material, MultiMesh, vis_end, dense]
+static var _nav_cache := {}              # mode -> NavigationMesh
+
+
 func build() -> void:
 	seed(1337)   # same forest every time
 	_mat_wall = Nature.concrete_material(Color(0.5, 0.5, 0.47))
@@ -174,6 +182,9 @@ func _build_heights() -> void:
 	noise.frequency = 0.016
 	noise.fractal_octaves = 3
 	var n := int(TERRAIN_HALF * 2.0 / TERRAIN_STEP) + 1
+	if _heights_cache.size() == n * n:
+		Terrain.set_grid(TERRAIN_HALF, TERRAIN_STEP, n, _heights_cache)
+		return
 	var data := PackedFloat32Array()
 	data.resize(n * n)
 	for iz in n:
@@ -189,6 +200,7 @@ func _build_heights() -> void:
 			# Keep the existing bridge crossing level and traversable.
 			bed *= smoothstep(2.5, 5.0, Vector2(x, z).distance_to(Vector2(bridge.x, bridge.z)))
 			data[iz * n + ix] = hills + edge + bed
+	_heights_cache = data
 	Terrain.set_grid(TERRAIN_HALF, TERRAIN_STEP, n, data)
 
 
@@ -630,6 +642,7 @@ func _watchtower(p: Vector3, rot: float, searchlight: bool) -> void:
 		s.rotation.x = -0.32
 		root.add_child(s)
 		lamp_lights.append({"light": s, "base": 6.0, "group": "outpost", "sweep": true})
+		lights.append({"light": s, "shadow": true})
 
 
 func _build_logging_camp() -> void:
@@ -950,6 +963,10 @@ func _build_forest() -> void:
 func _multimesh(mesh: Mesh, mat: Material, items: Array, shadows: bool, vis_end: float = 0.0) -> MultiMeshInstance3D:
 	if items.is_empty():
 		return null
+	return _mm_node(_mm_resource(mesh, items), mat, shadows, vis_end)
+
+
+static func _mm_resource(mesh: Mesh, items: Array) -> MultiMesh:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -958,6 +975,10 @@ func _multimesh(mesh: Mesh, mat: Material, items: Array, shadows: bool, vis_end:
 	for i in items.size():
 		mm.set_instance_transform(i, items[i][0])
 		mm.set_instance_color(i, items[i][1])
+	return mm
+
+
+func _mm_node(mm: MultiMesh, mat: Material, shadows: bool, vis_end: float = 0.0) -> MultiMeshInstance3D:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.material_override = mat
@@ -1060,7 +1081,20 @@ func _burn_old_grass_rng() -> void:
 
 
 func _build_grass() -> void:
-	_burn_old_grass_rng()
+	if _grass_cache.is_empty():
+		_grass_cache = _make_grass()
+	for e in _grass_cache:
+		var node := _mm_node(e[2], e[1], false, e[3])
+		if e[4]:
+			_dense_nodes.append(node)
+	# The global RNG continues from a fixed point whether or not the grass was
+	# generated this time, so everything placed later is identical either way.
+	seed(424242)
+
+
+## Grass, ferns and flowers as cache entries (own RNG, no scene nodes).
+func _make_grass() -> Array:
+	var out: Array = []
 	var tufts := [Nature.grass_tuft_mesh(5), Nature.grass_tuft_mesh(6)]
 	var mat := Nature.grass_material()
 	var rng := RandomNumberGenerator.new()
@@ -1103,9 +1137,8 @@ func _build_grass() -> void:
 			per_chunk[k][ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.75, 1.3), sc)), Vector3(x, ground_y(x, z), z)), tint])
 		for k in 2:
 			for ck in per_chunk[k]:
-				var node := _multimesh(tufts[k], mat, per_chunk[k][ck], false, 42.0 if layer == 0 else 34.0)
-				if layer == 1 and node != null:
-					_dense_nodes.append(node)
+				if not per_chunk[k][ck].is_empty():
+					out.append([tufts[k], mat, _mm_resource(tufts[k], per_chunk[k][ck]), 42.0 if layer == 0 else 34.0, layer == 1])
 	# ferns on the forest floor, wildflowers in the meadows
 	var fern := Nature.fern_mesh()
 	var flower := Nature.flower_mesh()
@@ -1134,11 +1167,10 @@ func _build_grass() -> void:
 			flowers[ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(ws, ws, ws)), Vector3(x, ground_y(x, z), z)),
 					petal[rng.randi() % petal.size()]])
 	for ck in ferns:
-		_multimesh(fern, mat, ferns[ck], false, 46.0)
+		out.append([fern, mat, _mm_resource(fern, ferns[ck]), 46.0, false])
 	for ck in flowers:
-		var fn := _multimesh(flower, flower_mat, flowers[ck], false, 30.0)
-		if fn != null:
-			_dense_nodes.append(fn)
+		out.append([flower, flower_mat, _mm_resource(flower, flowers[ck]), 30.0, true])
+	return out
 
 
 ## Invisible walls at the map edge; a dense tree line beyond them.
@@ -1288,6 +1320,12 @@ func apply_quality(q: int) -> void:
 		var l: Light3D = entry.light
 		if is_instance_valid(l):
 			l.shadow_enabled = (q == 2) or (q == 1 and entry.shadow)
+			# far lights keep lighting but stop re-rendering the scene for shadows
+			if not l.distance_fade_enabled:
+				l.distance_fade_enabled = true   # lights without a fade: only very far away
+				l.distance_fade_begin = 70.0
+				l.distance_fade_length = 15.0
+			l.distance_fade_shadow = 24.0 if q < 2 else 34.0
 
 
 func _bake_navigation() -> void:
@@ -1302,8 +1340,13 @@ func _bake_navigation() -> void:
 	nm.agent_max_slope = 40.0
 	nm.region_min_size = 4.0
 	nm.filter_baking_aabb = AABB(Vector3(-HALF, -2, -HALF), Vector3(HALF * 2.0, 16, HALF * 2.0))
+	if _nav_cache.has(mode):
+		# a copy: props destroyed in play rebake the region's own mesh
+		nav_region.navigation_mesh = (_nav_cache[mode] as NavigationMesh).duplicate()
+		return
 	nav_region.navigation_mesh = nm
 	nav_region.bake_navigation_mesh(false)
+	_nav_cache[mode] = nm.duplicate()
 
 
 # ================================================================ mode setup

@@ -6,3 +6,8 @@
 *.log
 build/
 /android/
+# third-party asset packs: licenses do not allow redistribution in a repository
+# (see README "Assets"). The game falls back to its own procedural models.
+assets/thirdparty/
+# sticker artwork is not ours to publish
+assets/stickers/

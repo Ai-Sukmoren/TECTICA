@@ -6,16 +6,17 @@ extends RefCounted
 
 const Data = preload("res://scripts/weapons/weapon_data.gd")
 
-enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY }
+## MYTHIC is admin-only: it never drops from packs (pack odds cover the first five).
+enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY, MYTHIC }
 
-const RARITY_NAMES := ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY"]
+const RARITY_NAMES := ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"]
 const RARITY_COLORS := [Color(0.72, 0.74, 0.77), Color(0.42, 0.86, 0.46), Color(0.32, 0.62, 1.0),
-		Color(0.74, 0.42, 1.0), Color(1.0, 0.78, 0.25)]
+		Color(0.74, 0.42, 1.0), Color(1.0, 0.78, 0.25), Color(1.0, 0.16, 0.26)]
 ## credits refunded for a duplicate
-const DUP_REFUND := [15, 30, 70, 180, 500]
+const DUP_REFUND := [15, 30, 70, 180, 500, 0]
 
 ## pattern ids understood by FINISH_SHADER
-enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID }
+enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY }
 
 ## id -> name, rarity, pattern, 4 colours, metallic, roughness, scale, emission, animated
 const FINISHES := {
@@ -58,7 +59,13 @@ const FINISHES := {
 			"c": [Color(0.1, 0.9, 0.6), Color(0.3, 0.4, 1.0), Color(0.95, 0.3, 0.9)]},
 	"event_horizon": {"name": "Event Horizon", "r": 4, "p": P.VOID, "s": 8.0, "m": 0.3, "ro": 0.18, "e": 5.0, "a": 1.0,
 			"c": [Color(0.01, 0.01, 0.02), Color(0.75, 0.55, 1.0), Color(0.25, 0.1, 0.45)]},
+	# --- mythic, admin exclusive: never in packs, carries the 02 patch sticker
+	"ruby": {"name": "Mythic Ruby", "r": 5, "p": P.RUBY, "s": 9.0, "m": 0.6, "ro": 0.03, "e": 1.6, "a": 1.0, "admin": true, "sticker": "patch_02",
+			"c": [Color(0.3, 0.0, 0.02), Color(0.78, 0.0, 0.05), Color(1.0, 0.22, 0.3)]},
 }
+
+## Sticker textures that finishes can carry (placement is per gun, see collection.gd).
+const STICKERS := {"patch_02": "res://assets/stickers/patch_02.png"}
 
 ## Supply packs: 5 skins each, odds per rarity (percent), guaranteed minimum
 ## rarity on the last card, price in credits, foil colours.
@@ -76,8 +83,13 @@ static func weapon_ids() -> Array:
 	return Data.WEAPONS.keys()
 
 
-static func finish_ids() -> Array:
-	var ids: Array = FINISHES.keys()
+static func is_admin_finish(finish: String) -> bool:
+	return FINISHES.has(finish) and bool(FINISHES[finish].get("admin", false))
+
+
+## Finishes shown in the collection; admin-only ones only when `with_admin`.
+static func finish_ids(with_admin: bool = false) -> Array:
+	var ids: Array = FINISHES.keys().filter(func(f): return with_admin or not is_admin_finish(f))
 	ids.sort_custom(func(a, b):
 		var ra := int(FINISHES[a].r)
 		var rb := int(FINISHES[b].r)
@@ -88,7 +100,7 @@ static func finish_ids() -> Array:
 static func finishes_of(rarity: int) -> Array:
 	var out: Array = []
 	for id in FINISHES:
-		if int(FINISHES[id].r) == rarity:
+		if int(FINISHES[id].r) == rarity and not is_admin_finish(id):   # packs never drop admin finishes
 			out.append(id)
 	return out
 
@@ -152,6 +164,7 @@ void fragment() {
 	float m = metal;
 	float r = rough;
 	vec3 e = vec3(0.0);
+	float cc = 0.0;
 	switch (pattern) {
 		case 0: {  // solid cerakote
 			col = c0 * (0.9 + 0.18 * fbm(p * 4.0));
@@ -271,11 +284,42 @@ void fragment() {
 			e = c1 * star * emit * (0.55 + 0.45 * sin(t * 4.0 + h * 60.0)) + c2 * smoothstep(0.45, 0.8, neb) * 0.9;
 			break;
 		}
+		case 15: {  // ruby: cut-gem facets with internal fire and glints
+			vec2 g = p * 1.3;
+			vec2 cell = floor(g);
+			float best = 9.0;
+			float second = 9.0;
+			vec2 id = cell;
+			for (int y = -1; y <= 1; y++) {
+				for (int x = -1; x <= 1; x++) {
+					vec2 c = cell + vec2(float(x), float(y));
+					vec2 o = c + vec2(hash(c), hash(c + 5.3));
+					float d = length(g - o);
+					if (d < best) { second = best; best = d; id = c; } else if (d < second) { second = d; }
+				}
+			}
+			float facet = hash(id + 1.7);
+			float edge = 1.0 - smoothstep(0.0, 0.06, second - best);
+			float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
+			// sparkles: tiny points near facet edges, not whole faces
+			vec2 sp = floor(g * 9.0);
+			float spark = step(0.93, hash(sp)) * (1.0 - smoothstep(0.0, 0.35, length(fract(g * 9.0) - 0.5)));
+			float glint = spark * pow(max(sin(t * 2.0 + hash(sp + 2.0) * 40.0), 0.0), 6.0) + edge * pow(max(sin(t * 1.1 + facet * 30.0), 0.0), 16.0) * 0.6;
+			col = mix(c0, c1, 0.25 + facet * 0.65 + fres * 0.2);
+			col = mix(col, c2, edge * 0.12);
+			r = rough + edge * 0.05;
+			cc = 1.0;   // glossy lacquer over the gem
+			float glow = 0.5 + 0.5 * sin(t * 0.8 + facet * 6.28);
+			e = c1 * (0.1 + 0.2 * facet * glow + fres * 0.45) * emit + c2 * glint * emit * 2.2;
+			break;
+		}
 	}
 	ALBEDO = col * tint;
 	METALLIC = m;
 	ROUGHNESS = r;
 	EMISSION = e;
+	CLEARCOAT = cc;
+	CLEARCOAT_ROUGHNESS = 0.02;
 }
 """
 
@@ -326,6 +370,8 @@ static func apply(model_root: Node, finish: String, metal_mats: Array) -> void:
 		var mi := n as MeshInstance3D
 		var mat := mi.material_override
 		if mat == null:
+			if mi.has_meta("pack4"):   # textured asset-pack-4 gun parts
+				mi.material_override = fm
 			continue
 		if mat is StandardMaterial3D:
 			var sm := mat as StandardMaterial3D

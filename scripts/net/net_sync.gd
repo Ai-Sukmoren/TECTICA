@@ -61,7 +61,7 @@ func _physics_process(delta: float) -> void:
 		_retry -= delta
 		if _retry <= 0.0:
 			_retry = READY_RETRY
-			c_ready.rpc_id(1, Net.default_name(), Loadout.weapon_list())
+			c_ready.rpc_id(1, Net.default_name(), preload("res://scripts/characters/player.gd").net_loadout())
 		return
 	if main.player == null:
 		return
@@ -140,7 +140,7 @@ func c_hello(pname: String) -> void:
 		return
 	var id := multiplayer.get_remote_sender_id()
 	Net.roster[id] = {"name": _clean_name(pname, id), "loadout": []}
-	s_welcome.rpc_id(id, Net.kind, main.mode)
+	s_welcome.rpc_id(id, Net.kind, main.mode_token())
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -268,23 +268,32 @@ func _apply_event(node: Node, kind: String, args: Array) -> void:
 			node.throwing = 0.7
 			node.rig.play_throw(0.7)
 		"grenade":
-			spawn_grenade(node, args[0], args[1], args[2], true)
+			spawn_grenade(node, args[0], args[1], args[2], true, String(args[3]) if args.size() > 3 else "frag")
 		"vault":
 			node.rig.play_vault(float(args[0]), float(args[1]), args[2])
 		"attack":
-			node.rig.play_attack(float(args[0]))
+			if node.has_method("play_attack_anim"):
+				node.play_attack_anim(float(args[0]))
+			else:
+				node.rig.play_attack(float(args[0]))
 		"kick":
 			node.rig.play_kick(float(args[0]))
+		"helmet":
+			node.knock_off_helmet(args[0])
+		"boss":
+			if node.has_method("net_boss"):
+				node.net_boss(args)
 		"die":
 			node.net_die(args[0], String(args[1]), bool(args[2]))
 		"respawn":
 			main.respawn_remote(node, args[0], float(args[1]))
 
 
-func spawn_grenade(thrower: Node, pos: Vector3, vel: Vector3, ang: Vector3, cosmetic: bool) -> void:
+func spawn_grenade(thrower: Node, pos: Vector3, vel: Vector3, ang: Vector3, cosmetic: bool, kind: String = "frag") -> void:
 	var g := Grenade.new()
 	g.thrower = thrower
 	g.cosmetic = cosmetic
+	g.kind = kind
 	main.add_child(g)
 	g.global_position = pos
 	g.linear_velocity = vel

@@ -11,6 +11,11 @@ const Skins = preload("res://scripts/skins/skins.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
+const Profile = preload("res://scripts/core/profile.gd")
+const Sticker = preload("res://scripts/skins/sticker.gd")
+const Outfits = preload("res://scripts/skins/outfits.gd")
+const SoldierRig = preload("res://scripts/characters/soldier_rig.gd")
+const TAB_NAMES := ["SUPPLY PACKS", "COLLECTION", "OUTFITS"]
 
 const OPEN_TIME := 1.35
 const FLIP_SPEED := 3.2
@@ -19,7 +24,9 @@ const PACK_SHOWCASE := [["m4a1", "woodland"], ["ak47", "damascus"], ["awp", "aur
 
 var hud
 var is_open := false
-var tab := 0                 # 0 packs, 1 collection
+var tab := 0                 # 0 packs, 1 collection, 2 outfits
+var outfit_i := 0
+var _outfit_rects: Array = []
 var pack_i := 1
 var phase := "browse"        # browse -> opening -> reveal
 var t := 0.0
@@ -33,6 +40,9 @@ var msg_t := 0.0
 var shake := 0.0
 var coll_weapon := 0
 var coll_tile := 0
+## sticker placement editor (finishes that carry a sticker, e.g. Ruby)
+var sticker_edit := false
+var _stk: Dictionary = {}
 
 var _sv: SubViewport
 var _pivot: Node3D
@@ -86,6 +96,8 @@ func setup(p_hud) -> void:
 func open() -> void:
 	Collection.ensure()
 	is_open = true
+	sticker_edit = false
+	coll_tile = mini(coll_tile, _tiles().size() - 1)
 	phase = "browse"
 	tab = 0
 	_preview_key = ""
@@ -99,7 +111,12 @@ func close() -> void:
 
 
 func _tiles() -> Array:
-	return [""] + Skins.finish_ids()
+	return [""] + Skins.finish_ids(Profile.is_admin())
+
+
+func _tile_has_sticker() -> bool:
+	var f: String = _tiles()[coll_tile]
+	return f != "" and String(Skins.FINISHES[f].get("sticker", "")) != ""
 
 
 func _coll_weapon_id() -> String:
@@ -149,6 +166,21 @@ func _flip_next() -> void:
 func _flip_all() -> void:
 	while flipped < cards.size():
 		_flip_next()
+
+
+## Wear the selected outfit, or buy it first.
+func _outfit_action() -> void:
+	var id: String = Outfits.ids()[outfit_i]
+	var o := Outfits.info(id)
+	if not Collection.has_outfit(id):
+		var why := Collection.buy_outfit(id)
+		if why != "":
+			_say(why + "  ·  %s COSTS CR %s" % [String(o.name), _thousands(int(o.price))], true)
+			return
+		Sfx.play(hud, "kill", Vector3.ZERO, -2.0, 0.0)
+	Collection.wear_outfit(id)
+	Sfx.play(hud, "mag_in", Vector3.ZERO, -4.0, 0.0)
+	_say("NOW WEARING  ·  %s  (applies on the next deploy)" % String(o.name))
 
 
 func _equip_tile() -> void:
@@ -203,11 +235,22 @@ func handle(event: InputEvent) -> bool:
 			focus_card = mini(focus_card + 1, flipped - 1)
 		return false
 
+	if sticker_edit:
+		_sticker_input(event)
+		return false
 	if back:
 		return true
+	if tab == 1 and event is InputEventKey and event.pressed and event.keycode == KEY_T and _tile_has_sticker():
+		if not Collection.has_skin(_coll_weapon_id(), _tiles()[coll_tile]):
+			_say("LOCKED", true)
+		else:
+			sticker_edit = true
+			_stk = Collection.sticker_for(_coll_weapon_id())
+			_preview_key = ""
+		return false
 	if event.is_action_pressed("peek_left") or event.is_action_pressed("peek_right") or event.is_action_pressed("ui_focus_next") \
 			or (event is InputEventKey and event.pressed and event.keycode == KEY_TAB):
-		tab = 1 - tab
+		tab = (tab + (-1 if event.is_action_pressed("peek_left") else 1) + TAB_NAMES.size()) % TAB_NAMES.size()
 		_preview_key = ""
 		return false
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -215,6 +258,24 @@ func handle(event: InputEvent) -> bool:
 			if (_tab_rects[i] as Rect2).has_point(event.position):
 				tab = i
 				return false
+	if tab == 2:
+		var n_out := Outfits.ids().size()
+		if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward") or event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
+			outfit_i = posmod(outfit_i - 1, n_out)
+		elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back") or event.is_action_pressed("ui_right") or event.is_action_pressed("move_right"):
+			outfit_i = posmod(outfit_i + 1, n_out)
+		elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
+			_outfit_action()
+		elif event is InputEventMouseMotion:
+			for i in _outfit_rects.size():
+				if (_outfit_rects[i] as Rect2).has_point(event.position):
+					outfit_i = i
+		elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			for i in _outfit_rects.size():
+				if (_outfit_rects[i] as Rect2).has_point(event.position):
+					outfit_i = i
+					_outfit_action()
+		return false
 	if tab == 0:
 		if event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
 			pack_i = posmod(pack_i - 1, Skins.PACKS.size())
@@ -259,6 +320,49 @@ func handle(event: InputEvent) -> bool:
 	return false
 
 
+func _sticker_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed) and not (event is InputEventMouseButton and event.pressed):
+		return
+	var right_view := int(_stk.side) != 1
+	var step := 0.1 if event is InputEventKey and event.shift_pressed else 0.025
+	var k: int = event.keycode if event is InputEventKey else -1
+	var mb: int = event.button_index if event is InputEventMouseButton else -1
+	if event.is_action_pressed("ui_cancel") or k == KEY_ESCAPE:
+		sticker_edit = false
+		_say("STICKER EDIT CANCELLED")
+	elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_T:
+		Collection.set_sticker(_coll_weapon_id(), Sticker.clamp_cfg(_stk))
+		sticker_edit = false
+		Sfx.play(hud, "mag_in", Vector3.ZERO, -4.0, 0.0)
+		_say("STICKER SAVED  ·  " + Skins.weapon_name(_coll_weapon_id()))
+	elif k in [KEY_A, KEY_LEFT]:
+		_stk.u = float(_stk.u) + (-step if right_view else step)
+	elif k in [KEY_D, KEY_RIGHT]:
+		_stk.u = float(_stk.u) + (step if right_view else -step)
+	elif k in [KEY_W, KEY_UP]:
+		_stk.v = (0.5 if float(_stk.v) < 0.0 else float(_stk.v)) + step
+	elif k in [KEY_S, KEY_DOWN]:
+		_stk.v = (0.5 if float(_stk.v) < 0.0 else float(_stk.v)) - step
+	elif k == KEY_Z:
+		_stk.r = float(_stk.r) + deg_to_rad(15.0 if event.shift_pressed else 5.0)
+	elif k == KEY_X:
+		_stk.r = float(_stk.r) - deg_to_rad(15.0 if event.shift_pressed else 5.0)
+	elif k in [KEY_EQUAL, KEY_KP_ADD] or mb == MOUSE_BUTTON_WHEEL_UP:
+		_stk.s = float(_stk.s) * 1.08
+	elif k in [KEY_MINUS, KEY_KP_SUBTRACT] or mb == MOUSE_BUTTON_WHEEL_DOWN:
+		_stk.s = float(_stk.s) / 1.08
+	elif k == KEY_SPACE:
+		_stk.side = (int(_stk.side) + 1) % 3
+	elif k == KEY_H:
+		_stk.on = not bool(_stk.on)
+	elif k == KEY_R:
+		_stk = {"on": true, "u": 0.5, "v": -1.0, "s": 1.0, "r": 0.0, "side": 0}
+	else:
+		return
+	_stk = Sticker.clamp_cfg(_stk)
+	_preview_key = ""
+
+
 # ================================================================ update
 
 func _process(delta: float) -> void:
@@ -284,18 +388,47 @@ func _process(delta: float) -> void:
 	elif phase == "browse" and tab == 0:
 		w = PACK_SHOWCASE[pack_i][0]
 		f = PACK_SHOWCASE[pack_i][1]
+	elif phase == "browse" and tab == 2:
+		_set_outfit_preview(Outfits.ids()[outfit_i])
+		_pivot.rotation = Vector3(0, _spin * 1.2, 0)
+		return
 	elif phase == "browse":
 		w = _coll_weapon_id()
 		f = _tiles()[coll_tile]
 	_set_preview(w, f)
-	_pivot.rotation = Vector3(0.1 * sin(_spin * 0.7), -PI * 0.5 + sin(_spin) * 0.8, 0)
+	if sticker_edit:
+		# hold the edited side square to the camera
+		var face := PI * 0.5 if int(_stk.side) == 1 else -PI * 0.5
+		_pivot.rotation = _pivot.rotation.lerp(Vector3(0, face, 0), 1.0 - exp(-8.0 * delta))
+	else:
+		_pivot.rotation = Vector3(0.1 * sin(_spin * 0.7), -PI * 0.5 + sin(_spin) * 0.8, 0)
 
 
-func _set_preview(weapon: String, finish: String) -> void:
-	var k := weapon + ":" + finish
+## Operator in an outfit, turning slowly (portrait viewport).
+func _set_outfit_preview(id: String) -> void:
+	var k := "outfit:" + id
 	if k == _preview_key:
 		return
 	_preview_key = k
+	for ch in _pivot.get_children():
+		ch.queue_free()
+	_sv.size = Vector2i(520, 640)
+	var rig := SoldierRig.new()
+	_pivot.add_child(rig)
+	rig.build(Outfits.palette(id))
+	_cam.fov = 30.0
+	_cam.position = Vector3(0, 1.0, 4.4)
+	_cam.look_at(Vector3(0, 0.92, 0), Vector3.UP)
+
+
+func _set_preview(weapon: String, finish: String) -> void:
+	var stk: Dictionary = _stk if sticker_edit else (Collection.sticker_for(weapon) if weapon != "" else {})
+	var k := weapon + ":" + finish + ":" + str(stk)
+	if k == _preview_key:
+		return
+	_preview_key = k
+	_sv.size = Vector2i(960, 420)
+	_cam.fov = 28.0
 	for ch in _pivot.get_children():
 		ch.queue_free()
 	if weapon == "":
@@ -303,6 +436,7 @@ func _set_preview(weapon: String, finish: String) -> void:
 	var gun := Weapon.new()
 	gun.setup(weapon, {})
 	gun.apply_skin(finish)
+	gun.apply_sticker(stk)
 	_pivot.add_child(gun)
 	var pistol := gun.is_pistol()
 	gun.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
@@ -316,22 +450,24 @@ func _set_preview(weapon: String, finish: String) -> void:
 func draw(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.02, 0.03, 0.94))
 	var sx := sin(t * 70.0) * 10.0 * shake
-	hud._text(c, Vector2(60 + sx, 66), "ARMORY  //  WEAPON SKINS", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-	hud._text(c, Vector2(60, 90), "%d / %d SKINS COLLECTED   ·   %d PACKS OPENED" % [Collection.total_owned(), Skins.FINISHES.size() * Skins.weapon_ids().size(), Collection.packs_opened], 12, hud.DIM)
+	hud._text(c, Vector2(60 + sx, 66), "ARMORY  //  OPERATOR OUTFITS" if tab == 2 and phase == "browse" else "ARMORY  //  WEAPON SKINS", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	hud._text(c, Vector2(60, 90), "%d / %d SKINS COLLECTED   ·   %d PACKS OPENED%s" % [Collection.total_owned(), Skins.finish_ids(Profile.is_admin()).size() * Skins.weapon_ids().size(), Collection.packs_opened, "   ·   ADMIN: ALL UNLOCKED" if Profile.is_admin() else ""], 12, hud.DIM)
 	hud._text(c, Vector2(vp.x - 360 + sx, 66), "CR  %s" % _thousands(Collection.credits), 26, hud.WARN, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	hud._text(c, Vector2(vp.x - 360, 90), "CREDITS  ·  EARNED IN THE FIELD", 11, hud.DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300)
 	if phase == "browse":
 		_tab_rects.clear()
-		for i in 2:
+		for i in TAB_NAMES.size():
 			var r := Rect2(60 + i * 220, 108, 200, 30)
 			_tab_rects.append(r)
 			var sel := i == tab
 			c.draw_rect(r, Color(hud.RED, 0.25) if sel else Color(1, 1, 1, 0.04))
 			if sel:
 				hud._brackets(c, r, 8.0, hud.RED, 2.0)
-			hud._text(c, Vector2(r.position.x, r.position.y + 21), ["SUPPLY PACKS", "COLLECTION"][i], 14, hud.TEXT if sel else hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
+			hud._text(c, Vector2(r.position.x, r.position.y + 21), TAB_NAMES[i], 14, hud.TEXT if sel else hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 		if tab == 0:
 			_draw_packs(c, vp)
+		elif tab == 2:
+			_draw_outfits(c, vp)
 		else:
 			_draw_collection(c, vp)
 	elif phase == "opening":
@@ -593,7 +729,7 @@ func _face_t(i: int) -> float:
 
 func _draw_collection(c: Control, vp: Vector2) -> void:
 	var weapons := Skins.weapon_ids()
-	var finishes := Skins.FINISHES.size()
+	var finishes := Skins.finish_ids(Profile.is_admin()).size()
 	_wlist_rects.clear()
 	var y := 170.0
 	for i in weapons.size():
@@ -620,7 +756,7 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 	var cur_r := Skins.rarity_of(cur)
 	hud._text(c, pr.position + Vector2(14, 28), "%s  |  %s" % [Skins.weapon_name(wid), Skins.finish_name(cur).to_upper() if cur != "" else "FACTORY"], 18, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	if cur != "":
-		hud._text(c, pr.position + Vector2(14, 48), Skins.RARITY_NAMES[cur_r] + ("" if Collection.has_skin(wid, cur) else "   ·   LOCKED (PREVIEW)"), 12,
+		hud._text(c, pr.position + Vector2(14, 48), (Skins.RARITY_NAMES[cur_r] + ("  ·  ADMIN EXCLUSIVE" if Skins.is_admin_finish(cur) else "")) + ("" if Collection.has_skin(wid, cur) else "   ·   LOCKED (PREVIEW)"), 12,
 				Skins.RARITY_COLORS[cur_r], HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	_tile_rects.clear()
 	var ty := pr.end.y + 18
@@ -652,4 +788,66 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		c.draw_rect(r, rc if (have or sel) else Color(rc, 0.3), false, 3.0 if sel else 1.5)
 		if sel:
 			hud._brackets(c, r.grow(4), 8.0, hud.RED, 2.0)
-	hud._text(c, Vector2(0, vp.y - 30), "W/S gun   ·   A/D skin   ·   Enter / click equip   ·   Q/E or Tab  packs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	if sticker_edit:
+		var sr := Rect2(pr.end.x - 300, pr.position.y + 10, 290, 128)
+		c.draw_rect(sr, Color(0.03, 0.04, 0.05, 0.92))
+		hud._brackets(c, sr, 8.0, hud.RED, 2.0)
+		hud._text(c, sr.position + Vector2(12, 22), "STICKER  ·  EDITING", 14, hud.WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		var side_name: String = ["RIGHT", "LEFT", "BOTH SIDES"][int(_stk.side)]
+		hud._text(c, sr.position + Vector2(12, 46), "POSITION  %d%% / %s" % [int(float(_stk.u) * 100.0), "AUTO" if float(_stk.v) < 0.0 else "%d%%" % int(float(_stk.v) * 100.0)], 12, hud.TEXT)
+		hud._text(c, sr.position + Vector2(12, 66), "SIZE  %d%%    ROTATION  %d°" % [int(float(_stk.s) * 100.0), int(rad_to_deg(float(_stk.r)))], 12, hud.TEXT)
+		hud._text(c, sr.position + Vector2(12, 86), "SIDE  %s    %s" % [side_name, "SHOWN" if bool(_stk.on) else "HIDDEN"], 12, hud.TEXT)
+		hud._text(c, sr.position + Vector2(12, 110), "Shift = bigger steps", 10, hud.DIM)
+		hud._text(c, Vector2(0, vp.y - 30), "WASD / arrows move   ·   Z/X rotate   ·   +/- or wheel size   ·   Space side   ·   H hide   ·   R reset   ·   Enter save   ·   Esc cancel", 12, hud.WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	else:
+		var hint := "   ·   T  edit sticker" if _tile_has_sticker() and Collection.has_skin(wid, cur) else ""
+		hud._text(c, Vector2(0, vp.y - 30), "W/S gun   ·   A/D skin   ·   Enter / click equip" + hint + "   ·   Q/E or Tab  packs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+# ---------------------------------------------------------------- outfits
+
+func _draw_outfits(c: Control, vp: Vector2) -> void:
+	var ids := Outfits.ids()
+	_outfit_rects.clear()
+	var y := 160.0
+	for i in ids.size():
+		var id: String = ids[i]
+		var o := Outfits.info(id)
+		var r := Rect2(60, y, 440, 50)
+		_outfit_rects.append(r)
+		var sel := i == outfit_i
+		var have := Collection.has_outfit(id)
+		var rc: Color = Outfits.RARITY_COLORS[int(o.rarity)]
+		c.draw_rect(r, Color(hud.RED, 0.2) if sel else Color(0.05, 0.06, 0.07, 0.85))
+		c.draw_rect(Rect2(r.position, Vector2(5, r.size.y)), rc)
+		# colour chips: camo, vest, gear, helmet
+		var cam: Array = o.camo
+		var chips := [cam[0], cam[1], o.vest, o.get("glow", o.gear), o.helmet]
+		for k in chips.size():
+			c.draw_rect(Rect2(r.position.x + 16 + k * 15, r.position.y + 14, 12, 22), chips[k])
+		hud._text(c, Vector2(r.position.x + 100, r.position.y + 22), String(o.name), 15, hud.TEXT if sel else Color(hud.TEXT, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		hud._text(c, Vector2(r.position.x + 100, r.position.y + 40), Outfits.RARITY_NAMES[int(o.rarity)], 10, rc, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		var wearing := Collection.outfit == id
+		var right := "WEARING" if wearing else ("OWNED" if have else "CR " + _thousands(int(o.price)))
+		var rcol: Color = hud.ACCENT if wearing else (hud.TEXT if have else (hud.WARN if Collection.credits >= int(o.price) else Color(hud.DANGER, 0.85)))
+		hud._text(c, Vector2(r.position.x, r.position.y + 31), right, 13, rcol, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 14, true)
+		if sel:
+			hud._brackets(c, r, 8.0, hud.RED, 2.0)
+		y += 58.0
+	# preview + details
+	var cur: String = ids[outfit_i]
+	var info := Outfits.info(cur)
+	var ph := minf(vp.y - 260.0, 640.0)
+	var pr := Rect2(560, 150, ph * 520.0 / 640.0, ph)
+	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.7))
+	c.draw_texture_rect(_sv.get_texture(), pr, false)
+	hud._brackets(c, pr, 12.0, Outfits.RARITY_COLORS[int(info.rarity)], 2.0)
+	var dx := pr.end.x + 30.0
+	hud._text(c, Vector2(dx, 190), String(info.name), 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	hud._text(c, Vector2(dx, 214), Outfits.RARITY_NAMES[int(info.rarity)] + "  OUTFIT", 12, Outfits.RARITY_COLORS[int(info.rarity)], HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	hud._text(c, Vector2(dx, 246), String(info.desc), 14, Color(hud.TEXT, 0.8), HORIZONTAL_ALIGNMENT_LEFT, maxf(vp.x - dx - 40.0, 200.0))
+	var owned := Collection.has_outfit(cur)
+	var status := "WEARING" if Collection.outfit == cur else ("OWNED  ·  ENTER TO WEAR" if owned else "CR %s  ·  ENTER TO BUY" % _thousands(int(info.price)))
+	hud._text(c, Vector2(dx, 290), status, 16, hud.ACCENT if owned else hud.WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	hud._text(c, Vector2(dx, 316), "Other players see your outfit in co-op and PvP.", 12, hud.DIM)
+	hud._text(c, Vector2(0, vp.y - 30), "W/S outfit   ·   Enter / click  buy or wear   ·   Q/E or Tab  tabs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)

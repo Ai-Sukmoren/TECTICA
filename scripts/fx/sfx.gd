@@ -68,6 +68,12 @@ static func _stream_for(sound: String) -> AudioStreamWAV:
 			s = _click(0.05, 2600.0, 0.55)
 		"kill":
 			s = _ding()
+		"headshot":
+			s = _headshot()
+		"flashbang":
+			s = _flashbang()
+		"tinnitus":
+			s = _tinnitus()
 		"explosion":
 			s = _explosion()
 		"heartbeat":
@@ -90,6 +96,8 @@ static func _stream_for(sound: String) -> AudioStreamWAV:
 			s = _knock(0.07, 0.05, 90.0)
 		"impact_hard":
 			s = _knock(0.08, 0.5, 520.0)
+		"helmet_ping":
+			s = _knock(0.22, 0.95, 1350.0)
 	_streams[sound] = s
 	return s
 
@@ -266,6 +274,47 @@ static func _ding() -> AudioStreamWAV:
 	for i in n:
 		var t := float(i) / RATE
 		out[i] = (sin(TAU * 1320.0 * t) * 0.5 + sin(TAU * 1980.0 * t) * 0.25) * exp(-t * 11.0) * 0.6
+	return _to_stream(out)
+
+
+## Headshot: a bright metallic crack on top of a short high ping.
+static func _headshot() -> AudioStreamWAV:
+	var n := int(0.3 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var t := float(i) / RATE
+		var crack := (randf() * 2.0 - 1.0) * exp(-t * 220.0) * 0.7
+		var ping := (sin(TAU * 2900.0 * t) * 0.6 + sin(TAU * 4350.0 * t) * 0.35) * exp(-t * 18.0)
+		out[i] = (crack + ping) * 0.55
+	return _to_stream(out)
+
+
+## Flashbang: a hard, bright crack (much sharper and shorter than a frag).
+static func _flashbang() -> AudioStreamWAV:
+	var n := int(0.9 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var noise := randf() * 2.0 - 1.0
+		lp += (noise - lp) * 0.35
+		var crack := noise * exp(-t * 38.0)
+		var body := lp * exp(-t * 7.0) * 0.8
+		out[i] = clampf((crack + body) * 1.1, -1.0, 1.0)
+	return _to_stream(out)
+
+
+## Ear ringing after being flashed.
+static func _tinnitus() -> AudioStreamWAV:
+	var n := int(3.5 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var t := float(i) / RATE
+		var env := minf(t * 8.0, 1.0) * exp(-t * 0.9)
+		out[i] = (sin(TAU * 3520.0 * t) + sin(TAU * 3540.0 * t) * 0.5) * env * 0.12
 	return _to_stream(out)
 
 

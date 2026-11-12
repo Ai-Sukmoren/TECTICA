@@ -4,7 +4,7 @@
 
 A tactical military shooter for **Godot 4.7** (GDScript, Forward+), playable in top-down or first person —
 campaign chapters, zombie survival, online co-op and PvP deathmatch.
-Everything (soldiers, weapons, level, FX, sound) is generated in code, so no external assets are needed.
+Soldiers, most weapons, both maps, FX and sound are generated in code; a few props and two guns come from an optional asset pack.
 
 ## ⬇ Download & play (Windows)
 
@@ -30,6 +30,11 @@ Earn credits in play (kills, cleared waves, mission grades, PvP), then open supp
 190 skins across 5 rarities. Credits can't be bought; there are no purchases.
 
 ## Run from source
+> **Assets not in this repository.** The optional third-party packs under `assets/thirdparty/` (see Credits) and the
+> sticker artwork under `assets/stickers/` are not redistributed here because their licenses don't allow it. The game
+> runs without them: props, grenades and bodies fall back to the built-in procedural models, and the two pack weapons
+> (MGP7, ZC57) need the Alstra pack copied into `assets/thirdparty/alstra_shooter_essentials/`.
+
 Clone this repository, open the folder in Godot 4.7 and press F5, or:
 ```
 git clone https://github.com/Ai-Sukmoren/TECTICA.git
@@ -47,6 +52,7 @@ godot --path TECTICA
 | Peek left / right | Q / E | LB / RB |
 | Crouch (slide while sprinting) | C / Ctrl | B |
 | Reload | R | X |
+| Inspect weapon (aim/fire cancels immediately) | I | - |
 | Switch weapon | 1 / 2 / X | Y |
 | Frag grenade | G | D-pad down |
 | First person on/off | F | R3 |
@@ -273,3 +279,10 @@ body, increase the animation smoothing rate; reduce it if torso impulses remain.
 Run `godot --headless --path . -s res://tests/zombie_variants_test.gd` for the
 new behavior/timing checks. A client snapshot test covers rage state; a real
 multi-computer multiplayer session still needs manual playtesting.
+
+## Credits
+
+- Characters: Quaternius — Ultimate Modular Characters / Universal Base Characters (CC0).
+- MGP7 SMG, ZC57 pistol, M67 grenade, sandbags, fuel barrels, ammo cans, med kits, radios and other props:
+  **Alstra Infinite** — PPS Shooter Essentials (alstrainfinite.itch.io/pps-shooter-essentials),
+  used under the Alstra Infinite license (alstrainfinite.com/fal).

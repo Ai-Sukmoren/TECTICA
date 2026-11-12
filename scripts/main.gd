@@ -4,6 +4,9 @@ extends Node3D
 
 const InputSetup = preload("res://scripts/core/input_setup.gd")
 const Level = preload("res://scripts/world/forest_level.gd")
+const TownLevel = preload("res://scripts/world/town_level.gd")
+## Maps for Zombie Survival / Deathmatch (the campaign is always the forest).
+const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END"}
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
 const Nature = preload("res://scripts/world/nature.gd")
@@ -14,6 +17,8 @@ const HUD = preload("res://scripts/ui/hud.gd")
 const Music = preload("res://scripts/audio/music.gd")
 const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
+const PackProps = preload("res://scripts/core/pack_props.gd")
+const Transition = preload("res://scripts/ui/transition.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const WaveDirector = preload("res://scripts/modes/wave_director.gd")
 const Settings = preload("res://scripts/core/settings.gd")
@@ -22,6 +27,7 @@ const PostFX = preload("res://scripts/fx/post_fx.gd")
 const Net = preload("res://scripts/net/net.gd")
 const NetSync = preload("res://scripts/net/net_sync.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
+const Progression = preload("res://scripts/core/progression.gd")
 
 const PVP_KILL_LIMIT := 15
 const PVP_TIME := 600.0
@@ -36,11 +42,14 @@ static var saved_first_person := false
 static var saved_muted := false
 ## "ch1", "ch2" (campaign chapters) or "zombie"
 static var saved_mode := "ch1"
+## "forest" or "town"; only used by zombie and pvp modes.
+static var saved_map := "forest"
 ## Skip the title screen once (used by restart).
 static var quick_restart := false
 static var _launch_checked := false
 
-var level: Level
+var level   # forest_level.gd or town_level.gd
+var map_id := "forest"
 var player: Player
 var camera_rig: CameraRig
 var hud: HUD
@@ -81,11 +90,16 @@ var pvp_winner := -1
 ## seconds until the local operator gets back up (multiplayer), < 0 = not scheduled
 var respawn_t := -1.0
 var _initial_spawns_done := false
+## Kill cam: who last hurt the local operator, and the camera while it runs.
+var _last_attacker: Node3D
+var _last_attacker_t := -100.0
+var killcam: Node
 var _ammo_taken: Array = []
 
 
 func _ready() -> void:
 	randomize()
+	Engine.time_scale = 1.0   # never carry a slow-mo / kill freeze into a new map
 	mode = saved_mode if saved_mode in ["ch1", "ch2", "zombie", "pvp"] else "ch1"
 	if mode == "pvp" and not Net.is_pvp():
 		mode = "ch1"   # deathmatch only exists in a multiplayer session
@@ -107,7 +121,8 @@ func _ready() -> void:
 	add_child(net)
 	net.setup(self)
 
-	level = Level.new()
+	map_id = saved_map if mode in ["zombie", "pvp"] and MAPS.has(saved_map) else "forest"
+	level = TownLevel.new() if map_id == "town" else Level.new()
 	level.name = "Level"
 	level.mode = mode
 	add_child(level)
@@ -135,7 +150,7 @@ func _ready() -> void:
 	player.died.connect(_on_player_died)
 	players[my_id] = player
 	if Net.active and Net.is_server():
-		Net.roster[1] = {"name": Net.default_name(), "loadout": Loadout.weapon_list()}
+		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout()}
 		_pvp_entry(1)
 
 	camera_rig = CameraRig.new()
@@ -186,6 +201,7 @@ func _ready() -> void:
 	hud.name = "HUD"
 	add_child(hud)
 	hud.setup(self)
+	Transition.reveal(get_tree())   # fade in once the new map has rendered
 
 
 func alive_players() -> Array:
@@ -206,7 +222,12 @@ func _exit_tree() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[quit] window close request from the OS")
+		Settings.mark_clean_exit()
 		Net.leave()   # also removes the Tailscale Funnel mapping when hosting online
+	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		Settings.set_background(true)    # alt-tabbed: throttle the GPU
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		Settings.set_background(false)
 
 
 func is_zombie_mode() -> bool:
@@ -248,8 +269,7 @@ func continue_to(next_mode: String) -> void:
 	quick_restart = true
 	saved_first_person = player.first_person or start_first_person
 	saved_muted = music.muted
-	get_tree().paused = false
-	get_tree().reload_current_scene()
+	Transition.change_map(get_tree())
 
 
 func on_chapter_complete() -> void:
@@ -259,6 +279,7 @@ func on_chapter_complete() -> void:
 	victory = true
 	_grade_mission()
 	var reward: int = {"S": 500, "A": 350, "B": 250}.get(grade, 150)
+	Progression.on_chapter_complete(grade)
 	Collection.add_credits(reward)
 	hud.add_feed("CHAPTER %d COMPLETE  ·  +%d CR" % [int(campaign.info().num), reward], Color(0.5, 1.0, 0.7))
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -270,8 +291,7 @@ func set_mode(m: String) -> void:
 	saved_mode = m
 	saved_first_person = start_first_person
 	saved_muted = music.muted
-	get_tree().paused = false
-	get_tree().reload_current_scene()
+	Transition.change_map(get_tree())
 
 
 func restart() -> void:
@@ -280,8 +300,7 @@ func restart() -> void:
 	quick_restart = true
 	saved_first_person = player.first_person or start_first_person
 	saved_muted = music.muted
-	get_tree().paused = false
-	get_tree().reload_current_scene()
+	Transition.change_map(get_tree())
 
 
 ## Respawns any picked-up ammo cans (between zombie waves).
@@ -296,8 +315,9 @@ func on_deploy() -> void:
 	_deployed = true
 	player.apply_loadout()
 	if Net.active and Net.is_server():
-		Net.roster[1] = {"name": Net.default_name(), "loadout": Loadout.weapon_list()}
+		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout()}
 	player.grenades = 2
+	player.flashbangs = 2
 	if director != null:
 		player.grenades = 3
 		player.regen_cap = 70.0
@@ -308,7 +328,7 @@ func on_deploy() -> void:
 	if director != null:
 		# zombie survival runs from dusk into the night: deploy with the light on
 		player.set_flashlight(true)
-		hud.add_feed("FLASHLIGHT ON  ·  [T] TOGGLE", Color(1.0, 0.92, 0.7))
+		hud.add_feed("FLASHLIGHT ON  ·  [%s] TOGGLE" % Settings.Controls.short("flashlight"), Color(1.0, 0.92, 0.7))
 	saved_first_person = start_first_person
 	saved_muted = music.muted
 	hud.add_feed("OPERATOR DEPLOYED", Color(0.62, 0.92, 0.58))
@@ -420,10 +440,10 @@ func _build_environment() -> void:
 	add_child(sun)
 
 
-## 0 = LOW, 1 = HIGH, 2 = ULTRA
-## F2 / title-menu shortcut: LOW, HIGH, ULTRA presets.
+## 0 = SAFE, 1 = LOW, 2 = HIGH, 3 = ULTRA
+## F2 / title-menu shortcut: cycles the presets.
 func set_quality(q: int) -> void:
-	Settings.set_preset(clampi(q, 0, 2))
+	Settings.set_preset(clampi(q, 0, Settings.CUSTOM - 1))
 	Settings.save()
 
 
@@ -459,6 +479,13 @@ func apply_graphics() -> void:
 		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if sh <= 1 else \
 				(DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if sh == 2 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS)
 	RenderingServer.directional_shadow_atlas_set_size([1024, 2048, 4096, 8192][sh], true)
+	# softer filtering costs more samples per pixel; ULTRA keeps the original look
+	var soft: int = [RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW,
+			RenderingServer.SHADOW_QUALITY_SOFT_LOW, RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM][sh]
+	RenderingServer.directional_soft_shadow_filter_set_quality(soft)
+	RenderingServer.positional_soft_shadow_filter_set_quality(soft)
+	if sun:
+		sun.directional_shadow_max_distance = [80.0, 50.0, 70.0, 80.0][sh]
 	vp.positional_shadow_atlas_size = [1024, 2048, 4096, 8192][sh]
 	if level:
 		level.apply_quality(sh - 1)
@@ -471,13 +498,13 @@ func _spawn_ammo(pos: Vector3) -> void:
 	root.position = pos
 	add_child(root)
 	var green := M.painted_metal("ammo_can", Color(0.26, 0.33, 0.2))
-	for i in 2:
-		var mi := MeshInstance3D.new()
-		mi.mesh = ML.box(Vector3(0.5, 0.3, 0.26))
-		mi.material_override = green
-		mi.position = Vector3(0, 0.15 + i * 0.3, 0)
-		mi.rotation.y = i * 0.3
-		root.add_child(mi)
+	if not PackProps.add(root, "metal_ammo_box", Vector3.ZERO, 0.0, 0.3).is_empty():
+		# asset pack 4: two metal ammo cans, a box of 9mm and a 5.56 belt on top
+		PackProps.add(root, "metal_ammo_box", Vector3(0, 0.3, 0), 0.3, 0.3)
+		PackProps.add(root, "ammo_box", Vector3(0.12, 0.6, 0.02), 0.6, 0.13)
+		PackProps.add(root, "belt_556", Vector3(-0.12, 0.6, 0.0), 1.2, 0.05)
+	else:
+		_spawn_ammo_fallback(root, green)
 	var light := OmniLight3D.new()
 	light.light_color = Color(0.4, 1.0, 0.6)
 	light.light_energy = 0.8
@@ -487,6 +514,16 @@ func _spawn_ammo(pos: Vector3) -> void:
 	root.set_meta("key", str(pos))
 	_ammo_nodes.append(root)
 	_ammo_by_pos[str(pos)] = root
+
+
+func _spawn_ammo_fallback(root: Node3D, green: Material) -> void:
+	for i in 2:
+		var mi := MeshInstance3D.new()
+		mi.mesh = ML.box(Vector3(0.5, 0.3, 0.26))
+		mi.material_override = green
+		mi.position = Vector3(0, 0.15 + i * 0.3, 0)
+		mi.rotation.y = i * 0.3
+		root.add_child(mi)
 
 
 # ================================================================ rules
@@ -510,7 +547,8 @@ func _physics_process(delta: float) -> void:
 				w.reserve = maxi(w.reserve, int(w.stats.reserve))
 			player.health = minf(player.health + 35.0, player.max_health)
 			player.grenades = mini(player.grenades + 1, 4)
-			hud.add_feed("RESUPPLIED  ·  +AMMO  +FRAG  +35 HP", Color(0.5, 1.0, 0.7))
+			player.flashbangs = mini(player.flashbangs + 1, 3)
+			hud.add_feed("RESUPPLIED  ·  +AMMO  +FRAG  +FLASH  +35 HP", Color(0.5, 1.0, 0.7))
 			Sfx.play(self, "mag_in", n.global_position, 0.0)
 			_ammo_nodes.erase(n)
 			var key := str(n.get_meta("key", ""))
@@ -534,7 +572,7 @@ func _process(_delta: float) -> void:
 	# (unless the player switched it off on purpose)
 	if director != null and _deployed and not player.is_dead and not player.flashlight_on 			and not player.flashlight_manual and tod.night > 0.35:
 		player.set_flashlight(true)
-		hud.add_feed("NIGHTFALL  ·  FLASHLIGHT ON  [T]", Color(1.0, 0.92, 0.7))
+		hud.add_feed("NIGHTFALL  ·  FLASHLIGHT ON  [%s]" % Settings.Controls.short("flashlight"), Color(1.0, 0.92, 0.7))
 	# low health: muffled hearing, washed-out colour, lens fringing on hits
 	var low := 0.0 if player.is_dead else clampf((40.0 - player.health) / 40.0, 0.0, 1.0)
 	if _lowpass:
@@ -590,7 +628,7 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 		get_tree().call_group("enemies", "hear_noise", player.global_position, float(weapon.stats.noise_radius))
 		if result.hit != null and result.hit != player:
 			player.shots_hit += 1
-			hud.on_hit(result.killed, result.headshot)
+			hud.on_hit(result.killed, result.headshot, float(result.get("damage", 0.0)), result.get("hit_at", Vector3.ZERO), result.hit)
 			if result.killed and director != null:
 				director.on_kill(result.headshot)
 			if result.killed:
@@ -599,7 +637,9 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 				var wname := String(weapon.stats.name)
 				var cr := 10 + (5 if result.headshot else 0)
 				Collection.add_credits(cr)
-				hud.add_feed(("HEADSHOT  ·  " if result.headshot else "") + "TANGO DOWN  ·  " + wname + "  ·  +%d CR" % cr, Color(1.0, 0.55, 0.45))
+				Progression.on_kill(String(weapon.id), wname, weapon.is_pistol(), result.headshot)
+				var gained := Progression.XP_KILL + (Progression.XP_HEADSHOT if result.headshot else 0)
+				hud.add_feed(("HEADSHOT  ·  " if result.headshot else "") + "TANGO DOWN  ·  " + wname + "  ·  +%d CR  +%d XP" % [cr, gained], Color(1.0, 0.55, 0.45))
 	else:
 		hud.ping_enemy(soldier)
 		var p: Vector3 = result.position
@@ -611,11 +651,15 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 
 func _on_player_damaged(_soldier: Node, amount: float, attacker: Node) -> void:
 	damage_taken += amount
+	if attacker is Node3D and attacker != player:
+		_last_attacker = attacker
+		_last_attacker_t = elapsed
 	hud.on_player_damaged(amount, attacker)
 	camera_rig.add_shake(0.25)
 
 
 func _on_player_died(_soldier: Node) -> void:
+	_start_killcam()
 	if Net.active:
 		# multiplayer: teammates fight on; the host decides when it's over
 		if mode == "pvp":
@@ -632,6 +676,25 @@ func _on_player_died(_soldier: Node) -> void:
 	game_over = true
 	victory = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _start_killcam() -> void:
+	if not bool(Settings.v.get("killcam", true)) or not is_instance_valid(_last_attacker) or elapsed - _last_attacker_t > 8.0:
+		return
+	if is_instance_valid(killcam):
+		killcam.finish()
+	var kc = preload("res://scripts/fx/kill_cam.gd").new()
+	kc.name = "KillCam"
+	add_child(kc)
+	if kc.start(self, _last_attacker, player):
+		killcam = kc
+		hud.slowmo(0.35, 1.1)
+	else:
+		kc.queue_free()
+
+
+func killcam_active() -> bool:
+	return is_instance_valid(killcam) and killcam.active()
 
 
 func _on_enemy_died(e: Node) -> void:
@@ -671,24 +734,38 @@ func _net_reload(m: String) -> bool:
 		return false
 	if Net.is_server():
 		if Net.sync:
-			Net.sync.game_event("reload", [m])
+			Net.sync.game_event("reload", [m + ("@" + saved_map if saved_map != "forest" else "")])
 		saved_mode = m
 		quick_restart = true
 		saved_first_person = player.first_person or start_first_person
 		saved_muted = music.muted
-		get_tree().paused = false
-		get_tree().reload_current_scene()
+		Transition.change_map(get_tree())
 	return true
+
+
+## Mode plus map as sent to clients: "zombie" or "zombie@town".
+func mode_token() -> String:
+	return mode + ("@" + map_id if map_id != "forest" else "")
+
+
+## Switches the Zombie / Deathmatch map and reloads into it.
+func set_map(id: String) -> void:
+	if not MAPS.has(id):
+		return
+	saved_map = id
+	set_mode(mode)
 
 
 ## Joined a session / host changed the mode: load straight into that world.
 func net_enter_world(m: String) -> void:
+	var parts := m.split("@")
+	m = parts[0]
+	saved_map = parts[1] if parts.size() > 1 and MAPS.has(parts[1]) else "forest"
 	saved_mode = m
 	quick_restart = true
 	saved_first_person = (player.first_person if player else false) or start_first_person
 	saved_muted = music.muted if music else saved_muted
-	get_tree().paused = false
-	get_tree().reload_current_scene()
+	Transition.change_map(get_tree())
 
 
 func leave_to_title() -> void:
@@ -699,8 +776,7 @@ func leave_to_title() -> void:
 		saved_mode = mode
 	quick_restart = false
 	Player.input_blocked = false
-	get_tree().paused = false
-	get_tree().reload_current_scene()
+	Transition.change_map(get_tree())
 
 
 func feed(text: String, kind: String = "") -> void:
@@ -792,6 +868,7 @@ func respawn_local(pos: Vector3, yaw: float) -> void:
 	camera_rig.snap()
 	hud.player = p
 	p.grenades = 3 if director != null else 2
+	p.flashbangs = 2
 	if director != null:
 		p.regen_cap = 70.0
 	if tod.night > 0.5 or director != null:
@@ -808,7 +885,7 @@ func respawn_near_team() -> void:
 		if p != player:
 			mates.append(p)
 	var pos: Vector3 = level.player_spawn
-	var yaw := level.player_yaw
+	var yaw: float = level.player_yaw
 	if not mates.is_empty():
 		var m = mates[randi() % mates.size()]
 		var off := Vector3(randf_range(-1.6, 1.6), 0, randf_range(-1.6, 1.6))
@@ -954,21 +1031,25 @@ func on_net_kill(victim: Node, killer: String, headshot: bool) -> void:
 	hud.on_hit(true, headshot)
 	if victim is Player:
 		Collection.add_credits(25)
+		Progression.on_pvp_kill()
 		hud.add_feed("YOU TOOK DOWN  " + String(victim.display_name) + "  ·  +25 CR", Color(1.0, 0.55, 0.45))
 	else:
 		if headshot:
 			headshot_kills += 1
 		var cr := 10 + (5 if headshot else 0)
 		Collection.add_credits(cr)
+		var w = player.current_weapon()
+		Progression.on_kill(String(w.id), String(w.stats.name), w.is_pistol(), headshot)
 		hud.add_feed(("HEADSHOT  ·  " if headshot else "") + "TANGO DOWN  ·  +%d CR" % cr, Color(1.0, 0.55, 0.45))
 
 
 ## The local operator's jump kick connected.
 func on_kick_hit(target: Node) -> void:
 	var killed: bool = target.get("is_dead") == true
-	hud.on_hit(killed, false)
+	hud.on_hit(killed, false, player.KICK_DAMAGE, (target as Node3D).global_position + Vector3.UP * 1.3, target)
 	if killed:
 		Collection.add_credits(15)
+		Progression.on_kick_kill()
 		hud.add_feed("KICK KILL  ·  +15 CR", Color(1.0, 0.55, 0.45))
 
 

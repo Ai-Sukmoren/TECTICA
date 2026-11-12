@@ -292,6 +292,7 @@ func _menu_entries() -> Array:
 		{"id": "graphics", "sec": "SYSTEM", "label": "GRAPHICS", "value": Settings.PRESETS[main.quality], "arrow": true},
 		{"id": "music", "sec": "SYSTEM", "label": "MUSIC", "value": "OFF" if main.music.muted else "ON", "arrow": true},
 		{"id": "settings", "sec": "SYSTEM", "label": "SETTINGS"},
+		{"id": "update", "sec": "SYSTEM", "label": "↓  UPDATE GAME", "value": "LATEST RELEASE"},
 	]
 	if Profile.is_admin():
 		e.append({"id": "admin", "sec": "SYSTEM", "label": "ADMIN DASHBOARD"})
@@ -332,6 +333,8 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 	if i < 0 or i >= e.size():
 		return
 	match String(e[i].id):
+		"update":
+			OS.shell_open("https://github.com/Ai-Sukmoren/TECTICA/releases/latest")
 		"deploy":
 			_deploy()
 		"mp":

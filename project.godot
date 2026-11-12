@@ -11,13 +11,13 @@ config_version=5
 [application]
 
 config/name="TECTICA"
-config/version="1.13.2-beta"
+config/version="1.13.3-beta"
 config/icon="res://assets/icon.png"
 config/description="TECTICA - top-down / first-person tactical shooter."
 boot_splash/bg_color=Color(0, 0, 0, 1)
 boot_splash/image="res://assets/logo.png"
 boot_splash/fullsize=false
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/loading.tscn"
 run/max_fps=60
 config/features=PackedStringArray("4.7", "Forward Plus")
 

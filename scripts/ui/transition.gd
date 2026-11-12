@@ -30,6 +30,21 @@ static func change_map(tree: SceneTree) -> void:
 	t.call_deferred("_run", tree)
 
 
+static func begin_loading(tree: SceneTree) -> void:
+	var t := _instance(tree)
+	t.call_deferred("_show_loading")
+
+
+func _show_loading() -> void:
+	if not is_inside_tree():
+		await ready
+	if _busy:
+		return
+	_busy = true
+	_rect.mouse_filter = Control.MOUSE_FILTER_STOP
+	set_progress(0)
+
+
 ## Called by main.gd once the new map is built.
 static func reveal(tree: SceneTree) -> void:
 	if _inst != null and is_instance_valid(_inst):
@@ -45,7 +60,7 @@ func _ready() -> void:
 	_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_rect)
 	_label = Label.new()
-	_label.text = "LOADING"
+	_label.text = "LOADING  0%"
 	_label.add_theme_font_size_override("font_size", 22)
 	_label.add_theme_color_override("font_color", Color(0.91, 0.85, 0.66))
 	_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -70,7 +85,8 @@ func _run(tree: SceneTree) -> void:
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 	tree.paused = false
-	var error := tree.reload_current_scene()
+	set_progress(0)
+	var error := tree.change_scene_to_file("res://scenes/loading.tscn")
 	if error != OK:
 		push_error("Map reload failed: %s" % error_string(error))
 		_reveal(tree)
@@ -79,6 +95,9 @@ func _run(tree: SceneTree) -> void:
 func _reveal(tree: SceneTree) -> void:
 	if not _busy:
 		return
+	_rect.color.a = 1.0
+	_label.modulate.a = 1.0
+	set_progress(100)
 	for i in SETTLE_FRAMES:
 		await tree.process_frame
 	var tw := create_tween().set_parallel(true)
@@ -87,3 +106,8 @@ func _reveal(tree: SceneTree) -> void:
 	await tw.finished
 	_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_busy = false
+
+
+func set_progress(percent: int) -> void:
+	if is_instance_valid(_label):
+		_label.text = "LOADING  %d%%" % percent

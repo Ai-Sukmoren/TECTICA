@@ -47,10 +47,10 @@ func run() -> void:
 	check(get_root().get_viewport().get_camera_3d() == main.killcam, "kill cam owns the screen")
 	check(String(main.killcam.info.name) == "JUGGERNAUT", "card names the killer (%s)" % main.killcam.info.name)
 	check(float(main.killcam.info.dist) > 4.0 and float(main.killcam.info.dist) < 8.0, "card shows the distance (%.1f m)" % main.killcam.info.dist)
-	for i in 30: await process_frame
+	await create_timer(1.0, true, false, true).timeout   # past the fly-over, whatever the frame rate
 	var to_killer: float = main.killcam.global_position.distance_to(z.global_position)
 	check(to_killer < 12.0, "camera flew to the killer (%.1f m away)" % to_killer)
-	await create_timer(4.2, true, false, true).timeout
+	await create_timer(3.4, true, false, true).timeout
 	await process_frame
 	check(not main.killcam_active(), "kill cam ends by itself")
 	check(get_root().get_viewport().get_camera_3d() == main.camera_rig.active_camera(), "normal camera is back")

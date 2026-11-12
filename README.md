@@ -17,12 +17,18 @@ Soldiers, most weapons, both maps, FX and sound are generated in code; a few pro
 Needs a 64-bit Windows 10/11 PC with a Vulkan-capable graphics card.
 
 ### Play together
-- **Join a friend:** open **MULTIPLAYER**, select **JOIN**, paste their invite link with **Ctrl+V**, press **Enter**.
-  After you've run the game once, clicking a `tectica://` invite link opens the game and joins directly.
-- **Host:** **MULTIPLAYER → CONNECTION**, then **HOST CO-OP** or **HOST PVP DEATHMATCH**. In the match press
-  **Esc → COPY INVITE LINK** and send it to your friends.
-  - *Direct (LAN/UDP)* — same network, or forward UDP port 7777 / use a shared Tailscale network.
-  - *Online (Tailscale Funnel)* — the host needs [Tailscale](https://tailscale.com) with Funnel enabled; friends need nothing extra.
+- **Host:** **MULTIPLAYER**, then **HOST CO-OP** or **HOST PVP DEATHMATCH**. Your **join code** (5 characters, for
+  example `B7AHG`) is shown on the multiplayer screen, in the top-left corner while you play, and under
+  **Esc → COPY JOIN CODE**. Tell it to your friends.
+- **Join a friend:** **MULTIPLAYER → JOIN**, type the code, press **Enter**.
+- A 5-character code works for friends on the **same Wi-Fi / network** or on the **same Tailscale network**
+  (there is one code for each). The code is the host's address packed into a few letters; there is no lobby server.
+- **Over the internet without Tailscale:** the host forwards UDP port 7777 on the router and uses
+  **Esc → COPY INVITE LINK · INTERNET**, which also gives a 7-character code.
+- **Online (Tailscale Funnel):** switch **CONNECTION** to *ONLINE*; the host needs [Tailscale](https://tailscale.com)
+  with Funnel enabled and shares the invite link, friends need nothing extra.
+- Invite links (`tectica://join/...`) and plain IP addresses still work in the JOIN row; Ctrl+V pastes.
+- Join codes need the default port 7777. Windows asks once to allow TECTICA through the firewall: say yes on the host.
 - Everyone must run the same version of the game.
 
 ### Weapon skins

@@ -376,6 +376,7 @@ var menu_cam: Camera3D
 func _deploy() -> void:
 	title = false
 	if is_instance_valid(menu_cam):
+		menu_cam.release()
 		menu_cam.queue_free()
 		menu_cam = null
 	briefing_t = 0.0
@@ -507,6 +508,7 @@ func _process(delta: float) -> void:
 	if not title and not get_tree().paused:
 		_update_spotting(delta)
 	_show_progression()
+	_host_codes_t -= delta
 	overlay.queue_redraw()
 
 
@@ -1404,7 +1406,14 @@ func _pause_items() -> Array:
 	if Net.active and Net.is_server() and Net.transport == "ws":
 		return ["RESUME", "SETTINGS", "COPY INVITE LINK  ·  ONLINE", "RESTART MATCH", "LEAVE GAME"]
 	if Net.active and Net.is_server():
-		return ["RESUME", "SETTINGS", "COPY INVITE LINK  ·  LAN", "COPY INVITE LINK  ·  INTERNET", "RESTART MATCH", "LEAVE GAME"]
+		var its: Array = ["RESUME", "SETTINGS"]
+		for a in Net.host_addresses():
+			if String(a.code) != "":
+				its.append("COPY JOIN CODE  ·  %s  ·  %s" % [String(a.code), String(a.label)])
+			else:
+				its.append("COPY INVITE LINK  ·  LAN")
+		its.append_array(["COPY INVITE LINK  ·  INTERNET", "RESTART MATCH", "LEAVE GAME"])
+		return its
 	if Net.active:
 		return ["RESUME", "SETTINGS", "RESTART  (HOST ONLY)", "LEAVE GAME"]
 	return PAUSE_ITEMS
@@ -1452,6 +1461,9 @@ func _copy_public() -> void:
 	var link := Net.invite_link(Net.public_ip)
 	DisplayServer.clipboard_set(link)
 	add_feed("INVITE COPIED  ·  " + link, ACCENT)
+	var icode := Net.join_code(Net.public_ip, Net.port)
+	if icode != "":
+		add_feed("INTERNET JOIN CODE  ·  %s" % icode, ACCENT)
 	add_feed("FRIENDS OVER THE INTERNET NEED UDP PORT %d FORWARDED ON YOUR ROUTER" % Net.port, WARN)
 
 
@@ -1471,6 +1483,10 @@ func _pause_activate(i: int) -> void:
 	elif item == "SETTINGS":
 		settings_open = true
 		settings_row = 0
+	elif item.begins_with("COPY JOIN CODE"):
+		var code := String(item.split("  ·  ")[1])
+		DisplayServer.clipboard_set(code)
+		add_feed("JOIN CODE COPIED  ·  %s  ·  FRIENDS TYPE IT UNDER MULTIPLAYER > JOIN" % code, ACCENT)
 	elif item.begins_with("COPY INVITE LINK"):
 		_copy_invite(item.ends_with("INTERNET") or item.ends_with("ONLINE"))
 	elif item.begins_with("RESTART"):
@@ -1765,7 +1781,7 @@ func _mp_items() -> Array:
 		"NAME:  " + Net.player_name + (cur if mp_row == 0 else ""),
 		"HOST CO-OP:  " + _mode_label(_mp_coop_mode),
 		"HOST PVP DEATHMATCH",
-		"JOIN  (IP OR INVITE LINK):  " + Net.join_ip + (cur if mp_row == 3 else ""),
+		"JOIN  (CODE, IP OR LINK):  " + Net.join_ip + (cur if mp_row == 3 else ""),
 		"PORT:  " + _mp_port_text + (cur if mp_row == 4 else ""),
 		"CONNECTION:  " + ("ONLINE  ·  TAILSCALE FUNNEL" if mp_online else "DIRECT  ·  LAN / UDP"),
 		"BACK",
@@ -1888,14 +1904,41 @@ func _draw_mp(c: Control, vp: Vector2) -> void:
 	var st := Net.status
 	if st != "":
 		_text(c, Vector2(0, top + items.size() * 46 + 6), st, 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-	_text(c, Vector2(0, vp.y - 58), "HOST: share your IP with friends (LAN) - over the internet forward UDP port %s or use Tailscale / ZeroTier" % _mp_port_text, 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
-	_text(c, Vector2(0, vp.y - 40), "Up/Down select   ·   type on NAME / IP / PORT   ·   Ctrl+V paste an invite link   ·   Enter confirm   ·   Esc back", 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	# what the host will tell friends, shown before they even start
+	var cy := vp.y - 104.0
+	var preview: Array = [] if mp_online else Net.host_addresses()
+	var shown := 0
+	for a in preview:
+		if String(a.code) == "":
+			continue
+		_text(c, Vector2(0, cy), "YOUR JOIN CODE  ·  %s  ·  %s" % [String(a.code), String(a.label)], 15, ACCENT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+		cy += 20.0
+		shown += 1
+	if shown == 0 and not mp_online:
+		_text(c, Vector2(0, cy), "JOIN CODES NEED THE DEFAULT PORT %d" % Net.DEFAULT_PORT, 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	_text(c, Vector2(0, vp.y - 58), "HOST: start a game and tell friends your join code (same Wi-Fi or same Tailscale network)   ·   over the internet: forward UDP port %s" % _mp_port_text, 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	_text(c, Vector2(0, vp.y - 40), "JOIN: select JOIN, type the code, press Enter   ·   Up/Down select   ·   Ctrl+V paste   ·   Esc back", 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+## Host's join codes, refreshed every few seconds (adapters can change).
+var _host_codes: Array = []
+var _host_codes_t := 0.0
 
 
 ## Squad (co-op HP) or scoreboard (PvP), top-left.
 func _draw_squad(c: Control, vp: Vector2) -> void:
 	var x := 26.0
 	var y := 150.0
+	if Net.is_server() and Net.transport == "enet":
+		if _host_codes_t <= 0.0:
+			_host_codes = Net.host_addresses()
+			_host_codes_t = 5.0
+		var jy := 118.0
+		for a in _host_codes:
+			if String(a.code) != "":
+				_text(c, Vector2(x, jy), "JOIN CODE  %s" % String(a.code), 13, ACCENT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+				_text(c, Vector2(x + 150, jy), String(a.label), 10, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+				jy += 16.0
 	if main.mode == "pvp":
 		var ids: Array = main.pvp_scores.keys()
 		ids.sort_custom(func(a, b): return int(main.pvp_scores[a][1]) > int(main.pvp_scores[b][1]))

@@ -174,10 +174,13 @@ static func invite_link(ip: String) -> String:
 	return "%s%s:%d" % [LINK_PREFIX, ip, port]
 
 
-## Accepts "tectica://join/1.2.3.4:7777", "1.2.3.4:7777" or "1.2.3.4".
+## Accepts a join code ("K7M2Q"), "tectica://join/1.2.3.4:7777", "1.2.3.4:7777" or "1.2.3.4".
 ## Returns [ip, port] or [] if it isn't usable.
 static func parse_invite(text: String) -> Array:
 	var s := text.strip_edges()
+	var coded := decode_code(s)
+	if coded != "":
+		return [coded, DEFAULT_PORT]   # a join code
 	if s.to_lower().begins_with("tectica://"):
 		s = s.substr(10)
 		if s.to_lower().begins_with("join/"):
@@ -320,3 +323,150 @@ static func leave() -> void:
 	active = false
 	kind = ""
 	roster = {}
+## ---- join codes: a short code a friend can type instead of an address.
+## There is no lobby server, so the code IS the host's address, packed:
+##   5 characters  any private address (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+##                 or Tailscale address (100.64-127.x.x), on the default port
+##   7 characters  any public IPv4 address (the host still needs UDP 7777 forwarded)
+## The alphabet has no 0/O or 1/I, and codes are scrambled so neighbours on
+## one network don't get near-identical codes.
+const CODE_ALPHABET := "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+const _C5_BITS := 25
+const _C5_MUL := 0x12D687B
+const _C5_INV := 0xC236B3
+const _C5_ADD := 0x0A5C3E1
+const _C7_BITS := 35
+const _C7_MUL := 0x1873593
+const _C7_INV := 0x660ED309B
+const _C7_ADD := 0x2F1B7A6D5
+# private ranges packed back to back: [first octet, low second octet, count of second octets, bits below]
+const _RANGES := [[10, 0, 256, 16], [100, 64, 64, 16], [172, 16, 16, 16], [192, 168, 1, 16]]
+
+
+static func _octets(ip: String) -> Array:
+	var parts := ip.strip_edges().split(".")
+	if parts.size() != 4:
+		return []
+	var out: Array = []
+	for p in parts:
+		if not p.is_valid_int() or int(p) < 0 or int(p) > 255:
+			return []
+		out.append(int(p))
+	return out
+
+
+## Position of a private / Tailscale address in the packed ranges, or -1.
+static func _private_index(o: Array) -> int:
+	var base := 0
+	for r in _RANGES:
+		var span: int = int(r[2]) << int(r[3])
+		if o[0] == r[0] and o[1] >= r[1] and o[1] < int(r[1]) + int(r[2]):
+			return base + ((o[1] - int(r[1])) << 16) + (o[2] << 8) + o[3]
+		base += span
+	return -1
+
+
+static func _private_total() -> int:
+	var n := 0
+	for r in _RANGES:
+		n += int(r[2]) << int(r[3])
+	return n
+
+
+static func _to_text(v: int, chars: int) -> String:
+	var s := ""
+	for i in chars:
+		s = CODE_ALPHABET[v & 31] + s
+		v >>= 5
+	return s
+
+
+static func _from_text(s: String) -> int:
+	var v := 0
+	for ch in s:
+		var i := CODE_ALPHABET.find(ch)
+		if i < 0:
+			return -1
+		v = (v << 5) | i
+	return v
+
+
+## Join code for an address on `p_port`, or "" when it cannot be coded
+## (custom port, Tailscale Funnel link, not an IPv4 address).
+static func join_code(ip: String, p_port: int = DEFAULT_PORT) -> String:
+	if p_port != DEFAULT_PORT or is_ws_address(ip):
+		return ""
+	var o := _octets(ip)
+	if o.is_empty():
+		return ""
+	var idx := _private_index(o)
+	if idx >= 0:
+		var mask5 := (1 << _C5_BITS) - 1
+		return _to_text((idx * _C5_MUL + _C5_ADD) & mask5, 5)
+	var full: int = (o[0] << 24) | (o[1] << 16) | (o[2] << 8) | o[3]
+	var mask7 := (1 << _C7_BITS) - 1
+	return _to_text((full * _C7_MUL + _C7_ADD) & mask7, 7)
+
+
+## The address behind a join code ("" if it is not a valid code).
+static func decode_code(text: String) -> String:
+	var s := text.strip_edges().to_upper().replace("-", "").replace(" ", "")
+	if s.length() == 5:
+		var v := _from_text(s)
+		if v < 0:
+			return ""
+		var mask5 := (1 << _C5_BITS) - 1
+		var idx := ((v - _C5_ADD) * _C5_INV) & mask5
+		if idx >= _private_total():
+			return ""
+		for r in _RANGES:
+			var span: int = int(r[2]) << int(r[3])
+			if idx < span:
+				return "%d.%d.%d.%d" % [int(r[0]), int(r[1]) + (idx >> 16), (idx >> 8) & 255, idx & 255]
+			idx -= span
+		return ""
+	if s.length() == 7:
+		var v7 := _from_text(s)
+		if v7 < 0:
+			return ""
+		var mask7 := (1 << _C7_BITS) - 1
+		var full := ((v7 - _C7_ADD) * _C7_INV) & mask7
+		if full >= (1 << 32) or (full >> 24) == 0:
+			return ""
+		return "%d.%d.%d.%d" % [(full >> 24) & 255, (full >> 16) & 255, (full >> 8) & 255, full & 255]
+	return ""
+
+
+## Addresses friends can reach this PC on: [{"label", "ip", "code"}], the real
+## Wi-Fi / Ethernet adapter first, then Tailscale. Virtual adapters (WSL,
+## Hyper-V, VirtualBox, VMware) are skipped: nobody outside this PC can use them.
+static func host_addresses() -> Array:
+	var lan := ""
+	var lan_rank := 99
+	var tail := ""
+	for iface in IP.get_local_interfaces():
+		var nm := (String(iface.get("friendly", "")) + " " + String(iface.get("name", ""))).to_lower()
+		var virtual_adapter := false
+		for bad in ["vethernet", "wsl", "hyper-v", "virtualbox", "vmware", "loopback", "bluetooth", "docker", "npcap"]:
+			if nm.find(bad) >= 0:
+				virtual_adapter = true
+		for a in iface.get("addresses", []):
+			var o := _octets(String(a))
+			if o.is_empty() or o[0] == 127 or (o[0] == 169 and o[1] == 254):
+				continue
+			if o[0] == 100 and o[1] >= 64 and o[1] < 128:
+				tail = String(a)
+			elif not virtual_adapter and _private_index(o) >= 0:
+				var rank := 0 if o[0] == 192 else (1 if o[0] == 10 else 2)
+				if rank < lan_rank:
+					lan_rank = rank
+					lan = String(a)
+	var out: Array = []
+	if lan != "":
+		out.append({"label": "WI-FI / LAN", "ip": lan, "code": join_code(lan, port)})
+	if tail != "":
+		out.append({"label": "TAILSCALE", "ip": tail, "code": join_code(tail, port)})
+	if out.is_empty():
+		var fallback := lan_ip()
+		out.append({"label": "LAN", "ip": fallback, "code": join_code(fallback, port)})
+	return out

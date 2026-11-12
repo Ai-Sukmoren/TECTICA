@@ -12,6 +12,11 @@ var shot := 0
 var t := 0.0
 ## 0..1 black overlay strength for the cut (the HUD draws it).
 var fade := 1.0
+## The operator on the title screen: the world is paused, so its body is told
+## to keep animating (breathing, weapon held ready) and slowly looks around.
+var _rig: Node
+var _base_yaw := 0.0
+var _idle_t := 0.0
 
 
 func setup(main: Node) -> void:
@@ -20,6 +25,10 @@ func setup(main: Node) -> void:
 	fov = 52.0
 	var p: Vector3 = main.player.global_position
 	var yaw: float = main.player.aim_yaw
+	_rig = main.player.rig
+	_base_yaw = yaw
+	if _rig != null:
+		_rig.process_mode = Node.PROCESS_MODE_ALWAYS
 	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 	var right := Vector3(-fwd.z, 0, fwd.x)
 	var chest := p + Vector3.UP * 1.25
@@ -51,8 +60,19 @@ func _landmark(main: Node, fallback: Vector3) -> Vector3:
 	return fallback + Vector3(14, 0, -14)
 
 
+## Hand the operator back to the game (called on deploy).
+func release() -> void:
+	if is_instance_valid(_rig):
+		_rig.process_mode = Node.PROCESS_MODE_INHERIT
+		_rig.aim_yaw = _base_yaw
+
+
 func _process(delta: float) -> void:
 	t += delta
+	_idle_t += delta
+	if is_instance_valid(_rig):
+		# an unhurried scan left and right, with a second slower drift on top
+		_rig.aim_yaw = _base_yaw + sin(_idle_t * 0.45) * 0.42 + sin(_idle_t * 0.17 + 1.3) * 0.2
 	if t >= SHOT_TIME:
 		t = 0.0
 		shot = (shot + 1) % shots.size()

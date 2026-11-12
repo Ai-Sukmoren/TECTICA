@@ -734,7 +734,7 @@ func _draw_overlay(c: Control) -> void:
 		_draw_briefing(c, vp)
 	elif help_timer > 0.0:
 		var a := clampf(help_timer / 2.0, 0.0, 1.0)
-		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Shift sprint  ·  V dropkick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  F interact / first person  ·  Z/V rotate  ·  M music"
+		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Wheel switch weapon  ·  Shift sprint  ·  V dropkick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  F interact / first person  ·  Z/V rotate  ·  M music"
 		if player.using_pad:
 			help = "L-stick move  ·  R-stick aim  ·  RT fire  ·  LT ADS  ·  L3 sprint  ·  A vault  ·  LB/RB peek  ·  B crouch  ·  X reload / interact  ·  Y weapon  ·  Back flashlight  ·  R3 first person  ·  Start pause"
 		_text(c, Vector2(0, vp.y - 26), help, 12, Color(TEXT, a * 0.75), HORIZONTAL_ALIGNMENT_CENTER, vp.x)

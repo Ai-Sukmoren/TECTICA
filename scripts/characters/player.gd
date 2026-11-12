@@ -298,6 +298,24 @@ func _input(event: InputEvent) -> void:
 		rig.fp_pitch = fp_pitch
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if puppet or input_blocked or is_dead or vaulting or kicking or rig == null or weapons.is_empty():
+		return
+	if not (event is InputEventMouseButton and event.pressed):
+		return
+	var step := 0
+	match event.button_index:
+		MOUSE_BUTTON_WHEEL_UP:
+			step = -1
+		MOUSE_BUTTON_WHEEL_DOWN:
+			step = 1
+		_:
+			return
+	rig.cancel_inspect()
+	switch_to(posmod(weapon_index + step, weapons.size()))
+	get_viewport().set_input_as_handled()
+
+
 ## Looking through a magnified optic (ACOG / sniper scope) in first person.
 func is_scoped() -> bool:
 	return first_person and not is_dead and rig.aim_amt > 0.85 and float(current_weapon().stats.zoom) >= 2.0

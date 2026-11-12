@@ -1,6 +1,6 @@
 extends Node3D
-## Tactical overhead camera: smooth follow with aim look-ahead, zoom (mouse
-## wheel), 45-degree rotation steps (Q/E) and trauma-based shake.
+## Tactical overhead camera with aim look-ahead, zoom, 45-degree rotation
+## steps and trauma-based shake.
 
 var target
 var aim_source
@@ -18,10 +18,6 @@ var _target_zoom := 17.0
 var _trauma := 0.0
 var _noise := FastNoiseLite.new()
 var _t := 0.0
-
-const ZOOM_MIN := 8.0
-const ZOOM_MAX := 30.0
-
 
 func _ready() -> void:
 	add_to_group("camera_rig")
@@ -57,14 +53,6 @@ func add_shake(amount: float) -> void:
 func explosion_at(pos: Vector3) -> void:
 	if target:
 		add_shake(clampf(1.0 - target.global_position.distance_to(pos) / 28.0, 0.0, 1.0) * 0.9)
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_target_zoom = clampf(_target_zoom - 1.5, ZOOM_MIN, ZOOM_MAX)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_target_zoom = clampf(_target_zoom + 1.5, ZOOM_MIN, ZOOM_MAX)
 
 
 func _process(delta: float) -> void:

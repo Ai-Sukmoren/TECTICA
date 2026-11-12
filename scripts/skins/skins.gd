@@ -1,6 +1,6 @@
 extends RefCounted
 ## Weapon skin catalogue: finishes, rarities, supply packs and the procedural
-## finish shader. Every finish works on every gun (10 guns x 19 finishes).
+## finish shader. Every finish works on every gun.
 ## A finish recolours a gun's receiver / metal parts and, a little darker,
 ## its polymer / wood furniture; optics glass, lenses and lasers are kept.
 
@@ -16,7 +16,7 @@ const RARITY_COLORS := [Color(0.72, 0.74, 0.77), Color(0.42, 0.86, 0.46), Color(
 const DUP_REFUND := [15, 30, 70, 180, 500, 0]
 
 ## pattern ids understood by FINISH_SHADER
-enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY }
+enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY, TEXTURE }
 
 ## id -> name, rarity, pattern, 4 colours, metallic, roughness, scale, emission, animated
 const FINISHES := {
@@ -59,9 +59,11 @@ const FINISHES := {
 			"c": [Color(0.1, 0.9, 0.6), Color(0.3, 0.4, 1.0), Color(0.95, 0.3, 0.9)]},
 	"event_horizon": {"name": "Event Horizon", "r": 4, "p": P.VOID, "s": 8.0, "m": 0.3, "ro": 0.18, "e": 5.0, "a": 1.0,
 			"c": [Color(0.01, 0.01, 0.02), Color(0.75, 0.55, 1.0), Color(0.25, 0.1, 0.45)]},
-	# --- mythic, admin exclusive: never in packs, carries the 02 patch sticker
+	# --- mythic, admin exclusive: never in packs
 	"ruby": {"name": "Mythic Ruby", "r": 5, "p": P.RUBY, "s": 9.0, "m": 0.6, "ro": 0.03, "e": 1.6, "a": 1.0, "admin": true, "sticker": "patch_02",
 			"c": [Color(0.3, 0.0, 0.02), Color(0.78, 0.0, 0.05), Color(1.0, 0.22, 0.3)]},
+	"mythicskin": {"name": "mythicskin", "r": Rarity.MYTHIC, "p": P.TEXTURE, "s": 6.0, "m": 0.1, "ro": 0.4, "admin": true,
+			"c": [Color(1.0, 1.0, 1.0)], "texture": preload("res://assets/skins/mythicskin.png")},
 }
 
 ## Sticker textures that finishes can carry (placement is per gun, see collection.gd).
@@ -137,6 +139,7 @@ uniform float scale = 6.0;
 uniform float emit = 0.0;
 uniform float anim = 0.0;
 uniform float tint = 1.0;      // furniture parts are drawn a bit darker
+uniform sampler2D finish_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 varying vec3 lp;
 varying vec3 ln;
 
@@ -313,6 +316,10 @@ void fragment() {
 			e = c1 * (0.1 + 0.2 * facet * glow + fres * 0.45) * emit + c2 * glint * emit * 2.2;
 			break;
 		}
+		case 16: {  // artwork projected onto the dominant face of each part
+			col = texture(finish_texture, p + vec2(0.5)).rgb;
+			break;
+		}
 	}
 	ALBEDO = col * tint;
 	METALLIC = m;
@@ -350,6 +357,8 @@ static func material(finish: String, furniture: bool) -> ShaderMaterial:
 	m.set_shader_parameter("emit", float(f.get("e", 0.0)))
 	m.set_shader_parameter("anim", float(f.get("a", 0.0)))
 	m.set_shader_parameter("tint", 0.68 if furniture else 1.0)
+	if f.has("texture"):
+		m.set_shader_parameter("finish_texture", f.texture)
 	_mats[k] = m
 	return m
 

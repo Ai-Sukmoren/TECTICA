@@ -10,6 +10,9 @@ const Collection = preload("res://scripts/skins/collection.gd")
 const Skins = preload("res://scripts/skins/skins.gd")
 const Charm = preload("res://scripts/skins/charm.gd")
 
+const ROTATION_SPEED := 0.01
+const PITCH_LIMIT := PI * 0.47
+
 var hud
 var is_open := false
 var row := 0
@@ -19,6 +22,9 @@ var _sv: SubViewport
 var _pivot: Node3D
 var _cam: Camera3D
 var _preview_key := ""
+var _preview_rect := Rect2()
+var _dragging_preview := false
+var _manual_rotation := false
 var _spin := 0.0
 
 
@@ -63,10 +69,14 @@ func open() -> void:
 	row = 0
 	_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_preview_key = ""
+	_preview_rect = Rect2()
+	_manual_rotation = false
+	_spin = 0.0
 
 
 func close() -> void:
 	is_open = false
+	_dragging_preview = false
 	_sv.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	Loadout.save()
 
@@ -123,6 +133,17 @@ func handle(event: InputEvent) -> bool:
 	_build_rows()
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause") or event.is_action_pressed("crouch"):
 		return true
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging_preview = event.pressed and _preview_rect.has_point(event.position)
+		if _dragging_preview:
+			return false
+	if event is InputEventMouseMotion and _dragging_preview:
+		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_manual_rotation = true
+			_pivot.rotation.y = wrapf(_pivot.rotation.y + event.relative.x * ROTATION_SPEED, -PI, PI)
+			_pivot.rotation.x = clampf(_pivot.rotation.x + event.relative.y * ROTATION_SPEED, -PITCH_LIMIT, PITCH_LIMIT)
+			return false
+		_dragging_preview = false
 	if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
 		row = posmod(row - 1, _rows.size())
 	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
@@ -155,7 +176,6 @@ func handle(event: InputEvent) -> bool:
 func _process(delta: float) -> void:
 	if not is_open:
 		return
-	_spin += delta * 0.45
 	_build_rows()
 	var e: Dictionary = Loadout.entry(_focus_slot())
 	var sk := Collection.skin_for(String(e.id))
@@ -174,7 +194,9 @@ func _process(delta: float) -> void:
 		var dist := 0.75 if pistol else (1.75 if e.id == "awp" else 1.4)
 		_cam.position = Vector3(0, 0.12, dist)
 		_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
-	_pivot.rotation = Vector3(0.12 * sin(_spin * 0.7), -PI * 0.5 + sin(_spin) * 0.9, 0)
+	if not _manual_rotation and not _dragging_preview:
+		_spin += delta * 0.45
+		_pivot.rotation = Vector3(0.12 * sin(_spin * 0.7), -PI * 0.5 + sin(_spin) * 0.9, 0)
 
 
 # ---------------------------------------------------------------- drawing
@@ -238,6 +260,7 @@ func draw(c: Control, vp: Vector2) -> void:
 
 	# --- preview
 	var pr := Rect2(vp.x * 0.42, 110, vp.x * 0.54, vp.x * 0.27)
+	_preview_rect = pr
 	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.8))
 	hud._brackets(c, pr, 18.0, Color(hud.TEXT, 0.4), 1.5)
 	c.draw_texture_rect(_sv.get_texture(), pr, false)
@@ -250,6 +273,7 @@ func draw(c: Control, vp: Vector2) -> void:
 	var sk2 := Collection.skin_for(String(e3.id))
 	hud._text(c, pr.position + Vector2(18, 76), "SKIN  ·  " + (Skins.finish_name(sk2).to_upper() if sk2 != "" else "FACTORY  (ARMORY TO CHANGE)"), 12,
 			Skins.RARITY_COLORS[Skins.rarity_of(sk2)] if sk2 != "" else hud.DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	hud._text(c, Vector2(pr.position.x + 18, pr.end.y - 14), "Left-drag to rotate", 12, hud.DIM)
 
 	# --- stats
 	var sy := pr.end.y + 34.0

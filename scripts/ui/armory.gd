@@ -294,9 +294,12 @@ func handle(event: InputEvent) -> bool:
 					_buy()
 	else:
 		var n_tiles := _tiles().size()
-		if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
+		var mouse_button := MOUSE_BUTTON_NONE
+		if event is InputEventMouseButton and event.pressed:
+			mouse_button = event.button_index
+		if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward") or mouse_button == MOUSE_BUTTON_WHEEL_UP:
 			coll_weapon = posmod(coll_weapon - 1, Skins.weapon_ids().size())
-		elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
+		elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back") or mouse_button == MOUSE_BUTTON_WHEEL_DOWN:
 			coll_weapon = posmod(coll_weapon + 1, Skins.weapon_ids().size())
 		elif event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
 			coll_tile = posmod(coll_tile - 1, n_tiles)
@@ -618,7 +621,15 @@ func _draw_swatch(c: Control, r: Rect2, finish: String) -> void:
 	if finish == "" or not Skins.FINISHES.has(finish):
 		c.draw_rect(r, Color(0.18, 0.2, 0.22))
 		return
-	var cols: Array = Skins.FINISHES[finish].c
+	var definition: Dictionary = Skins.FINISHES[finish]
+	var artwork: Texture2D = definition.get("texture")
+	if artwork != null:
+		var side := minf(artwork.get_width(), artwork.get_height() * r.size.aspect())
+		var crop := Vector2(side, side / r.size.aspect())
+		c.draw_texture_rect_region(artwork, r, Rect2((artwork.get_size() - crop) * 0.5, crop))
+		c.draw_rect(r, Color(0, 0, 0, 0.5), false, 1.0)
+		return
+	var cols: Array = definition.c
 	c.draw_rect(r, cols[0])
 	var nx := 8
 	var ny := 3
@@ -801,7 +812,7 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		hud._text(c, Vector2(0, vp.y - 30), "WASD / arrows move   ·   Z/X rotate   ·   +/- or wheel size   ·   Space side   ·   H hide   ·   R reset   ·   Enter save   ·   Esc cancel", 12, hud.WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	else:
 		var hint := "   ·   T  edit sticker" if _tile_has_sticker() and Collection.has_skin(wid, cur) else ""
-		hud._text(c, Vector2(0, vp.y - 30), "W/S gun   ·   A/D skin   ·   Enter / click equip" + hint + "   ·   Q/E or Tab  packs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+		hud._text(c, Vector2(0, vp.y - 30), "Wheel or W/S weapon   ·   A/D skin   ·   Enter / click equip" + hint + "   ·   Q/E or Tab  packs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
 
 # ---------------------------------------------------------------- outfits

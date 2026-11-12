@@ -176,7 +176,7 @@ static func invite_link(ip: String) -> String:
 
 ## Accepts a join code ("K7M2Q"), "tectica://join/1.2.3.4:7777", "1.2.3.4:7777" or "1.2.3.4".
 ## Returns [ip, port] or [] if it isn't usable.
-static func parse_invite(text: String) -> Array:
+static func parse_invite(text: String, default_port: int = DEFAULT_PORT) -> Array:
 	var s := text.strip_edges()
 	var coded := decode_code(s)
 	if coded != "":
@@ -190,10 +190,16 @@ static func parse_invite(text: String) -> Array:
 		return []
 	if is_ws_address(s):
 		return [s, 0]
+	if s.to_lower().begins_with("https://"):
+		var authority := s.substr(8).get_slice("/", 0)
+		if authority.get_slice(":", 0).to_lower().ends_with(".ts.net"):
+			return ["wss://" + s.substr(8), 0]
+	if s.contains("://"):
+		return []
 	if s.to_lower().split(":")[0].ends_with(".ts.net"):
 		# a bare Funnel address: wss on the game's Funnel port
 		return ["wss://" + (s if s.count(":") == 1 else "%s:%d" % [s, FUNNEL_PORT]), 0]
-	var p := DEFAULT_PORT
+	var p := default_port
 	var colon := s.rfind(":")
 	if colon > 0 and s.count(":") == 1:
 		var ps := s.substr(colon + 1)

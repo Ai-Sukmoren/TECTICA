@@ -70,6 +70,7 @@ var mp_pause := false
 var _mp_rects: Array = []
 var _mp_coop_mode := "ch1"
 var _mp_port_text := ""
+var _mp_replace_join_text := true
 ## host online through Tailscale Funnel (WebSocket) instead of direct UDP
 static var mp_online := false
 
@@ -150,7 +151,8 @@ func setup(p_main: Node) -> void:
 		if not inv.is_empty():
 			_mp_open()
 			Net.join_ip = String(inv[0])
-			_mp_port_text = str(int(inv[1]))
+			if int(inv[1]) > 0:
+				_mp_port_text = str(int(inv[1]))
 			_mp_save()
 			Net.join(Net.join_ip, Net.port)
 			mp_row = 3
@@ -1761,13 +1763,18 @@ func _mp_open() -> void:
 	if Net.player_name == "":
 		Net.player_name = Net.default_name()
 	Net.join_ip = String(Settings.v.get("mp_ip", Net.join_ip))
+	_mp_replace_join_text = true
 	Net.port = int(Settings.v.get("mp_port", Net.port))
 	_mp_port_text = str(Net.port)
 	_mp_coop_mode = main.mode if main.mode in MODES else "ch1"
 
 
+func _mp_input_port() -> int:
+	return clampi(int(_mp_port_text) if _mp_port_text.is_valid_int() else Net.DEFAULT_PORT, 1024, 65535)
+
+
 func _mp_save() -> void:
-	Net.port = clampi(int(_mp_port_text) if _mp_port_text.is_valid_int() else Net.DEFAULT_PORT, 1024, 65535)
+	Net.port = _mp_input_port()
 	_mp_port_text = str(Net.port)
 	Settings.v.mp_name = Net.player_name
 	Settings.v.mp_ip = Net.join_ip
@@ -1804,11 +1811,14 @@ func _mp_activate(i: int, dir: int = 0) -> void:
 			if Net.host("pvp", Net.port, mp_online) == OK:
 				main.net_enter_world("pvp")
 		3, 4:
-			var inv := Net.parse_invite(Net.join_ip)   # a pasted / typed link works too
-			if not inv.is_empty():
-				Net.join_ip = String(inv[0])
-				if Net.join_ip.length() > 0 and int(inv[1]) != Net.DEFAULT_PORT and int(inv[1]) > 0:
-					_mp_port_text = str(int(inv[1]))
+			var inv := Net.parse_invite(Net.join_ip, _mp_input_port())
+			if inv.is_empty():
+				Net.status = "ENTER A JOIN CODE, IP ADDRESS OR INVITE LINK"
+				return
+			Net.join_ip = String(inv[0])
+			_mp_replace_join_text = true
+			if int(inv[1]) > 0:
+				_mp_port_text = str(int(inv[1]))
 			_mp_save()
 			Net.join(Net.join_ip.strip_edges(), Net.port)
 		5:
@@ -1824,9 +1834,10 @@ func _mp_activate(i: int, dir: int = 0) -> void:
 func _mp_input(event: InputEvent) -> void:
 	# typing into the text rows (name / IP / port)
 	if event is InputEventKey and event.pressed and event.ctrl_pressed and event.keycode == KEY_V and mp_row in [3, 4]:
-		var inv := Net.parse_invite(DisplayServer.clipboard_get())
+		var inv := Net.parse_invite(DisplayServer.clipboard_get(), _mp_input_port())
 		if not inv.is_empty():
 			Net.join_ip = String(inv[0])
+			_mp_replace_join_text = false
 			if int(inv[1]) > 0:
 				_mp_port_text = str(int(inv[1]))
 			Net.status = "INVITE PASTED  ·  PRESS ENTER TO JOIN"
@@ -1838,7 +1849,8 @@ func _mp_input(event: InputEvent) -> void:
 				0:
 					Net.player_name = Net.player_name.substr(0, maxi(Net.player_name.length() - 1, 0))
 				3:
-					Net.join_ip = Net.join_ip.substr(0, maxi(Net.join_ip.length() - 1, 0))
+					Net.join_ip = "" if _mp_replace_join_text else Net.join_ip.substr(0, maxi(Net.join_ip.length() - 1, 0))
+					_mp_replace_join_text = false
 				4:
 					_mp_port_text = _mp_port_text.substr(0, maxi(_mp_port_text.length() - 1, 0))
 			return
@@ -1850,6 +1862,9 @@ func _mp_input(event: InputEvent) -> void:
 					if Net.player_name.length() < 16:
 						Net.player_name += ch.to_upper()
 				3:
+					if _mp_replace_join_text:
+						Net.join_ip = ""
+						_mp_replace_join_text = false
 					if Net.join_ip.length() < 120 and ch != " ":
 						Net.join_ip += ch
 				4:

@@ -79,12 +79,17 @@ func _initialize() -> void:
 
 	var inv := Net.parse_invite(code)
 	check(inv.size() == 2 and String(inv[0]) == "192.168.1.23" and int(inv[1]) == Net.DEFAULT_PORT, "typing a code in JOIN resolves to the host")
+	check(Net.parse_invite(code, 7790) == ["192.168.1.23", Net.DEFAULT_PORT], "a join code overrides a previously entered port")
+	check(Net.parse_invite("100.64.0.5", 7790) == ["100.64.0.5", 7790], "a direct Tailscale IP uses the entered port")
 	inv = Net.parse_invite("192.168.1.5")
 	check(String(inv[0]) == "192.168.1.5" and int(inv[1]) == Net.DEFAULT_PORT, "plain addresses still work")
 	inv = Net.parse_invite("tectica://join/10.0.0.9:7790")
 	check(String(inv[0]) == "10.0.0.9" and int(inv[1]) == 7790, "invite links still work")
 	inv = Net.parse_invite("pc.tail1234.ts.net")
 	check(String(inv[0]).begins_with("wss://"), "Funnel addresses still work")
+	check(Net.parse_invite("https://pc.tail1234.ts.net:10000/") == ["wss://pc.tail1234.ts.net:10000", 0], "HTTPS Funnel links use WebSocket")
+	check(Net.parse_invite("tectica://join/wss://pc.tail1234.ts.net:10000") == ["wss://pc.tail1234.ts.net:10000", 0], "copied Funnel links use WebSocket")
+	check(Net.parse_invite("https://example.com").is_empty(), "unrecognized URLs are rejected")
 
 	var mine := Net.host_addresses()
 	var good := not mine.is_empty()

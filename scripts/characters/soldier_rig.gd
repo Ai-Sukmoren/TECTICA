@@ -289,11 +289,31 @@ func build(p: Dictionary) -> void:
 		_mesh(sh, ML.capsule(0.063, 0.34), camo, Vector3(0, -UPPER_ARM * 0.5, 0))
 		_mesh(sh, ML.rbox(Vector3(0.012, 0.07, 0.07)), gear, Vector3(side * 0.06, -0.09, 0))
 		var el := _node(sh, "Elbow", Vector3(0, -UPPER_ARM, 0))
-		_mesh(el, ML.capsule(0.055, 0.31), camo, Vector3(0, -FOREARM * 0.5, 0))
+		# forearm: a sleeve that tapers to the wrist, bunched cloth at the elbow,
+		# a rolled cuff and the glove's wrist strap
+		_mesh(el, ML.sphere(0.057, false, 12), camo, Vector3(0, -0.012, 0))
+		_mesh(el, ML.cylinder(0.041, 0.056, 0.25, 14), camo, Vector3(0, -0.135, 0))
+		for k in 3:
+			_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
+		_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
+		_mesh(el, ML.cylinder(0.039, 0.041, 0.032, 14), p.gloves, Vector3(0, -0.272, 0))
+		_mesh(el, ML.cylinder(0.042, 0.042, 0.012, 14), detail, Vector3(0, -0.264, 0))
 		_mesh(el, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -0.01, -0.05))
 		var hand := _node(el, "Hand", Vector3(0, -FOREARM, 0))
-		_mesh(hand, ML.rbox(Vector3(0.072, 0.095, 0.1)), p.gloves, Vector3.ZERO)
-		_mesh(hand, ML.rbox(Vector3(0.06, 0.03, 0.11)), p.gloves, Vector3(0, 0.05, -0.02))
+		# glove: palm, padded back with a knuckle guard, four curled fingers
+		# wrapping the grip and a thumb over the top
+		_mesh(hand, ML.rbox(Vector3(0.05, 0.088, 0.088)), p.gloves, Vector3(side * 0.008, 0.0, 0.0))
+		_mesh(hand, ML.rbox(Vector3(0.016, 0.07, 0.066)), detail, Vector3(side * 0.037, 0.004, -0.004))
+		_mesh(hand, ML.rbox(Vector3(0.02, 0.03, 0.082)), detail, Vector3(side * 0.034, 0.012, -0.05), Vector3(0, side * 0.25, 0))
+		for k in 4:
+			var fy := 0.032 - k * 0.0215
+			var flen := 0.064 - absf(k - 1.2) * 0.006
+			# first joint runs forward from the knuckle, second curls across the grip
+			_mesh(hand, ML.capsule(0.0105, flen), p.gloves, Vector3(side * 0.02, fy, -0.062), Vector3(PI * 0.5, 0, 0))
+			_mesh(hand, ML.capsule(0.01, 0.05), p.gloves, Vector3(-side * 0.004, fy, -0.09), Vector3(0, 0, PI * 0.5))
+			_mesh(hand, ML.capsule(0.0095, 0.04), p.gloves, Vector3(-side * 0.03, fy, -0.074), Vector3(PI * 0.5, side * 0.5, 0))
+		_mesh(hand, ML.capsule(0.0125, 0.07), p.gloves, Vector3(-side * 0.002, 0.052, -0.03), Vector3(PI * 0.5, -side * 0.5, 0))
+		_mesh(hand, ML.sphere(0.017, false, 8), p.gloves, Vector3(side * 0.012, 0.046, 0.006))
 		shoulders.append(sh)
 		elbows.append(el)
 		hands.append(hand)

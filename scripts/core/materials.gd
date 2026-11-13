@@ -4,6 +4,48 @@ extends RefCounted
 static var _cache: Dictionary = {}
 
 
+## Scanned PBR maps (ambientCG, CC0) in assets/pbr: "<set>_<map>", map =
+## color | detail | normal | rough | ao. `detail` is the colour map's luminance
+## normalised to 0.75, for tinting with any albedo colour. Null if missing.
+static func pbr(tex_name: String) -> Texture2D:
+	var key := "pbr_" + tex_name
+	if _cache.has(key):
+		return _cache[key]
+	var path := "res://assets/pbr/%s.jpg" % tex_name
+	var t: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	_cache[key] = t
+	return t
+
+
+## Gives a triplanar material a scanned surface: real normal map, roughness
+## map and (optionally) the luminance detail as albedo, tinted by `color`.
+## `tile` = metres per texture repeat. Returns false if the set is missing.
+static func _scan(m: StandardMaterial3D, set_name: String, tile: float, bump: float, rough: float, color = null) -> bool:
+	var n := pbr(set_name + "_normal")
+	if n == null:
+		return false
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE / tile
+	m.normal_enabled = true
+	m.normal_texture = n
+	m.normal_scale = bump
+	m.roughness = rough
+	m.roughness_texture = pbr(set_name + "_rough")
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	var ao := pbr(set_name + "_ao")
+	if ao != null:
+		m.ao_enabled = true
+		m.ao_texture = ao
+		m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		m.ao_light_affect = 0.3
+	if color != null:
+		var c: Color = color
+		m.albedo_texture = pbr(set_name + "_detail")
+		m.albedo_color = Color(c.r / 0.72, c.g / 0.72, c.b / 0.72)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return true
+
+
 static func solid(color: Color, roughness: float = 0.8, metallic: float = 0.0) -> StandardMaterial3D:
 	var key := "solid_%s_%.2f_%.2f" % [color.to_html(), roughness, metallic]
 	if _cache.has(key):
@@ -76,13 +118,27 @@ static func camo(key: String, colors: Array, scale: float = 3.0) -> StandardMate
 	if _cache.has(key):
 		return _cache[key]
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = noise_texture(colors, [0.0, 0.42, 0.56, 0.7], 0.022, absi(hash(key)) % 9999, false, true)
+	m.albedo_texture = noise_texture(colors, [0.0, 0.42, 0.56, 0.7], 0.0055, absi(hash(key)) % 9999, false, true, 1024)
 	m.roughness = 0.92
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3.ONE * scale
 	_add_normal(m, 0.09, 3.0, 0.5)
+	# printed cloth: the weave rides on top of the pattern as a detail layer
+	if pbr("fabric_normal") != null:
+		# big soft folds from the noise normal; the thread-level weave is a
+		# detail layer on its own UV so it stays fine whatever the pattern size
+		m.normal_scale = 0.35
+		m.detail_enabled = true
+		m.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+		m.detail_albedo = pbr("fabric_detail")
+		m.detail_normal = pbr("fabric_normal")
+		m.detail_uv_layer = BaseMaterial3D.DETAIL_UV_2
+		m.uv2_triplanar = true
+		m.uv2_scale = Vector3.ONE * 11.0
+		m.albedo_color = Color(1.3, 1.3, 1.3)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	m.rim_enabled = true
-	m.rim = 0.1
+	m.rim = 0.06
 	m.rim_tint = 0.6
 	_cache[key] = m
 	return m
@@ -99,6 +155,7 @@ static func fabric(key: String, color: Color, scale: float = 6.0) -> StandardMat
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3.ONE * scale
 	_add_normal(m, 0.18, 2.5, 0.6)
+	_scan(m, "fabric", 0.1, 1.0, 1.0, color)
 	_cache[key] = m
 	return m
 
@@ -114,6 +171,8 @@ static func concrete(key: String, color: Color, scale: float = 0.35) -> Standard
 	m.uv1_world_triplanar = true
 	m.uv1_scale = Vector3.ONE * scale
 	_add_normal(m, 0.05, 6.0, 1.0)
+	if _scan(m, "concrete", 1.6, 1.0, 1.0, color):
+		m.uv1_world_triplanar = true
 	_cache[key] = m
 	return m
 
@@ -128,6 +187,7 @@ static func wood(key: String, color: Color) -> StandardMaterial3D:
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3(0.6, 3.0, 0.6)
 	_add_normal(m, 0.06, 5.0, 0.9)
+	_scan(m, "bark" if ("bark" in key or key == "log") else "planks", 0.9, 1.0, 1.0, color)
 	_cache[key] = m
 	return m
 
@@ -145,6 +205,14 @@ static func painted_metal(key: String, color: Color) -> StandardMaterial3D:
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3.ONE * 0.4
 	_add_normal(m, 0.08, 3.5, 0.7)
+	# brushed / scratched steel under the paint: streaky roughness and fine scratches
+	if pbr("metal_normal") != null:
+		m.normal_texture = pbr("metal_normal")
+		m.normal_scale = 0.8
+		m.roughness_texture = pbr("metal_detail")
+		m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		m.roughness = 0.75
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_cache[key] = m
 	return m
 

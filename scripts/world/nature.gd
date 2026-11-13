@@ -23,6 +23,13 @@ uniform sampler2D mask : filter_linear, repeat_disable;
 uniform sampler2D noise_a : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D noise_b : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+// scanned ground (ambientCG): colour normalised by its mean so the palette above stays in charge
+uniform sampler2D scan_grass : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_forest : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_grass_n : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_forest_n : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D scan_grass_r : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float scan_on = 0.0;
 uniform float map_size = 200.0;
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
@@ -62,6 +69,17 @@ void fragment() {
 	float wet = smoothstep(0.2, 0.8, m.b);
 	float puddle = smoothstep(0.7, 0.78, n3) * smoothstep(0.75, 0.95, m.r) * (1.0 - wet);
 
+	// scanned detail at two scales (2.1 m and 7.7 m repeats, rotated) hides tiling
+	vec2 q = vec2(p.x * 0.8 - p.y * 0.6, p.x * 0.6 + p.y * 0.8);
+	vec3 sg = texture(scan_grass, p / 2.1).rgb * 0.6 + texture(scan_grass, q / 7.7).rgb * 0.4;
+	vec3 sf = texture(scan_forest, p / 2.1).rgb * 0.6 + texture(scan_forest, q / 7.7).rgb * 0.4;
+	vec3 sg_n = sg / vec3(0.239, 0.22, 0.08);
+	vec3 sf_n = sf / vec3(0.331, 0.305, 0.111);
+	grass = mix(grass, grass * mix(vec3(dot(sg_n, vec3(0.33))), sg_n, 0.55), scan_on);
+	litter = mix(litter, litter * mix(vec3(dot(sf_n, vec3(0.33))), sf_n, 0.5), scan_on);
+	float sd = dot(sf_n, vec3(0.33));
+	dirt = mix(dirt, dirt * sd * 1.05, scan_on);
+	mud = mix(mud, mud * sd, scan_on);
 	vec3 col = mix(grass, litter, forest);
 	// scattered wildflowers in open meadow (white clover / yellow buttercup)
 	float fl = texture(noise_a, p * 5.3 + 0.7).r;
@@ -77,8 +95,14 @@ void fragment() {
 	vec3 nB = texture(nrm, p * 1.6 + 0.3).rgb;
 	// Blend signed tangent normals, then encode back to texture space.
 	vec3 blended = normalize(mix(nA * 2.0 - 1.0, nB * 2.0 - 1.0, 0.45));
+	if (scan_on > 0.5) {
+		float open = (1.0 - forest) * (1.0 - d);
+		vec3 sn = mix(texture(scan_forest_n, p / 2.1).rgb, texture(scan_grass_n, p / 2.1).rgb, open) * 2.0 - 1.0;
+		blended = normalize(vec3(blended.xy * 0.5 + sn.xy * 1.5, blended.z));
+		ROUGHNESS = mix(ROUGHNESS, ROUGHNESS * (0.7 + 0.45 * texture(scan_grass_r, p / 2.1).r), 1.0 - max(wet, puddle));
+	}
 	NORMAL_MAP = blended * 0.5 + 0.5;
-	NORMAL_MAP_DEPTH = mix(0.85, 0.15, max(wet, puddle));
+	NORMAL_MAP_DEPTH = mix(scan_on > 0.5 ? 1.1 : 0.85, 0.15, max(wet, puddle));
 	AO = 0.82 + 0.18 * fine;
 	AO_LIGHT_AFFECT = 0.4;
 }
@@ -95,6 +119,13 @@ static func ground_material(mask: Texture2D, map_size: float) -> ShaderMaterial:
 	m.set_shader_parameter("noise_b", _noise(0.05, 23))
 	m.set_shader_parameter("nrm", M.normal_tex(0.06, 7, 6.0))
 	m.set_shader_parameter("map_size", map_size)
+	if M.pbr("dirt_grass_color") != null and M.pbr("forest_floor_color") != null:
+		m.set_shader_parameter("scan_grass", M.pbr("dirt_grass_color"))
+		m.set_shader_parameter("scan_forest", M.pbr("forest_floor_color"))
+		m.set_shader_parameter("scan_grass_n", M.pbr("dirt_grass_normal"))
+		m.set_shader_parameter("scan_forest_n", M.pbr("forest_floor_normal"))
+		m.set_shader_parameter("scan_grass_r", M.pbr("dirt_grass_rough"))
+		m.set_shader_parameter("scan_on", 1.0)
 	return m
 
 
@@ -273,9 +304,9 @@ static func set_fade(center: Vector3, r_in: float, r_out: float) -> void:
 const GRASS_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
-uniform vec3 tip : source_color = vec3(0.24, 0.4, 0.1);
-uniform vec3 dry_tip : source_color = vec3(0.52, 0.46, 0.2);
-uniform vec3 root : source_color = vec3(0.08, 0.16, 0.035);
+uniform vec3 tip : source_color = vec3(0.25, 0.33, 0.12);
+uniform vec3 dry_tip : source_color = vec3(0.5, 0.45, 0.25);
+uniform vec3 root : source_color = vec3(0.09, 0.13, 0.045);
 varying float hgt;
 varying float dry;
 varying vec3 icol;
@@ -295,9 +326,9 @@ void vertex() {
 void fragment() {
 	vec3 t = mix(tip, dry_tip, dry * 0.7);
 	ALBEDO = mix(root, t, smoothstep(0.0, 0.85, hgt)) * icol;
-	ROUGHNESS = 0.7;
-	SPECULAR = 0.35;
-	BACKLIGHT = vec3(0.2, 0.26, 0.06) * hgt;
+	ROUGHNESS = 0.78;
+	SPECULAR = 0.25;
+	BACKLIGHT = vec3(0.16, 0.2, 0.06) * hgt;
 	AO = mix(0.72, 1.0, hgt);
 	AO_LIGHT_AFFECT = 0.6;
 }
@@ -318,13 +349,14 @@ static func grass_tuft_mesh(seed_value: int = 5) -> ArrayMesh:
 	rng.seed = seed_value
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in 10:
+	# many thin blades (4-9 mm wide) instead of a few broad ones
+	for i in 26:
 		var a := rng.randf() * TAU
-		var r := sqrt(rng.randf()) * 0.2
+		var r := sqrt(rng.randf()) * 0.24
 		var base := Vector3(cos(a) * r, 0, sin(a) * r)
 		var face := rng.randf() * TAU
-		var side := Vector3(cos(face), 0, sin(face)) * rng.randf_range(0.016, 0.03)
-		var h := rng.randf_range(0.16, 0.46)
+		var side := Vector3(cos(face), 0, sin(face)) * rng.randf_range(0.004, 0.009)
+		var h := rng.randf_range(0.1, 0.4) * (1.25 if i % 7 == 0 else 1.0)
 		var lean := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.04, 0.22) * h * 2.0
 		var mid := base + lean * 0.3 + Vector3(0, h * 0.55, 0)
 		var tip := base + lean + Vector3(0, h, 0)
@@ -648,6 +680,30 @@ vec2 face_uv() {
 	return an.y > 0.6 ? wp.xz : (an.x > an.z ? vec2(wp.z, wp.y) : vec2(wp.x, wp.y));
 }
 float hash1(float x) { return fract(sin(x * 91.7) * 43758.5453); }
+
+// scanned micro surface (ambientCG): tinted luminance detail, normal, roughness
+uniform sampler2D pbr_d : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D pbr_n : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D pbr_r : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float pbr_tile = 1.5;
+uniform float pbr_on = 0.0;
+float micro_detail(vec2 uv) {
+	// two scales so the repeat never reads at a distance
+	float a = texture(pbr_d, uv / pbr_tile).r;
+	float b = texture(pbr_d, uv / (pbr_tile * 3.7) + 0.37).r;
+	return mix(1.0, (a * 0.65 + b * 0.35) / 0.75, pbr_on);
+}
+float micro_rough(vec2 uv, float base) {
+	return mix(base, clamp(base * (0.55 + 0.6 * texture(pbr_r, uv / pbr_tile).r), 0.05, 1.0), pbr_on);
+}
+// tangent frame of the face projection, for NORMAL_MAP on any wall / floor
+void face_frame(mat4 view, out vec3 t, out vec3 b) {
+	vec3 an = abs(wn);
+	vec3 wt = an.y > 0.6 ? vec3(1.0, 0.0, 0.0) : (an.x > an.z ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0));
+	vec3 wb = an.y > 0.6 ? vec3(0.0, 0.0, -1.0) : vec3(0.0, 1.0, 0.0);
+	t = normalize((view * vec4(wt, 0.0)).xyz);
+	b = normalize((view * vec4(wb, 0.0)).xyz);
+}
 """
 
 ## Sawn timber: individual boards with their own tone, long grain, knots and dark seams.
@@ -670,11 +726,20 @@ void fragment() {
 	col = mix(col, col * vec3(0.8, 0.85, 0.8), smoothstep(0.55, 0.9, texture(noise, uv * 0.07).r) * 0.35);   // grey weathering
 	float seam = smoothstep(0.0, 0.04, bf) * smoothstep(0.0, 0.04, 1.0 - bf);
 	col *= mix(0.3, 1.0, seam);
-	ALBEDO = col;
-	ROUGHNESS = 0.86;
+	// real sawn-wood grain along each board (texture boards run across, so swap axes)
+	vec2 muv = vec2(uv.y + h * 3.1, uv.x);
+	ALBEDO = col * micro_detail(muv);
+	ROUGHNESS = micro_rough(muv, 0.86);
 	SPECULAR = 0.25;
 	AO = mix(0.55, 1.0, seam);
 	AO_LIGHT_AFFECT = 0.5;
+	if (pbr_on > 0.5) {
+		vec3 t; vec3 b;
+		face_frame(VIEW_MATRIX, t, b);
+		TANGENT = b; BINORMAL = -t;
+		NORMAL_MAP = texture(pbr_n, muv / pbr_tile).rgb;
+		NORMAL_MAP_DEPTH = 1.1;
+	}
 }
 """
 
@@ -701,9 +766,16 @@ void fragment() {
 		float streak = texture(noise, vec2(uv.x * 0.9, uv.y * 0.045)).r;
 		col *= 1.0 - smoothstep(0.55, 0.8, streak) * 0.25;
 	}
-	ALBEDO = col;
-	ROUGHNESS = 0.93;
+	ALBEDO = col * micro_detail(uv);
+	ROUGHNESS = micro_rough(uv, 0.93);
 	SPECULAR = 0.2;
+	if (pbr_on > 0.5) {
+		vec3 t; vec3 b;
+		face_frame(VIEW_MATRIX, t, b);
+		TANGENT = t; BINORMAL = b;
+		NORMAL_MAP = texture(pbr_n, uv / pbr_tile).rgb;
+		NORMAL_MAP_DEPTH = 1.2;
+	}
 }
 """
 
@@ -749,14 +821,28 @@ static func _face_material(code: String, color: Color, noise_seed: int) -> Shade
 	return m
 
 
+## Hooks a scanned set (assets/pbr) into a shader that includes the micro block.
+static func _micro(m: ShaderMaterial, set_name: String, tile: float) -> void:
+	if M.pbr(set_name + "_normal") == null:
+		return
+	m.set_shader_parameter("pbr_d", M.pbr(set_name + "_detail"))
+	m.set_shader_parameter("pbr_n", M.pbr(set_name + "_normal"))
+	m.set_shader_parameter("pbr_r", M.pbr(set_name + "_rough"))
+	m.set_shader_parameter("pbr_tile", tile)
+	m.set_shader_parameter("pbr_on", 1.0)
+
+
 static func plank_material(color: Color, board: float = 0.19) -> ShaderMaterial:
 	var m := _face_material(PLANK_SHADER, color, 61)
 	m.set_shader_parameter("board", board)
+	_micro(m, "planks", 1.3)
 	return m
 
 
 static func concrete_material(color: Color) -> ShaderMaterial:
-	return _face_material(CONCRETE_SHADER, color, 67)
+	var m := _face_material(CONCRETE_SHADER, color, 67)
+	_micro(m, "concrete", 1.7)
+	return m
 
 
 static func hesco_material(color: Color = Color(0.52, 0.47, 0.35)) -> ShaderMaterial:
@@ -858,14 +944,24 @@ void sky() {
 	float sd = max(dot(d, sun_dir), 0.0);
 	col += sun_color * (smoothstep(0.9992, 0.9996, sd) * 12.0 + pow(sd, 10.0) * 0.45 + pow(sd, 3.0) * 0.12) * sun_vis;
 	// Two inexpensive noise layers form soft, drifting cloud banks.
-	vec2 cloud_uv = d.xz / max(h + 0.15, 0.15) * 0.10 + vec2(TIME * 0.0006, 0.0);
+	// haze: the sky whitens toward the horizon and around the sun
+	col = mix(col, horizon_color * 1.04, pow(1.0 - clamp(h, 0.0, 1.0), 7.0) * 0.55);
+	// Cloud deck on a curved dome (no streaking at the horizon): broad banks,
+	// billow detail and wispy edges, lit from the sun side and shaded beneath.
+	vec2 cloud_uv = d.xz / (h + 0.42) * 0.16 + vec2(TIME * 0.0005, TIME * 0.0002);
 	float broad = texture(cloud_noise, cloud_uv).r;
-	float detail = texture(cloud_noise, cloud_uv * 2.7 + 0.31).r;
-	float cloud = smoothstep(0.47, 0.67, broad * 0.75 + detail * 0.25);
-	cloud *= smoothstep(0.01, 0.18, h) * (1.0 - night * 0.8);
-	vec3 cloud_color = mix(horizon_color * 0.85, vec3(0.93, 0.92, 0.87), smoothstep(0.48, 0.75, broad));
+	float detail = texture(cloud_noise, cloud_uv * 2.9 + 0.31).r;
+	float wisp = texture(cloud_noise, cloud_uv * 7.3 + 0.67).r;
+	float dens = broad * 0.62 + detail * 0.27 + wisp * 0.11;
+	float cloud = smoothstep(0.5, 0.68, dens);
+	cloud *= smoothstep(0.0, 0.14, h) * (1.0 - night * 0.8);
+	float thick = smoothstep(0.52, 0.8, dens);
+	float lit = 0.5 + 0.5 * texture(cloud_noise, cloud_uv + sun_dir.xz * 0.012).r - dens * 0.5 + 0.25;
+	vec3 cloud_color = mix(vec3(0.97, 0.96, 0.94), mix(horizon_color, vec3(0.5, 0.52, 0.56), 0.55), thick * 0.75);
+	cloud_color *= mix(0.86, 1.08, clamp(lit, 0.0, 1.0));
+	cloud_color = mix(cloud_color, cloud_color * sun_color * 1.05, 0.35 * sun_vis);
 	cloud_color = mix(cloud_color, horizon_color * 0.7, night);
-	col = mix(col, cloud_color, cloud * 0.85);
+	col = mix(col, cloud_color, cloud * 0.9);
 	if (h > 0.0 && night > 0.01) {
 		vec3 g = floor(d * 260.0);
 		float s = h3(g);
@@ -1035,11 +1131,13 @@ void fragment() {
 		wear = (1.0 - smoothstep(0.12, 0.5, min(wx, wz))) * (0.6 + 0.4 * macro);
 	}
 	col *= 1.0 - wear * 0.35;
-	ALBEDO = col;
-	ROUGHNESS = mix(0.9, 0.7, wear) - crack * 0.1;
+	ALBEDO = col * micro_detail(p);
+	ROUGHNESS = micro_rough(p, mix(0.9, 0.7, wear) - crack * 0.1);
 	SPECULAR = 0.3;
-	NORMAL_MAP = texture(nrm, p * 0.8).rgb;
-	NORMAL_MAP_DEPTH = 0.5;
+	vec3 nA = texture(nrm, p * 0.8).rgb * 2.0 - 1.0;
+	vec3 nB = texture(pbr_n, p / pbr_tile).rgb * 2.0 - 1.0;
+	NORMAL_MAP = normalize(mix(nA, vec3(nA.xy * 0.4 + nB.xy * 1.6, nA.z), pbr_on)) * 0.5 + 0.5;
+	NORMAL_MAP_DEPTH = mix(0.5, 1.0, pbr_on);
 }
 """
 
@@ -1134,6 +1232,7 @@ static func asphalt_material(lane: float = 2.5) -> ShaderMaterial:
 	var m := _face_material(ASPHALT_SHADER, Color(0.1, 0.1, 0.105), 97)
 	m.set_shader_parameter("nrm", M.normal_tex(0.2, 23, 4.0, true))
 	m.set_shader_parameter("lane", lane)
+	_micro(m, "asphalt", 2.2)
 	return m
 
 

@@ -1,0 +1,13 @@
+PBR texture sets from ambientCG.com (CC0 1.0 Universal, public domain).
+https://ambientcg.com  -  https://creativecommons.org/publicdomain/zero/1.0/
+
+fabric        Fabric 061       https://ambientcg.com/a/Fabric061
+asphalt       Road 012 A       https://ambientcg.com/a/Road012A
+concrete      Concrete 047 A   https://ambientcg.com/a/Concrete047A
+forest_floor  Ground 037       https://ambientcg.com/a/Ground037
+dirt_grass    Ground 003       https://ambientcg.com/a/Ground003
+planks        Planks 023 A     https://ambientcg.com/a/Planks023A
+metal         Metal 054 A      https://ambientcg.com/a/Metal054A
+bark          Bark 012         https://ambientcg.com/a/Bark012
+
+*_detail.jpg are luminance-normalised versions of the colour maps, made for this project.

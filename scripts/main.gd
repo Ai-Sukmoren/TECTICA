@@ -432,8 +432,8 @@ func _build_environment() -> void:
 	env.sdfgi_min_cell_size = 0.2
 	env.sdfgi_energy = 0.9
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.1
-	env.adjustment_saturation = 1.06
+	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 0.9       # muted, neutral tones (no candy colours)
 	env.adjustment_brightness = 1.0
 	var we := WorldEnvironment.new()
 	we.environment = env

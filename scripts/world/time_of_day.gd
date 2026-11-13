@@ -40,6 +40,9 @@ func setup(p_env: Environment, p_sun: DirectionalLight3D, p_level, start_hour: f
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	# part of the fill comes from the sky itself: surfaces facing up read cooler
+	# and brighter than undersides, instead of one flat ambient colour
+	env.ambient_light_sky_contribution = 0.45
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	base_exposure = env.tonemap_exposure
 	apply_now()
@@ -101,13 +104,16 @@ func _apply(delta: float) -> void:
 	sun.light_volumetric_fog_energy = lerpf(1.25, 0.5, night) + golden * 1.4
 
 	# --- sky
-	var top_day := Color(0.16, 0.38, 0.78)
-	var hor_day := Color(0.62, 0.74, 0.86)
-	var top := top_day.lerp(Color(0.2, 0.22, 0.38), golden).lerp(Color(0.012, 0.018, 0.045), night)
-	var hor := hor_day.lerp(Color(0.95, 0.55, 0.32), golden).lerp(Color(0.04, 0.055, 0.1), night)
-	if red_tint > 0.0:
-		top = top.lerp(Color(0.12, 0.02, 0.02), red_tint * 0.6)
-		hor = hor.lerp(Color(0.55, 0.12, 0.06), red_tint * 0.7)
+	# clear-sky colours: a desaturated blue zenith paling to a hazy horizon
+	var top_day := Color(0.33, 0.52, 0.8)
+	var hor_day := Color(0.74, 0.81, 0.87)
+	var top := top_day.lerp(Color(0.3, 0.33, 0.48), golden).lerp(Color(0.012, 0.018, 0.045), night)
+	var hor := hor_day.lerp(Color(0.95, 0.6, 0.38), golden).lerp(Color(0.04, 0.055, 0.1), night)
+	# zombie mode's blood-red sky belongs to dusk and night; midday stays natural
+	var red := red_tint * clampf(maxf(golden, night) * 1.4, 0.12, 1.0)
+	if red > 0.0:
+		top = top.lerp(Color(0.12, 0.02, 0.02), red * 0.6)
+		hor = hor.lerp(Color(0.55, 0.12, 0.06), red * 0.7)
 	sky_mat.set_shader_parameter("sun_dir", sun_dir)
 	sky_mat.set_shader_parameter("moon_dir", moon_dir)
 	sky_mat.set_shader_parameter("top_color", top)
@@ -120,12 +126,12 @@ func _apply(delta: float) -> void:
 	# --- ambient, fog, exposure
 	var amb_day := Color(0.58, 0.64, 0.74)  # cool (not blue) sky fill; sunlight stays warm
 	var amb := amb_day.lerp(Color(0.75, 0.55, 0.45), golden).lerp(Color(0.16, 0.22, 0.42), night)
-	if red_tint > 0.0:
-		amb = amb.lerp(Color(0.6, 0.3, 0.28), red_tint * 0.5)
+	if red > 0.0:
+		amb = amb.lerp(Color(0.6, 0.3, 0.28), red * 0.5)
 	env.ambient_light_color = amb
 	env.ambient_light_energy = lerpf(0.68, 0.5, night)
 	var morning := clampf(1.0 - absf(hour - 6.8) / 2.0, 0.0, 1.0)
-	env.volumetric_fog_density = 0.003 + morning * 0.008 + golden * 0.005 + night * 0.005 + red_tint * 0.012
+	env.volumetric_fog_density = 0.003 + morning * 0.008 + golden * 0.005 + night * 0.005 + red * 0.012
 	env.volumetric_fog_albedo = hor.lerp(amb, 0.5).lerp(Color(0.8, 0.78, 0.7), 0.35 * (1.0 - night))
 	env.fog_light_color = hor
 	var bright := float(Settings.v.get("brightness", 1.0))

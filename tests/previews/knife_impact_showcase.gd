@@ -1,7 +1,7 @@
 extends SceneTree
 ## Knife impact showcase for the movie writer: first-person slashes into a
 ## zombie (hits, then a kill), a backstab, then the same from top-down.
-##   godot --path . --fixed-fps 60 --write-movie knife.avi -s res://tests/previews/knife_impact_showcase.gd
+##   godot --path . --fixed-fps 60 --write-movie knife.avi -s res://tests/previews/knife_impact_showcase.gd [-- karambit]
 ## Prints SHOT_START <frame> so the loading can be trimmed.
 const Main = preload("res://scripts/main.gd")
 const Settings = preload("res://scripts/core/settings.gd")
@@ -55,6 +55,12 @@ func run() -> void:
 	p.global_position = Vector3(1.5, 0.05, 30)
 	p.aim_yaw = 0.0
 	p.fp_pitch = -0.06
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0:
+		# -- <knife id>: karambit, butterfly, knife_combat
+		var specs: Array = p.weapons.map(func(w): return [String(w.id), w.attachments])
+		specs[p._slot("knife")] = [args[0], {}]
+		p.set_loadout(specs)
 	p.weapon_index = p._slot("knife")
 	p._equip_current()
 	p.set_first_person(true)

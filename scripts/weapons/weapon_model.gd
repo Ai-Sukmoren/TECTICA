@@ -293,11 +293,11 @@ static func _m4(r: Node3D) -> Dictionary:
 	_grip(r, _poly)
 	return {
 		"grip": _marker(r, "Grip", Vector3(0, -0.02, 0.012), Vector3(-0.3, 0, 0)),
-		"support": _marker(r, "Support", Vector3(-0.005, 0.035, -0.34), Vector3(0, 0, -0.5)),
+		"support": _marker(r, "Support", Vector3(-0.005, 0.035, -0.3), Vector3(0, 0, -0.5)),
 		"charge": _marker(r, "Charge", Vector3(0.0, 0.09, 0.07)),
 		"eject": _marker(r, "Eject", Vector3(0.03, 0.075, -0.05)),
 		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.072, -0.6)),
-		"under_at": _marker(r, "UnderAt", Vector3(0, 0.044, -0.36)),
+		"under_at": _marker(r, "UnderAt", Vector3(0, 0.044, -0.31)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, 0.0, -0.11), Vector3(0.12, 0, 0)),
 		"mag_style": "stanag",
 		"hg_w": 0.0338,

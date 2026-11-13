@@ -37,8 +37,8 @@ const HIP_HALF := 0.1
 ## Weapon poses relative to the chest: [position, euler(pitch, yaw, roll)].
 const POSES := {
 	"rifle": {
-		"ready": [Vector3(0.13, -0.07, -0.25), Vector3(-0.34, 0.14, 0.06)],
-		"aim": [Vector3(0.11, 0.075, -0.24), Vector3(0.0, 0.0, 0.0)],
+		"ready": [Vector3(0.09, -0.07, -0.25), Vector3(-0.34, 0.14, 0.06)],
+		"aim": [Vector3(0.08, 0.075, -0.24), Vector3(0.0, 0.0, 0.0)],
 		"sprint": [Vector3(0.05, 0.02, -0.24), Vector3(0.95, 0.42, -0.35)],
 		"sprint_1h": [Vector3(0.27, -0.23, -0.2), Vector3(-0.42, 0.04, 0.12)],
 		"reload": [Vector3(0.07, -0.03, -0.3), Vector3(0.22, 0.38, 0.6)],
@@ -1489,12 +1489,28 @@ func _update_arms(delta: float) -> void:
 	if kwa > 0.0 and not fp_mode:
 		# free arm flung out wide for balance while lying flat in the air
 		l_pos = l_pos.lerp(chest.global_transform * Vector3(-0.52, 0.08, 0.05), kwa)
+	# A long gun's handguard sits further from the left shoulder than the arm
+	# reaches. Real shooters roll the shoulder forward (and blade the torso):
+	# the shoulder follows the hand by up to 13 cm in third person, and as far
+	# as needed in first person, where the shoulders are off-screen.
+	_reach_shoulder(0, l_pos, 0.13)
+	_reach_shoulder(1, r_xf.origin, 0.06)
 	_solve_ik(shoulders[1], elbows[1], UPPER_ARM, FOREARM, r_xf.origin, (cb * r_pole).normalized())
 	_set_basis(hands[1], r_xf.basis)
 	_solve_ik(shoulders[0], elbows[0], UPPER_ARM, FOREARM, l_pos, (cb * l_pole).normalized())
 	if _free_arm > 0.001:
 		l_basis = l_basis.orthonormalized().slerp(elbows[0].global_transform.basis.orthonormalized(), _free_arm)
 	_set_basis(hands[0], l_basis)
+
+
+func _reach_shoulder(i: int, target: Vector3, tp_limit: float) -> void:
+	var sh: Node3D = shoulders[i]
+	var to := target - sh.global_position
+	var excess := to.length() - (UPPER_ARM + FOREARM - 0.004)
+	if excess <= 0.0:
+		return
+	var move := excess if fp_mode else minf(excess, tp_limit)
+	sh.global_position += to.normalized() * move
 
 
 ## Bolt-action / pump-action cycling after each shot.

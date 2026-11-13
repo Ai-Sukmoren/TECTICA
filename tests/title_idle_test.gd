@@ -26,12 +26,19 @@ func run() -> void:
 	check(not guards.is_empty(), "%d guards stand in the world" % guards.size())
 	var before: Array = guards.map(func(e): return e.rig.aim_yaw)
 	var p_before: float = main.player.rig.aim_yaw
-	await create_timer(2.5, true, false, true).timeout
+	# random look phases: one guard can come back near where it started, so
+	# count the largest swing over the window, not just the end point
+	var swing: Array = before.map(func(_v): return 0.0)
+	var t_end := Time.get_ticks_msec() + 2500
+	while Time.get_ticks_msec() < t_end:
+		await process_frame
+		for i in guards.size():
+			swing[i] = maxf(swing[i], absf(guards[i].rig.aim_yaw - before[i]))
 	var moved := 0
 	for i in guards.size():
-		if absf(guards[i].rig.aim_yaw - before[i]) > 0.05:
+		if swing[i] > 0.015:
 			moved += 1
-	print("    %d / %d guards moved while paused" % [moved, guards.size()])
+	print("    %d / %d guards moved while paused, swings %s" % [moved, guards.size(), str(swing.map(func(v): return snappedf(v, 0.01)))])
 	check(moved == guards.size(), "every guard idles on the title screen")
 	check(absf(main.player.rig.aim_yaw - p_before) > 0.05, "the operator idles too")
 	var g = guards[0]

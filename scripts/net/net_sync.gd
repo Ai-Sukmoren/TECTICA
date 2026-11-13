@@ -287,6 +287,9 @@ func _apply_event(node: Node, kind: String, args: Array) -> void:
 			node.net_die(args[0], String(args[1]), bool(args[2]))
 		"respawn":
 			main.respawn_remote(node, args[0], float(args[1]))
+		"sever":
+			if node.has_method("net_sever"):
+				node.net_sever(String(args[0]), String(args[1]), args[2])
 		"loadout":
 			# zombie shop purchase: show the new gun and remember it for respawns / late joiners
 			var pack: Array = args[0]

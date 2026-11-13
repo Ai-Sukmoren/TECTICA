@@ -548,6 +548,67 @@ func set_first_person(on: bool) -> void:
 	_apply_model_visibility()
 
 
+## Shot-off limb: every mesh from `bone` down is copied onto a tumbling
+## physics body and hidden on the rig; a dark stump caps the joint. The rig
+## keeps animating the (now invisible) bones, so nothing else changes.
+func sever(bone: Node3D, dir: Vector3) -> void:
+	if bone == null or not is_inside_tree() or bone.has_meta("severed"):
+		return
+	bone.set_meta("severed", true)
+	var meshes: Array = bone.find_children("*", "MeshInstance3D", true, false)
+	if meshes.is_empty():
+		return
+	var xf := bone.global_transform
+	var inv := xf.affine_inverse()
+	var body := RigidBody3D.new()
+	body.collision_layer = Layers.DEBRIS
+	body.collision_mask = Layers.WORLD | Layers.DEBRIS
+	body.mass = 3.0
+	body.angular_damp = 1.5
+	body.linear_damp = 0.4
+	var box := AABB()
+	var first := true
+	for n in meshes:
+		var mi := n as MeshInstance3D
+		if not mi.visible or mi.mesh == null:
+			continue
+		var copy := MeshInstance3D.new()
+		copy.mesh = mi.mesh
+		copy.material_override = mi.material_override
+		copy.transform = inv * mi.global_transform
+		body.add_child(copy)
+		var a: AABB = copy.transform * mi.mesh.get_aabb()
+		box = a if first else box.merge(a)
+		first = false
+		mi.visible = false
+	if first:
+		body.free()
+		return
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = clampf(minf(box.size.x, box.size.z) * 0.5, 0.04, 0.12)
+	cap.height = maxf(box.size.y, cap.radius * 2.0 + 0.01)
+	cs.shape = cap
+	cs.position = box.get_center()
+	body.add_child(cs)
+	get_tree().current_scene.add_child(body)
+	body.global_transform = Transform3D(xf.basis.orthonormalized(), xf.origin)
+	body.reset_physics_interpolation()
+	var flat := Vector3(dir.x, 0, dir.z).normalized()
+	body.linear_velocity = flat * randf_range(1.5, 3.0) + Vector3.UP * randf_range(1.2, 2.4)
+	body.angular_velocity = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 9.0
+	# bloody stump where the limb was
+	var stump := MeshInstance3D.new()
+	stump.mesh = ML.sphere(0.055, false, 10)
+	stump.material_override = M.solid(Color(0.32, 0.03, 0.03), 0.35)
+	bone.get_parent().add_child(stump)
+	stump.position = bone.position
+	stump.scale = Vector3(1.0, 0.7, 1.0)
+	get_tree().create_timer(14.0).timeout.connect(func():
+		if is_instance_valid(body):
+			body.queue_free())
+
+
 ## Knocks the helmet off: it tumbles away as debris and despawns.
 func drop_helmet(dir: Vector3) -> void:
 	if helmet_node == null or not is_inside_tree():

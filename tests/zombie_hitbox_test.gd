@@ -58,12 +58,23 @@ func run() -> void:
 	print("    head centre y %.2f (standing-head rule threshold y %.2f)" % [hc.y - z.global_position.y, z.head_height() - 0.14])
 
 	# 1. between the knees: inside the old movement capsule, but no body there
-	var gap := Vector3(z.global_position.x, z.global_position.y + 0.32, z.global_position.z)
-	var legs := Vector3.ZERO
-	for sh in z.hit_shapes():
-		if String(sh[0]) in ["thigh", "shin"]:
-			legs += (sh[1] as Vector3) + (sh[2] as Vector3)
-	gap.x = legs.x / 8.0
+	# find an opening in the current pose (the walk cycle starts at a random
+	# point, so the legs may be crossed at one height but apart at another)
+	var gap := Vector3.INF
+	for yh in [0.32, 0.25, 0.4, 0.5, 0.2, 0.6]:
+		for k in 25:
+			var gx: float = z.global_position.x - 0.24 + k * 0.02
+			var probe := Vector3(gx, z.global_position.y + yh, z.global_position.z)
+			var clear := true
+			for o in [Vector2.ZERO, Vector2(0.03, 0), Vector2(-0.03, 0), Vector2(0, 0.04), Vector2(0, -0.04)]:
+				if not z.hit_part(Vector3(probe.x + o.x, probe.y + o.y, 40), Vector3(0, 0, -1)).is_empty():
+					clear = false
+			if clear:
+				gap = probe
+				break
+		if gap != Vector3.INF:
+			break
+	check(gap != Vector3.INF, "the pose leaves a gap inside the old capsule")
 	var part: Dictionary = z.hit_part(Vector3(gap.x, gap.y, 40), Vector3(0, 0, -1))
 	print("    shot between the knees touches: ", part)
 	var r := shoot(p, Vector3(gap.x, gap.y, 40), gap)
@@ -84,12 +95,14 @@ func run() -> void:
 	# 4. centre mass
 	r = shoot(p, from, chest)
 	check(r.hit == z and not r.headshot, "a chest shot is a body hit")
-	# 5. a shot between the first zombie's knees flies on and hits the one behind
-	var z2 = zombie(main, Vector3(gap.x, 0.05, 30))
+	# 5. a shot through that gap flies on and hits a zombie further back
+	var z2 = zombie(main, Vector3(gap.x, 0.05, 20))
 	await frames(10)
-	r = shoot(p, Vector3(gap.x, gap.y + 0.5, 40), Vector3(gap.x, gap.y + 0.5, 30))
-	var r2 = shoot(p, Vector3(gap.x, gap.y, 40), Vector3(gap.x, gap.y, 29))
-	print("    shot between the first one's knees hit: ", r2.hit.name if r2.hit != null else "nothing")
+	var tgt: Vector3 = z2.rig.chest.global_position
+	var line := (gap - tgt).normalized()
+	var origin := gap + line * ((40.0 - gap.z) / maxf(line.z, 0.01))
+	var r2 = shoot(p, origin, tgt)
+	print("    shot through the gap hit: ", r2.hit.name if r2.hit != null else "nothing")
 	check(r2.hit == z2, "a shot through the gap flies on to the zombie behind")
 
 	print("HITBOX: failures=%d" % failures)

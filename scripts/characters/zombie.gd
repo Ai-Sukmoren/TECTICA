@@ -57,6 +57,10 @@ var _charge_t := 0.0        # > 0: charging in a straight line
 var _charge_dir := Vector3.FORWARD
 var _charge_hit := false
 var daze := 0.0             # > 0: ran into a wall, dazed and vulnerable
+## Dismemberment: damage taken per limb, and which limbs are gone
+## ("arm0"/"arm1"/"leg0"/"leg1" -> "upper" | "lower": cut at shoulder/hip or elbow/knee).
+var limb_damage := {}
+var severed := {}
 ## Far from every operator the AI thinks on alternate physics ticks and
 ## glides along its velocity in between (half the CPU for distant hordes).
 const FAR_THINK := 20.0
@@ -168,13 +172,93 @@ func apply_damage(amount: float, hit_pos: Vector3, dir: Vector3, attacker: Node)
 		amount *= am
 		if daze > 0.0:
 			amount *= Types.BOSS_STUN_DAMAGE
+	var limb_hit := _limb_at(hit_pos) if Net.owns(self) and _humanoid_hits() else []
 	var headshot := super.apply_damage(amount, hit_pos, dir, attacker)
+	if not limb_hit.is_empty():
+		_limb_damage(limb_hit, amount, dir)
 	if Net.owns(self) and not is_dead and kind == "berserker" and health <= max_health * Types.RAGE_HEALTH:
 		_set_enraged(true)
 	if Net.owns(self) and not is_dead and kind == "boss" and health <= max_health * Types.BOSS_RAGE_HEALTH:
 		_set_enraged(true)
-	_stagger = {"brute": 0.12, "boss": 0.0}.get(kind, 0.35)
+	_stagger = maxf(_stagger, {"brute": 0.12, "boss": 0.0}.get(kind, 0.35))
 	return headshot
+
+
+# ---------------------------------------------------------------- dismemberment
+const SEVER_KINDS := ["walker", "runner", "crawler", "brute", "armored", "berserker"]
+
+
+## [limb key, "upper" | "lower"] for a hit on an arm or leg, [] otherwise.
+func _limb_at(hit_pos: Vector3) -> Array:
+	var best := ""
+	var best_i := 0
+	var best_d := INF
+	for sh in hit_shapes():
+		var a: Vector3 = sh[1]
+		var b: Vector3 = sh[2]
+		var d: float = Geometry3D.get_closest_point_to_segment(hit_pos, a, b).distance_to(hit_pos) - float(sh[3])
+		if d < best_d:
+			best_d = d
+			best = String(sh[0])
+			best_i = int(sh[4]) if sh.size() > 4 else 0
+	match best:
+		"upper_arm": return ["arm%d" % best_i, "upper"]
+		"forearm": return ["arm%d" % best_i, "lower"]
+		"thigh": return ["leg%d" % best_i, "upper"]
+		"shin": return ["leg%d" % best_i, "lower"]
+	return []
+
+
+## A limb that soaks enough damage comes off (the zombie keeps coming);
+## leg hits make it stumble even when nothing comes off.
+func _limb_damage(limb: Array, amount: float, dir: Vector3) -> void:
+	var key: String = limb[0]
+	if String(key).begins_with("leg") and not is_dead:
+		_stagger = maxf(_stagger, 0.55)
+		rig.hit_react(dir, amount * 2.0)
+	if not (kind in SEVER_KINDS) or severed.has(key):
+		return
+	limb_damage[key] = float(limb_damage.get(key, 0.0)) + amount
+	if float(limb_damage[key]) >= maxf(40.0, max_health * 0.33):
+		sever_limb(key, String(limb[1]), dir)
+		if Net.active and Net.sync:
+			Net.sync.send_event(self, "sever", [key, String(limb[1]), dir])
+
+
+## Takes the limb off (every peer runs this: the owner directly, others from the event).
+func sever_limb(key: String, at: String, dir: Vector3) -> void:
+	if severed.has(key) or rig == null:
+		return
+	severed[key] = at
+	var i := int(key.right(1))
+	var bone: Node3D
+	if key.begins_with("arm"):
+		bone = rig.shoulders[i] if at == "upper" else rig.elbows[i]
+	else:
+		bone = rig.thighs[i] if at == "upper" else rig.shins[i]
+	var joint: Vector3 = bone.global_position
+	rig.sever(bone, dir)
+	FX.blood(self, joint, dir)
+	FX.knife_spray(self, joint, (dir + Vector3.UP * 0.6).normalized(), true)
+	FX.blood_pool(self, Vector3(joint.x, global_position.y, joint.z))
+	Sfx.play(self, "break_wood", joint, -6.0, 0.15)
+	Sfx.play(self, "hit", joint, -2.0, 0.1)
+	if key.begins_with("leg") and not is_dead and kind != "crawler":
+		# down on the ground, still coming: drags itself along
+		_stagger = maxf(_stagger, 1.1)
+		rig.zombie_kind = "crawler"
+		set_crouch(true)
+		rig.crouch_target = 1.0
+		move_speed = minf(move_speed, 1.15)
+		rig.hit_react(dir, 160.0)
+	# drop the hit-flash overlay before forgetting the mesh list, or it sticks white
+	_clear_flash()
+	_flash_meshes.clear()
+
+
+## Remote peers apply a dismemberment the owner decided.
+func net_sever(key: String, at: String, dir: Vector3) -> void:
+	sever_limb(key, at, dir)
 
 
 func is_head_hit(hit_pos: Vector3) -> bool:
@@ -241,10 +325,16 @@ func hit_shapes() -> Array:
 	out.append(["torso", rig.hips.global_position, rig.chest.global_position + up * 0.24 * rig.scale.y, 0.19 * s * belly])
 	out.append(["neck", rig.chest.global_position + up * 0.24 * rig.scale.y, neck_top, 0.07 * s])
 	for i in 2:
-		out.append(["upper_arm", rig.shoulders[i].global_position, rig.elbows[i].global_position, 0.075 * s])
-		out.append(["forearm", rig.elbows[i].global_position, rig.hands[i].global_position, 0.07 * s])
-		out.append(["thigh", rig.thighs[i].global_position, rig.shins[i].global_position, 0.1 * s])
-		out.append(["shin", rig.shins[i].global_position, rig.feet[i].global_position, 0.085 * s])
+		var arm: String = severed.get("arm%d" % i, "")
+		var leg: String = severed.get("leg%d" % i, "")
+		if arm != "upper":
+			out.append(["upper_arm", rig.shoulders[i].global_position, rig.elbows[i].global_position, 0.075 * s, i])
+		if arm == "":
+			out.append(["forearm", rig.elbows[i].global_position, rig.hands[i].global_position, 0.07 * s, i])
+		if leg != "upper":
+			out.append(["thigh", rig.thighs[i].global_position, rig.shins[i].global_position, 0.1 * s, i])
+		if leg == "":
+			out.append(["shin", rig.shins[i].global_position, rig.feet[i].global_position, 0.085 * s, i])
 	return out
 
 

@@ -574,6 +574,8 @@ static func _glb_mag(at: Node3D, held: Array, kind: String) -> Node3D:
 	mag.add_child(mi)
 	if kind == "extended":
 		mag.scale = Vector3(1.0, 1.4, 1.0)
+	elif kind == "dual":
+		_tape_twin(mag)
 	elif kind == "fast":
 		# pull tab under the middle of the magazine's floor plate (these mags
 		# angle forward, so the floor is not under the mag well)
@@ -593,6 +595,65 @@ static func _glb_mag(at: Node3D, held: Array, kind: String) -> Node3D:
 		c = c / maxi(n, 1)
 		_part(mag, WG.machined(Vector3(0.012, 0.035, 0.012)), M.solid(Color(0.9, 0.4, 0.1), 0.6), Vector3(c.x, low - 0.015, c.z))
 	return mag
+
+
+## Taped dual mag: a copy of the magazine beside it (to the left, upside
+## down like the real thing), two bands of tape around both.
+static func _tape_twin(mag: Node3D) -> void:
+	var parts: Array = mag.get_children().duplicate()
+	var box := AABB()
+	var first := true
+	for c in parts:
+		if c is MeshInstance3D:
+			var a: AABB = (c as MeshInstance3D).transform * (c as MeshInstance3D).mesh.get_aabb()
+			box = a if first else box.merge(a)
+			first = false
+	if first:
+		return
+	var twin := Node3D.new()
+	twin.name = "TwinMag"
+	mag.add_child(twin)
+	var gap := box.size.x + 0.002
+	for c in parts:
+		if c is MeshInstance3D:
+			var mi := (c as MeshInstance3D).duplicate() as MeshInstance3D
+			twin.add_child(mi)
+	twin.position = Vector3(-gap, 0, 0)
+	var tape := M.matte("mag_tape", Color(0.12, 0.13, 0.12), 0.95)
+	# every vertex of the magazine in mag space, so each band hugs the mag's
+	# real depth at its height (curved / angled mags are much slimmer than their box)
+	var tris := PackedVector3Array()   # every triangle of the magazine, in mag space
+	for c in parts:
+		if c is MeshInstance3D:
+			var mi := c as MeshInstance3D
+			for s in mi.mesh.get_surface_count():
+				var arr: Array = mi.mesh.surface_get_arrays(s)
+				var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				var ix = arr[Mesh.ARRAY_INDEX]
+				if ix != null and (ix as PackedInt32Array).size() > 0:
+					for i in (ix as PackedInt32Array):
+						tris.append(mi.transform * vs[i])
+				else:
+					for v in vs:
+						tris.append(mi.transform * v)
+	var h := box.size.y
+	for k in [0.4, 0.7]:
+		var yk: float = box.end.y - h * k
+		# the magazine's front-to-back extent where its surface crosses y = yk
+		var z0 := INF
+		var z1 := -INF
+		for t in range(0, tris.size() - 2, 3):
+			for e in 3:
+				var a: Vector3 = tris[t + e]
+				var b: Vector3 = tris[t + (e + 1) % 3]
+				if (a.y - yk) * (b.y - yk) <= 0.0 and absf(a.y - b.y) > 1e-6:
+					var z := lerpf(a.z, b.z, (yk - a.y) / (b.y - a.y))
+					z0 = minf(z0, z)
+					z1 = maxf(z1, z)
+		if z0 > z1:
+			continue
+		_part(mag, WG.machined(Vector3(gap + box.size.x + 0.004, 0.012, z1 - z0 + 0.004)), tape,
+				Vector3(box.get_center().x - gap * 0.5, yk, (z0 + z1) * 0.5))
 
 
 static func _glb_suppressor(at: Node3D, file: String) -> bool:
@@ -738,6 +799,10 @@ static func _magazine(at: Node3D, style: String, kind: String) -> Node3D:
 		_part(mag, WG.machined(Vector3(0.035, 0.008, 0.044)), tab, Vector3(0, bottom, 0))
 	elif kind == "ap":
 		_part(mag, WG.machined(Vector3(0.03, 0.009, 0.045)), M.solid(Color(0.45, 0.37, 0.18), 0.5, 0.3), Vector3(0, bottom + 0.018, 0))
+	elif kind == "hollow":
+		_part(mag, WG.machined(Vector3(0.03, 0.009, 0.045)), M.solid(Color(0.7, 0.72, 0.74), 0.3, 0.8), Vector3(0, bottom + 0.018, 0))
+	elif kind == "dual":
+		_tape_twin(mag)
 	if kind == "drum":
 		var radius := 0.085 if style == "ak" else (0.045 if style == "pistol" else 0.055)
 		var cy := bottom + radius
@@ -759,6 +824,13 @@ static func _stock(at: Node3D, style: String, kind: String) -> void:
 	if style == "chassis" or style == "lmg":
 		length = 0.32
 	match kind:
+		"folding":
+			# hinge block at the receiver, skeleton stock folded along the right side
+			_part(at, WG.machined(Vector3(0.05, 0.05, 0.022)), _black, Vector3(0.004, -0.012, 0.011))
+			_part(at, ML.cylinder(0.006, 0.006, 0.054, 12), _worn, Vector3(0.027, -0.012, 0.011))
+			for y in [0.008, -0.04]:
+				_part(at, WG.machined(Vector3(0.01, 0.01, 0.2)), _black, Vector3(0.034, y, -0.09))
+			_part(at, WG.machined(Vector3(0.012, 0.075, 0.016)), _poly, Vector3(0.034, -0.016, -0.19))
 		"light":
 			for y in [0.02, -0.05]:
 				_part(at, WG.machined(Vector3(0.012, 0.012, length)), _black, Vector3(0, y, length * 0.5))
@@ -801,6 +873,20 @@ static func _muzzle(at: Node3D, kind: String, pistol: bool) -> Node3D:
 			for k in 6:
 				var a := k * TAU / 6.0
 				_part(at, WG.machined(Vector3(0.003, 0.003, length * 0.4)), _poly, Vector3(cos(a) * rad, sin(a) * rad, -length * 0.42), Vector3(0, 0, a))
+		"heavy_suppressor":
+			length = 0.17 if pistol else 0.24
+			var hrad := 0.019 if pistol else 0.027
+			_part(at, _open_tube(hrad, length), _black, Vector3(0, 0, -length * 0.5), X90)
+			_part(at, _open_tube(hrad - 0.004, 0.03), _worn, Vector3(0, 0, -0.015), X90)
+			for z in [-0.035, -length * 0.5, -length + 0.014]:
+				_part(at, _ring(hrad - 0.0015, hrad + 0.0015), _worn, Vector3(0, 0, z), X90)
+			_part(at, _ring(bore, hrad), _black, Vector3(0, 0, -length), X90)
+		"booster":
+			length = 0.045
+			_part(at, _open_tube(0.012, length), _black, Vector3(0, 0, -length * 0.5), X90)
+			for i in 4:
+				_part(at, _ring(0.0115, 0.0135), _worn, Vector3(0, 0, -0.008 - i * 0.008), X90)
+			_part(at, _ring(bore, 0.013), _black, Vector3(0, 0, -length), X90)
 		"compensator", "brake":
 			length = 0.065 if kind == "brake" else 0.055
 			var width := 0.04 if kind == "brake" else 0.028
@@ -841,6 +927,15 @@ static func _underbarrel(at: Node3D, kind: String) -> Dictionary:
 				_part(at, _ring(0.013, 0.016), _poly, Vector3(0, -0.028 - i * 0.012, 0))
 			_part(at, WG.machined(Vector3(0.034, 0.009, 0.034)), _black, Vector3(0, -0.098, 0))
 			return {"support": _marker(at, "Support", Vector3(-0.01, -0.06, 0), Vector3(0, 0, -0.25))}
+		"stubby":
+			_part(at, ML.cylinder(0.014, 0.016, 0.042, 24), _poly, Vector3(0, -0.032, 0))
+			for i in 3:
+				_part(at, _ring(0.0142, 0.0165), _poly, Vector3(0, -0.02 - i * 0.01, 0))
+			_part(at, WG.machined(Vector3(0.03, 0.006, 0.03)), _black, Vector3(0, -0.055, 0))
+			return {"support": _marker(at, "Support", Vector3(-0.01, -0.035, 0), Vector3(0, 0, -0.3))}
+		"handstop":
+			_body(at, 0.026, [Vector2(-0.03, -0.011), Vector2(0.02, -0.011), Vector2(0.026, -0.03), Vector2(0.018, -0.034), Vector2(-0.018, -0.016)], _poly)
+			return {"support": _marker(at, "Support", Vector3(-0.012, -0.012, 0.02), Vector3(0.1, 0, -0.45))}
 		"agrip":
 			_body(at, 0.028, [Vector2(-0.045, -0.011), Vector2(0.04, -0.011), Vector2(0.04, -0.027), Vector2(0.015, -0.052), Vector2(-0.04, -0.027)], _poly)
 			for i in 4:
@@ -888,6 +983,32 @@ static func _optic(r: Node3D, b: Dictionary, kind: String) -> Dictionary:
 			ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			_dot(r, Vector3(0, wy, wz - 0.002), Color(1.0, 0.1, 0.06))
 			return {"y": wy, "rear_z": rz + 0.055, "relief": 0.2}
+		"prism":
+			var py := ry + 0.044
+			_part(r, WG.machined(Vector3(0.026, 0.022, 0.05)), _black, Vector3(0, ry + 0.009, rz))
+			# square shroud (four plates) around an open tube, so the eye sees through it
+			for side in [[Vector3(0.034, 0.004, 0.07), Vector3(0, 0.016, 0)], [Vector3(0.034, 0.004, 0.07), Vector3(0, -0.016, 0)],
+					[Vector3(0.004, 0.036, 0.07), Vector3(0.015, 0, 0)], [Vector3(0.004, 0.036, 0.07), Vector3(-0.015, 0, 0)]]:
+				_part(r, WG.machined(side[0]), _tube, Vector3(0, py, rz - 0.005) + side[1])
+			_part(r, _open_tube(0.0135, 0.07), _tube, Vector3(0, py, rz - 0.005), X90)
+			_part(r, _open_tube(0.017, 0.022), _tube, Vector3(0, py, rz - 0.05), X90)
+			_part(r, _ring(0.013, 0.017), _poly, Vector3(0, py, rz + 0.032), X90)
+			_part(r, ML.cylinder(0.016, 0.016, 0.001, 20), _glass, Vector3(0, py, rz - 0.06), X90)
+			_part(r, WG.machined(Vector3(0.012, 0.008, 0.012)), _poly, Vector3(0.019, py + 0.006, rz - 0.01))
+			var pchev := _part(r, WG.machined(Vector3(0.0016, 0.0016, 0.0005)), M.emissive("prism_chev", Color(1.0, 0.25, 0.05), 6.0), Vector3(0, py, rz - 0.059), Vector3(0, 0, PI * 0.25))
+			pchev.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			return {"y": py, "rear_z": rz + 0.035, "relief": 0.1}
+		"minidot":
+			# low-profile pistol dot (RMR style): base plate, hooded window
+			var ms := s
+			_part(r, WG.machined(Vector3(0.024, 0.008, 0.036) * ms), _black, Vector3(0, ry + 0.002 * ms, rz))
+			var my := ry + 0.016 * ms
+			for sx in [-1, 1]:
+				_part(r, WG.machined(Vector3(0.004, 0.018, 0.012) * ms), _black, Vector3(sx * 0.011 * ms, my, rz - 0.01 * ms))
+			_part(r, WG.machined(Vector3(0.026, 0.004, 0.014) * ms), _black, Vector3(0, my + 0.009 * ms, rz - 0.01 * ms))
+			_part(r, WG.machined(Vector3(0.018, 0.014, 0.001) * ms), _glass, Vector3(0, my, rz - 0.01 * ms))
+			_dot(r, Vector3(0, my, rz - 0.011 * ms), Color(1.0, 0.08, 0.05))
+			return {"y": my, "rear_z": rz + 0.02 * ms, "relief": 0.24}
 		"acog":
 			var ay := ry + 0.05
 			_part(r, WG.machined(Vector3(0.026, 0.03, 0.06)), _black, Vector3(0, ry + 0.012, rz))

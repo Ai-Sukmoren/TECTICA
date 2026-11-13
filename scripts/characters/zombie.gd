@@ -159,7 +159,11 @@ func alert(_pos: Vector3) -> void:
 
 func apply_damage(amount: float, hit_pos: Vector3, dir: Vector3, attacker: Node) -> bool:
 	if Net.owns(self):
-		amount *= armor_multiplier(hit_pos, dir)
+		var am := armor_multiplier(hit_pos, dir)
+		if am < 1.0 and attacker != null and attacker.has_method("current_weapon") \
+				and bool(attacker.current_weapon().stats.get("hollow", false)):
+			am *= 0.5   # hollow points flatten on the plates
+		amount *= am
 		if daze > 0.0:
 			amount *= Types.BOSS_STUN_DAMAGE
 	var headshot := super.apply_damage(amount, hit_pos, dir, attacker)

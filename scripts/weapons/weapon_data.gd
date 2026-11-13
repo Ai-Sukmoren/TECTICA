@@ -14,6 +14,8 @@ const ATTACHMENTS := {
 		"holo": {"name": "Holographic", "zoom": 1.2, "spread_aim": 0.9},
 		"acog": {"name": "ACOG 4x", "zoom": 2.6, "spread_aim": 0.7, "ads_speed": 0.85, "range": 1.15},
 		"scope": {"name": "Sniper Scope 8x", "zoom": 5.5, "spread_aim": 0.5, "ads_speed": 0.7, "range": 1.3, "scope": true},
+		"prism": {"name": "Prism 2.5x", "zoom": 1.9, "spread_aim": 0.8, "ads_speed": 0.93, "range": 1.07},
+		"minidot": {"name": "Mini Red Dot", "zoom": 1.1, "spread_aim": 0.9, "ads_speed": 1.04},
 	},
 	"muzzle": {
 		"none": {"name": "Standard Barrel"},
@@ -23,6 +25,8 @@ const ATTACHMENTS := {
 		"flash_hider": {"name": "Flash Hider", "recoil": 0.9, "flash": 0.35},
 		"brake": {"name": "Muzzle Brake", "recoil": 0.6, "noise_radius": 1.3, "shake": 1.4},
 		"choke": {"name": "Full Choke", "spread_hip": 0.65, "spread_aim": 0.6, "range": 1.25},
+		"heavy_suppressor": {"name": "Heavy Suppressor", "noise_radius": 0.15, "damage": 0.88, "range": 0.85, "suppressed": true, "flash": 0.15, "ads_speed": 0.9, "mobility": 0.97},
+		"booster": {"name": "Muzzle Booster", "rpm": 1.15, "recoil": 1.12, "spread_hip": 1.05},
 	},
 	"underbarrel": {
 		"none": {"name": "None"},
@@ -30,6 +34,8 @@ const ATTACHMENTS := {
 		"agrip": {"name": "Angled Grip", "ads_speed": 1.25, "recoil": 0.92},
 		"laser": {"name": "Laser Sight", "spread_hip": 0.62, "laser": true},
 		"bipod": {"name": "Bipod", "recoil_crouch": 0.45, "spread_aim": 0.9, "mobility": 0.96},
+		"stubby": {"name": "Stubby Grip", "recoil": 0.9, "ads_speed": 1.1},
+		"handstop": {"name": "Handstop", "ads_speed": 1.3, "spread_move": 0.75, "recoil": 0.97},
 	},
 	"magazine": {
 		"standard": {"name": "Standard Mag"},
@@ -38,16 +44,23 @@ const ATTACHMENTS := {
 		"fast": {"name": "Fast Mag", "reload": 0.72, "reload_empty": 0.72},
 		# armor-piercing: headshots punch straight through helmets
 		"ap": {"name": "AP Rounds", "pierce": true, "damage": 0.9, "mag": 0.8},
+		# hollow points: hit harder, but flatten on armour (armoured infected plates, helmets)
+		"hollow": {"name": "Hollow Points", "damage": 1.2, "hollow": true},
+		# two mags taped together: every second reload just flips to the other one
+		"dual": {"name": "Taped Dual Mag", "dual": true, "mobility": 0.98, "ads_speed": 0.95},
 	},
 	"stock": {
 		"standard": {"name": "Standard Stock"},
 		"light": {"name": "Lightweight Stock", "mobility": 1.06, "ads_speed": 1.2, "recoil": 1.12},
 		"heavy": {"name": "Heavy Stock", "recoil": 0.8, "spread_aim": 0.88, "mobility": 0.95, "ads_speed": 0.9},
+		"folding": {"name": "Folding Stock", "ads_speed": 1.35, "mobility": 1.1, "recoil": 1.35, "spread_hip": 0.9},
 	},
 }
 
-const _ALL_OPTICS := ["iron", "reddot", "holo", "acog", "scope"]
-const _RIFLE_MUZZLES := ["none", "suppressor", "compensator", "flash_hider", "brake"]
+const _ALL_OPTICS := ["iron", "reddot", "holo", "prism", "acog", "scope"]
+const _RIFLE_MUZZLES := ["none", "suppressor", "heavy_suppressor", "compensator", "flash_hider", "brake", "booster"]
+const _RIFLE_UNDER := ["none", "vgrip", "agrip", "stubby", "handstop", "laser"]
+const _PISTOL_OPTICS := ["iron", "minidot", "reddot"]
 
 const WEAPONS := {
 	"m4a1": {
@@ -59,8 +72,8 @@ const WEAPONS := {
 		"recoil": 0.85, "reload": 2.1, "reload_empty": 2.6,
 		"suppressed": false, "noise_radius": 34.0, "shake": 0.1, "sound": "shot_rifle", "volume": -4.0,
 		"mobility": 1.0, "ads_speed": 1.0,
-		"options": {"optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "drum", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
+		"options": {"optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": _RIFLE_UNDER,
+				"magazine": ["standard", "extended", "drum", "fast", "dual", "ap", "hollow"], "stock": ["standard", "light", "heavy", "folding"]},
 		"defaults": {"optic": "reddot", "muzzle": "none", "underbarrel": "vgrip", "magazine": "standard", "stock": "standard"},
 	},
 	"ak47": {
@@ -72,8 +85,8 @@ const WEAPONS := {
 		"recoil": 1.25, "reload": 2.5, "reload_empty": 3.0,
 		"suppressed": false, "noise_radius": 38.0, "shake": 0.13, "sound": "shot_loud", "volume": -3.0,
 		"mobility": 0.97, "ads_speed": 0.95,
-		"options": {"optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "drum", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
+		"options": {"optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": _RIFLE_UNDER,
+				"magazine": ["standard", "extended", "drum", "fast", "dual", "ap", "hollow"], "stock": ["standard", "light", "heavy", "folding"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"as_val": {
@@ -85,8 +98,8 @@ const WEAPONS := {
 		"recoil": 0.75, "reload": 2.2, "reload_empty": 2.8,
 		"suppressed": true, "noise_radius": 11.0, "shake": 0.11, "sound": "shot_suppressed", "volume": -2.0,
 		"mobility": 1.02, "ads_speed": 1.05, "flash": 0.4,
-		"options": {"optic": ["iron", "reddot", "holo", "acog"], "muzzle": ["integral"], "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
+		"options": {"optic": ["iron", "reddot", "holo", "prism", "acog"], "muzzle": ["integral"], "underbarrel": _RIFLE_UNDER,
+				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard", "light", "heavy", "folding"]},
 		"defaults": {"optic": "reddot", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"mp7": {
@@ -98,8 +111,8 @@ const WEAPONS := {
 		"recoil": 0.55, "reload": 1.9, "reload_empty": 2.3,
 		"suppressed": false, "noise_radius": 30.0, "shake": 0.07, "sound": "shot_smg", "volume": -5.0,
 		"mobility": 1.1, "ads_speed": 1.3,
-		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "vgrip", "agrip", "laser"],
-				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard", "light", "heavy"]},
+		"options": {"optic": ["iron", "reddot", "holo", "prism"], "muzzle": _RIFLE_MUZZLES, "underbarrel": _RIFLE_UNDER,
+				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard", "light", "heavy", "folding"]},
 		"defaults": {"optic": "holo", "muzzle": "suppressor", "underbarrel": "agrip", "magazine": "standard", "stock": "standard"},
 	},
 	# asset pack 4 (alstraInfinite PPS Shooter Essentials) models
@@ -112,8 +125,8 @@ const WEAPONS := {
 		"recoil": 0.62, "reload": 2.0, "reload_empty": 2.5,
 		"suppressed": false, "noise_radius": 30.0, "shake": 0.08, "sound": "shot_smg", "volume": -4.0,
 		"mobility": 1.08, "ads_speed": 1.25,
-		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": ["none", "suppressor", "compensator", "flash_hider"],
-				"underbarrel": ["none", "vgrip", "agrip", "laser"], "magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard"]},
+		"options": {"optic": ["iron", "reddot", "holo", "prism", "acog"], "muzzle": ["none", "suppressor", "heavy_suppressor", "compensator", "flash_hider", "booster"],
+				"underbarrel": _RIFLE_UNDER, "magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"awp": {
@@ -125,8 +138,8 @@ const WEAPONS := {
 		"recoil": 3.0, "reload": 3.4, "reload_empty": 3.8,
 		"suppressed": false, "noise_radius": 45.0, "shake": 0.35, "sound": "shot_sniper", "volume": 0.0,
 		"mobility": 0.86, "ads_speed": 0.7, "cycle": "bolt",
-		"options": {"optic": ["scope", "acog", "reddot", "iron"], "muzzle": ["none", "suppressor", "brake"], "underbarrel": ["none", "bipod"],
-				"magazine": ["standard", "extended", "fast"], "stock": ["standard", "light", "heavy"]},
+		"options": {"optic": ["scope", "acog", "prism", "reddot", "iron"], "muzzle": ["none", "suppressor", "heavy_suppressor", "brake"], "underbarrel": ["none", "bipod"],
+				"magazine": ["standard", "extended", "fast", "hollow"], "stock": ["standard", "light", "heavy", "folding"]},
 		"defaults": {"optic": "scope", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"m870": {
@@ -138,8 +151,8 @@ const WEAPONS := {
 		"recoil": 2.2, "reload": 2.6, "reload_empty": 3.0,
 		"suppressed": false, "noise_radius": 40.0, "shake": 0.3, "sound": "shot_shotgun", "volume": -1.0,
 		"mobility": 0.98, "ads_speed": 1.0, "cycle": "pump",
-		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": ["none", "choke", "brake", "suppressor"], "underbarrel": ["none", "laser"],
-				"magazine": ["standard", "extended"], "stock": ["standard", "light", "heavy"]},
+		"options": {"optic": ["iron", "reddot", "holo", "prism"], "muzzle": ["none", "choke", "brake", "suppressor", "heavy_suppressor"], "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "extended", "hollow"], "stock": ["standard", "light", "heavy", "folding"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"m249": {
@@ -151,8 +164,8 @@ const WEAPONS := {
 		"recoil": 0.9, "reload": 4.6, "reload_empty": 5.2,
 		"suppressed": false, "noise_radius": 40.0, "shake": 0.12, "sound": "shot_rifle", "volume": -3.0,
 		"mobility": 0.82, "ads_speed": 0.7,
-		"options": {"optic": ["iron", "reddot", "holo", "acog"], "muzzle": ["none", "flash_hider", "compensator", "suppressor"],
-				"underbarrel": ["bipod", "vgrip", "none"], "magazine": ["standard", "extended", "ap"], "stock": ["standard", "heavy"]},
+		"options": {"optic": ["iron", "reddot", "holo", "prism", "acog"], "muzzle": ["none", "flash_hider", "compensator", "suppressor", "heavy_suppressor"],
+				"underbarrel": ["bipod", "vgrip", "stubby", "handstop", "none"], "magazine": ["standard", "extended", "ap", "hollow"], "stock": ["standard", "heavy"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "bipod", "magazine": "standard", "stock": "standard"},
 	},
 	"mk23": {
@@ -164,8 +177,8 @@ const WEAPONS := {
 		"recoil": 1.25, "reload": 1.6, "reload_empty": 1.9,
 		"suppressed": false, "noise_radius": 28.0, "shake": 0.16, "sound": "shot_pistol", "volume": -1.0,
 		"mobility": 1.05, "ads_speed": 1.3,
-		"options": {"optic": ["iron", "reddot"], "muzzle": ["none", "suppressor", "compensator"], "underbarrel": ["none", "laser"],
-				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard"]},
+		"options": {"optic": _PISTOL_OPTICS, "muzzle": ["none", "suppressor", "heavy_suppressor", "compensator"], "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"zc57": {
@@ -177,8 +190,8 @@ const WEAPONS := {
 		"recoil": 0.95, "reload": 1.5, "reload_empty": 1.8,
 		"suppressed": false, "noise_radius": 27.0, "shake": 0.12, "sound": "shot_pistol", "volume": -2.0,
 		"mobility": 1.06, "ads_speed": 1.35,
-		"options": {"optic": ["iron", "reddot"], "muzzle": ["none", "suppressor", "compensator"], "underbarrel": ["none", "laser"],
-				"magazine": ["standard", "extended", "fast", "ap"], "stock": ["standard"]},
+		"options": {"optic": _PISTOL_OPTICS, "muzzle": ["none", "suppressor", "heavy_suppressor", "compensator"], "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"g18": {
@@ -190,8 +203,8 @@ const WEAPONS := {
 		"recoil": 0.45, "reload": 1.5, "reload_empty": 1.8,
 		"suppressed": false, "noise_radius": 26.0, "shake": 0.06, "sound": "shot_pistol", "volume": -4.0,
 		"mobility": 1.06, "ads_speed": 1.35,
-		"options": {"optic": ["iron", "reddot"], "muzzle": ["none", "suppressor", "compensator"], "underbarrel": ["none", "laser"],
-				"magazine": ["standard", "extended", "drum"], "stock": ["standard"]},
+		"options": {"optic": _PISTOL_OPTICS, "muzzle": ["none", "suppressor", "compensator", "booster"], "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "extended", "drum", "dual", "hollow"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# ---- knives (melee slot). Starting values: damage per slash, swings per minute,

@@ -16,6 +16,8 @@ const Charm = preload("res://scripts/skins/charm.gd")
 
 var id := ""
 var stats: Dictionary = {}
+## Taped dual mag: true when the next reload is the quick flip to the other mag.
+var dual_flip := true
 var attachments: Dictionary = {}
 var ammo := 0
 var reserve := 0

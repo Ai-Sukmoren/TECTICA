@@ -335,6 +335,11 @@ func start_reload() -> void:
 		return
 	reload_tactical = w.ammo > 0
 	reload_duration = float(w.stats.reload) if reload_tactical else float(w.stats.reload_empty)
+	if bool(w.stats.get("dual", false)):
+		# taped dual mag: every second reload just flips to the other magazine
+		if w.dual_flip:
+			reload_duration *= 0.45
+		w.dual_flip = not w.dual_flip
 	reload_timer = reload_duration
 	rig.play_reload(reload_duration, not reload_tactical)
 	if Net.active and Net.sync:

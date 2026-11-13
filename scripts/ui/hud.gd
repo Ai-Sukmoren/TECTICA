@@ -70,6 +70,7 @@ var mp_row := 0
 var mp_pause := false
 var _mp_rects: Array = []
 var _mp_coop_mode := "ch1"
+var _mp_pvp_map := "forest"
 var _mp_port_text := ""
 var _mp_replace_join_text := true
 ## host online through Tailscale Funnel (WebSocket) instead of direct UDP
@@ -297,7 +298,7 @@ func _menu_entries() -> Array:
 	var e: Array = [
 		{"id": "deploy", "sec": "PLAY", "label": "DEPLOY", "big": true},
 		{"id": "mode", "sec": "PLAY", "label": "MISSION", "value": _mode_label(main.mode), "arrow": true},
-		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode == "zombie" else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode == "zombie"},
+		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode in ["zombie", "pvp"] else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode in ["zombie", "pvp"]},
 		{"id": "mp", "sec": "PLAY", "label": "MULTIPLAYER", "value": "CO-OP  /  PVP"},
 		{"id": "rooms", "sec": "PLAY", "label": "OPEN ROOMS", "value": "CLICK TO JOIN"},
 		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
@@ -356,7 +357,7 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 		"mp":
 			_mp_open()
 		"map":
-			if main.mode == "zombie":
+			if main.mode in ["zombie", "pvp"]:
 				last_menu_index = i
 				var ids: Array = main.MAPS.keys()
 				main.set_map(ids[posmod(ids.find(main.map_id) + (dir if dir != 0 else 1), ids.size())])
@@ -1800,6 +1801,7 @@ func _mp_open() -> void:
 	Net.port = int(Settings.v.get("mp_port", Net.port))
 	_mp_port_text = str(Net.port)
 	_mp_coop_mode = main.mode_token() if main.mode_token() in _mp_coop_options() else "ch1"
+	_mp_pvp_map = main.map_id if main.MAPS.has(main.map_id) else "forest"
 
 
 ## Co-op host choices: each campaign chapter, then Zombie Survival on every map
@@ -1840,7 +1842,7 @@ func _mp_items() -> Array:
 	return [
 		"NAME:  " + Net.player_name + (cur if mp_row == 0 else ""),
 		"HOST CO-OP:  " + _mp_coop_label(_mp_coop_mode),
-		"HOST PVP DEATHMATCH",
+		"HOST PVP DEATHMATCH:  " + String(main.MAPS[_mp_pvp_map]),
 		"JOIN  (CODE, IP OR LINK):  " + Net.join_ip + (cur if mp_row == 3 else ""),
 		"PORT:  " + _mp_port_text + (cur if mp_row == 4 else ""),
 		"CONNECTION:  " + ("ONLINE  ·  TAILSCALE FUNNEL" if mp_online else "DIRECT  ·  LAN / UDP"),
@@ -1861,9 +1863,13 @@ func _mp_activate(i: int, dir: int = 0) -> void:
 			if Net.host("coop", Net.port, mp_online) == OK:
 				main.net_enter_world(_mp_coop_mode)
 		2:
+			if dir != 0:
+				var ids: Array = main.MAPS.keys()
+				_mp_pvp_map = ids[posmod(ids.find(_mp_pvp_map) + dir, ids.size())]
+				return
 			_mp_save()
 			if Net.host("pvp", Net.port, mp_online) == OK:
-				main.net_enter_world("pvp")
+				main.net_enter_world("pvp" + ("@" + _mp_pvp_map if _mp_pvp_map != "forest" else ""))
 		3, 4:
 			var inv := Net.parse_invite(Net.join_ip, _mp_input_port())
 			if inv.is_empty():
@@ -1936,10 +1942,10 @@ func _mp_input(event: InputEvent) -> void:
 		mp_row = posmod(mp_row + 1, 7)
 	elif (event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right")) and mp_row == 5:
 		_mp_activate(5)
-	elif event.is_action_pressed("ui_left") and mp_row == 1:
-		_mp_activate(1, -1)
-	elif event.is_action_pressed("ui_right") and mp_row == 1:
-		_mp_activate(1, 1)
+	elif event.is_action_pressed("ui_left") and mp_row in [1, 2]:
+		_mp_activate(mp_row, -1)
+	elif event.is_action_pressed("ui_right") and mp_row in [1, 2]:
+		_mp_activate(mp_row, 1)
 	elif event.is_action_pressed("ui_accept"):
 		_mp_activate(mp_row)
 	elif event is InputEventMouseMotion:

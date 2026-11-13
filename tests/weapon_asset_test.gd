@@ -17,8 +17,33 @@ func _run() -> void:
 				var att := defaults.duplicate()
 				att[slot] = option
 				_validate(id, att, "%s/%s/%s" % [id, slot, option])
+	_pack_units("mgp7")
+	_pack_units("zc57")
 	print("WEAPON ASSETS configurations=%d worst_meshes=%d failures=%d" % [checked, worst_meshes, failures])
 	quit(1 if failures else 0)
+
+## Asset-pack guns: every part in metres with an unscaled node, or skin
+## patterns (computed in mesh space) come out the wrong size. The ZC57 is
+## modelled in centimetres and once showed every skin as fine static.
+func _pack_units(id: String) -> void:
+	var weapon := Weapon.new()
+	weapon.setup(id, {})
+	root.add_child(weapon)
+	var parts := 0
+	var stack: Array = [weapon]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.append(c)
+		if n is MeshInstance3D and n.has_meta("pack4"):
+			parts += 1
+			var sc: Vector3 = (n as MeshInstance3D).transform.basis.get_scale()
+			_check(sc.is_equal_approx(Vector3.ONE), "%s pack part has unit scale (%s)" % [id, sc])
+			_check((n as MeshInstance3D).mesh.get_aabb().size.length() < 1.0, "%s pack part is in metres" % id)
+	_check(parts > 3, id + " has asset-pack parts")
+	print("  %s: %d pack parts checked" % [id, parts])
+	weapon.free()
+
 
 func _check(ok: bool, label: String) -> void:
 	if not ok:

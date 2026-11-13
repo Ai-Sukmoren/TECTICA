@@ -510,15 +510,44 @@ static func _glb_meshes(r: Node3D, path: String, conv: Basis, skip: String = "")
 	inst.free()
 	for e in list:
 		var xf := Transform3D(conv, Vector3.ZERO) * (e[2] as Transform3D)
+		var mesh: Mesh = e[1]
+		# Parts modelled in other units (the ZC57 is in centimetres, scaled by
+		# 0.01 on its node) get the scale baked into the mesh: skin patterns are
+		# computed in mesh space and were 100x too fine on them.
+		var sc := xf.basis.get_scale()
+		if absf(sc.x - 1.0) > 0.01 or absf(sc.y - 1.0) > 0.01 or absf(sc.z - 1.0) > 0.01:
+			mesh = _baked(mesh, sc)
+			xf = Transform3D(xf.basis.orthonormalized(), xf.origin)
 		if skip != "" and String(e[0]).contains(skip):
-			held[String(e[0])] = [e[1], xf]
+			held[String(e[0])] = [mesh, xf]
 			continue
 		var mi := MeshInstance3D.new()
-		mi.mesh = e[1]
+		mi.mesh = mesh
 		mi.transform = xf
 		mi.set_meta("pack4", true)   # skins recolour these too
 		r.add_child(mi)
 	return held
+
+
+static var _baked_cache: Dictionary = {}
+
+
+## A copy of `mesh` with every vertex multiplied by `sc` (cached).
+static func _baked(mesh: Mesh, sc: Vector3) -> Mesh:
+	var key := "%d_%s" % [mesh.get_instance_id(), sc]
+	if _baked_cache.has(key):
+		return _baked_cache[key]
+	var out := ArrayMesh.new()
+	for s in mesh.get_surface_count():
+		var arr: Array = mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		for i in verts.size():
+			verts[i] = verts[i] * sc
+		arr[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		out.surface_set_material(s, mesh.surface_get_material(s))
+	_baked_cache[key] = out
+	return out
 
 
 static func _glb_walk(n: Node, xf: Transform3D, out: Array) -> void:

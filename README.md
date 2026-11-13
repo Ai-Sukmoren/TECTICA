@@ -17,6 +17,13 @@ Soldiers, most weapons, both maps, FX and sound are generated in code; a few pro
 Needs a 64-bit Windows 10/11 PC with a Vulkan-capable graphics card.
 
 ### Play together
+- **Open rooms:** the host chooses **MULTIPLAYER → ONLINE · TAILSCALE FUNNEL** and hosts a match.
+  Other players choose **OPEN ROOMS** and click the host's room. Joining players only need the game.
+  The online host needs Tailscale with Funnel enabled. Rooms expire after 45 seconds without a host update.
+- **Community service:** the room directory and global sign-in dashboard run on the owner's PC.
+  That PC must stay awake, online, and signed into Windows. Updated clients report successful local
+  sign-ins with the username, timestamp, game version, and a random installation ID. Offline reports
+  are queued for retry. The global dashboard requires the owner's private key on the server PC.
 - **Host:** **MULTIPLAYER**, then **HOST CO-OP** or **HOST PVP DEATHMATCH**. Your **join code** (5 characters, for
   example `B7AHG`) is shown on the multiplayer screen, in the top-left corner while you play, and under
   **Esc → COPY JOIN CODE**. Tell it to your friends.

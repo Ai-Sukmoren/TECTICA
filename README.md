@@ -6,6 +6,36 @@ A tactical military shooter for **Godot 4.7** (GDScript, Forward+), playable in 
 campaign chapters, zombie survival, online co-op and PvP deathmatch.
 Soldiers, most weapons, both maps, FX and sound are generated in code; a few props and two guns come from an optional asset pack.
 
+## 🆕 What's new in v1.21
+
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.21.0-beta)
+
+### Nine new attachments
+Prism 2.5x, pistol mini red dot, heavy suppressor, muzzle booster, stubby grip, handstop, hollow points, taped dual mag and folding stock. Every attachment now sits flush on every gun.
+
+![Guns built with the new attachments](docs/screenshots/v121-attachments.jpg)
+
+| Looking through the Prism 2.5x | Zombie Survival shop (v1.18) |
+|---|---|
+| ![Prism sight picture](docs/screenshots/v121-prism-ads.jpg) | ![Zombie shop](docs/screenshots/v118-shop.jpg) |
+
+### Custom crosshair
+Nine styles (including a dot), eight colours, size, opacity, outline and spread, with a live preview in **Settings → GAME**.
+
+| Settings with live preview | Styles in game |
+|---|---|
+| ![Crosshair settings](docs/screenshots/v121-crosshair-settings.jpg) | ![Crosshair styles](docs/screenshots/v121-crosshair-styles.jpg) |
+
+### Night vision goggles
+Press **N** to see in the dark. Left: night vision off, right: on (Dead End, Pinewood Valley, top-down).
+
+![Night vision off and on](docs/screenshots/v121-nvg.jpg)
+
+### Carbon Phantom
+An all-black carbon-weave combat suit and the Mythic Carbon gun skin.
+
+![Carbon Phantom outfit](docs/screenshots/v121-carbon.jpg)
+
 ## ▶ Promo video
 
 [![Watch the TECTICA promo video](docs/screenshots/promo-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.16.0-beta/TECTICA-promo.mp4)
@@ -97,6 +127,8 @@ godot --path TECTICA
 | Inspect weapon (aim/fire cancels immediately) | I | - |
 | Switch weapon | 1 / 2 / X | Y |
 | Frag grenade | G | D-pad down |
+| Night vision goggles | N | - |
+| Zombie shop (between waves) | B | - |
 | First person on/off | F | R3 |
 | Rotate camera | Z / V | D-pad left / right |
 | Zoom | Mouse wheel | D-pad up (cycle) |

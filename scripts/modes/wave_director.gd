@@ -18,6 +18,10 @@ const Zombie = preload("res://scripts/characters/zombie.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const Net = preload("res://scripts/net/net.gd")
 const Terrain = preload("res://scripts/world/terrain.gd")
+const Shop = preload("res://scripts/modes/zombie_shop.gd")
+
+## Seconds between waves: time to shop.
+const BREAK_TIME := 20.0
 
 static var best_wave := 0
 static var best_score := 0
@@ -37,6 +41,10 @@ var _boss_pending := false
 ## Live boss health 0..1 (-1: no boss). Host computes it; clients get it in net_state.
 var boss_frac := -1.0
 var boss_name := "JUGGERNAUT"
+## This peer's wallet and purchases (see zombie_shop.gd).
+var shop := Shop.new()
+## Solo: the break clock stops while the shop is open.
+var shop_open := false
 
 
 func setup(p_main: Node) -> void:
@@ -98,7 +106,8 @@ func _physics_process(delta: float) -> void:
 			timer = maxf(timer - delta, 0.0)
 		return
 	if not active:
-		timer -= delta
+		if not (shop_open and not Net.active):
+			timer -= delta
 		if timer <= 0.0:
 			_begin_wave()
 		return
@@ -157,7 +166,7 @@ func _announce_wave() -> void:
 
 func _end_wave() -> void:
 	active = false
-	timer = 12.0
+	timer = BREAK_TIME
 	score += wave * 250
 	if Net.sync:
 		Net.sync.game_event("wave", ["end", wave])
@@ -172,15 +181,18 @@ func apply_wave_end() -> void:
 		main.respawn_near_team()
 		p = main.player
 	p.health = minf(p.health + 35.0, p.max_health)
+	# a basic top-up only: full ammo is sold in the shop
 	for w in p.weapons:
-		w.reserve = maxi(w.reserve, int(w.stats.reserve) * 2)
+		if not w.is_melee():
+			w.reserve = maxi(w.reserve, int(w.stats.mag) * 2)
 	main.refresh_ammo()
-	p.grenades = mini(p.grenades + 2, 5)
-	p.flashbangs = mini(p.flashbangs + 1, 3)
+	p.grenades = mini(p.grenades + 1, 5)
+	var pts := shop.wave_bonus(wave)
 	var cr := 20 * wave
 	preload("res://scripts/skins/collection.gd").add_credits(cr)
 	preload("res://scripts/core/progression.gd").on_wave_cleared(wave, String(main.get("map_id")) if main.get("map_id") != null else "forest")
-	main.hud.add_feed("WAVE %d CLEARED  ·  +35 HP  ·  AMMO & FRAGS  ·  +%d CR" % [wave, cr], Color(0.55, 1.0, 0.6))
+	main.hud.add_feed("WAVE %d CLEARED  ·  +35 HP  ·  +%d PTS  ·  +%d CR" % [wave, pts, cr], Color(0.55, 1.0, 0.6))
+	main.hud.add_feed("[%s] SHOP  ·  %d PTS TO SPEND" % [preload("res://scripts/core/settings.gd").Controls.short("shop"), shop.points], Color(1.0, 0.82, 0.35))
 	main.hud.wave_banner("WAVE %d CLEARED" % wave)
 	Sfx.play(main, "mag_in", p.global_position, 0.0)
 
@@ -198,7 +210,7 @@ func net_event(args: Array) -> void:
 		"end":
 			wave = int(args[1])
 			active = false
-			timer = 12.0
+			timer = BREAK_TIME
 			apply_wave_end()
 
 

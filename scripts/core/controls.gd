@@ -15,7 +15,7 @@ const BINDABLE := [
 	["weapon_1", "PRIMARY"], ["weapon_2", "SECONDARY"], ["weapon_3", "KNIFE"], ["peek_left", "PEEK LEFT"], ["peek_right", "PEEK RIGHT"],
 	["grenade", "FRAG GRENADE"], ["flashbang", "FLASHBANG"], ["flashlight", "FLASHLIGHT"], ["interact", "INTERACT"],
 	["toggle_view", "FIRST PERSON / TOP-DOWN"], ["inspect", "INSPECT WEAPON"], ["cam_rot_left", "ROTATE CAMERA LEFT"],
-	["cam_rot_right", "ROTATE CAMERA RIGHT"], ["music", "MUSIC ON / OFF"],
+	["cam_rot_right", "ROTATE CAMERA RIGHT"], ["music", "MUSIC ON / OFF"], ["shop", "ZOMBIE SHOP"],
 ]
 ## Pairs that share a key on purpose (different situations).
 const SHARED_OK := [["interact", "toggle_view"], ["kick", "cam_rot_right"]]

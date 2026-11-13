@@ -55,7 +55,8 @@ func run() -> void:
 	p.aim_yaw = 0.0
 	await ticks(10)
 
-	check(p.weapons.size() == 3 and p.weapons[2].is_melee(), "loadout carries a knife in slot 3 (%s)" % p.weapons[2].id)
+	check(p.weapons.back().is_melee(), "loadout carries a knife (%s)" % p.weapons.back().id)
+	check(p._slot("knife") == p.weapons.size() - 1 and p._slot("pistol") >= 0, "number keys find the knife and pistol by role")
 	Input.action_press("weapon_3")
 	await ticks(2)
 	Input.action_release("weapon_3")

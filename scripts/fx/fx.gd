@@ -308,3 +308,63 @@ static func chips(ctx: Node, pos: Vector3, normal: Vector3, color: Color, amount
 		var d := _particles(root, pos + normal * 0.06, normal, dust_amount, 1.2 * dust_scale, 0.3, 1.4 * dust_scale, 60.0,
 				ML.sphere(0.09 * dust_scale, false, 6), _mat("dust"), Vector3(0, 0.25, 0), 0.7, 1.8)
 		d.color = Color(color.lightened(0.35), 0.6)
+
+
+## Knife swing: a thin crescent that sweeps from the wind-up side across the
+## front and fades in a blink. `side` is the slash direction (+1 / -1).
+static func slash_trail(ctx: Node, center: Vector3, fwd: Vector3, side: float, hit: bool, heavy: bool) -> void:
+	var root := _root(ctx)
+	if root == null:
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 14
+	var span := deg_to_rad(125.0)
+	var r_out := 1.25 if heavy else 1.1
+	var r_in := r_out - (0.42 if heavy else 0.3)
+	var base_a := atan2(fwd.x, fwd.z)
+	var col := Color(1.0, 0.55, 0.5) if hit else Color(0.85, 0.92, 1.0)
+	var prev := []
+	for i in n + 1:
+		var t := float(i) / n
+		# from the wind-up side (+side) to the far side; the head (t = 1) is brightest
+		var a := base_a + side * span * (0.5 - t)
+		var dir := Vector3(sin(a), 0, cos(a))
+		var h := lerpf(0.16, -0.18, t)
+		var thick := sin(t * PI) * 0.8 + 0.2
+		var inner := dir * lerpf(r_out, r_in, thick) + Vector3.UP * h
+		var outer := dir * r_out + Vector3.UP * (h + 0.02)
+		var alpha := pow(t, 1.6)
+		var cur := [inner, outer, Color(col, alpha * 0.25), Color(col, alpha)]
+		if not prev.is_empty():
+			for v in [[prev[0], prev[2]], [prev[1], prev[3]], [cur[1], cur[3]], [prev[0], prev[2]], [cur[1], cur[3]], [cur[0], cur[2]]]:
+				st.set_color(v[1])
+				st.add_vertex(v[0])
+		prev = cur
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.vertex_color_use_as_albedo = true
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_color = Color(1, 1, 1, 0.95 if heavy else 0.75)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mi)
+	mi.global_position = center
+	var tw := mi.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.16 if heavy else 0.12).set_ease(Tween.EASE_IN)
+	tw.tween_property(mi, "scale", Vector3.ONE * 1.08, 0.14)
+	tw.chain().tween_callback(mi.queue_free)
+
+
+## Blood thrown along the cut (knife hits): a fast fan sideways off the blade.
+static func knife_spray(ctx: Node, pos: Vector3, cut_dir: Vector3, heavy: bool) -> void:
+	var root := _root(ctx)
+	if root == null:
+		return
+	_particles(root, pos, (cut_dir + Vector3.UP * 0.25).normalized(), 26 if heavy else 16, 0.55, 2.5, 6.5, 22.0,
+			ML.sphere(0.02, false, 6), _mat("blood"), Vector3(0, -9.8, 0), 0.5, 1.5)

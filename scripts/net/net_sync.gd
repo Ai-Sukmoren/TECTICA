@@ -287,6 +287,18 @@ func _apply_event(node: Node, kind: String, args: Array) -> void:
 			node.net_die(args[0], String(args[1]), bool(args[2]))
 		"respawn":
 			main.respawn_remote(node, args[0], float(args[1]))
+		"loadout":
+			# zombie shop purchase: show the new gun and remember it for respawns / late joiners
+			var pack: Array = args[0]
+			var specs: Array = pack.filter(func(s): return not (s is Dictionary))
+			if not specs.is_empty():
+				node.set_loadout(specs)
+			var info: Dictionary = node.get_meta("info", {"name": node.display_name})
+			info["loadout"] = pack
+			node.set_meta("info", info)
+			var id := int(node.get("net_owner"))
+			if multiplayer.is_server() and Net.roster.has(id):
+				Net.roster[id]["loadout"] = pack
 
 
 func spawn_grenade(thrower: Node, pos: Vector3, vel: Vector3, ang: Vector3, cosmetic: bool, kind: String = "frag") -> void:

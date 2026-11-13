@@ -85,11 +85,20 @@ var outfit := "multicam"
 
 ## Weapon specs plus this machine's outfit, as sent to other players.
 static func net_loadout() -> Array:
-	return Loadout.weapon_list() + [{"outfit": preload("res://scripts/skins/collection.gd").outfit}]
+	return own_specs() + [{"outfit": preload("res://scripts/skins/collection.gd").outfit}]
+
+
+## Zombie Survival: the weapons this operator owns in the current run
+## (pistol + knife, plus a bought primary). Empty in every other mode.
+static var zombie_specs: Array = []
+
+
+static func own_specs() -> Array:
+	return Loadout.weapon_list() if zombie_specs.is_empty() else zombie_specs.duplicate(true)
 
 
 func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: String = "") -> void:
-	var specs: Array = Loadout.weapon_list()
+	var specs: Array = own_specs()
 	var outfit_id: String = preload("res://scripts/skins/collection.gd").outfit
 	if loadout is Array and not (loadout as Array).is_empty():
 		# another peer's loadout ends with its outfit: {"outfit": id}
@@ -284,6 +293,24 @@ func _update_chem_glow() -> void:
 	_chem_glow.visible = e > 0.01
 
 
+## Number keys pick weapons by role, so they still work when the inventory is
+## short (zombie runs start with only a pistol and a knife).
+func _slot(role: String) -> int:
+	for i in weapons.size():
+		var w = weapons[i]
+		match role:
+			"primary":
+				if not w.is_pistol() and not w.is_melee():
+					return i
+			"pistol":
+				if w.is_pistol():
+					return i
+			"knife":
+				if w.is_melee():
+					return i
+	return weapon_index
+
+
 func set_flashlight(on: bool) -> void:
 	flashlight_on = on
 	if flashlight:
@@ -349,7 +376,7 @@ func _update_scope_visibility() -> void:
 
 
 func apply_loadout() -> void:
-	set_loadout(Loadout.weapon_list())
+	set_loadout(own_specs())
 
 
 func set_first_person(on: bool) -> void:
@@ -538,11 +565,11 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("reload") and not ctx:
 		start_reload()
 	if Input.is_action_just_pressed("weapon_1"):
-		switch_to(0)
+		switch_to(_slot("primary"))
 	if Input.is_action_just_pressed("weapon_2"):
-		switch_to(1)
+		switch_to(_slot("pistol"))
 	if Input.is_action_just_pressed("weapon_3"):
-		switch_to(2)   # knife
+		switch_to(_slot("knife"))
 	if Input.is_action_just_pressed("switch_weapon"):
 		switch_to((weapon_index + 1) % weapons.size())
 

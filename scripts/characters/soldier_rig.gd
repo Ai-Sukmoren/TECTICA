@@ -1059,6 +1059,9 @@ func _weapon_pose(kind: String, pose_name: String) -> Transform3D:
 var slash_t := -1.0
 var _slash_dur := 0.45
 var _slash_side := 1.0
+## Blade bites in: the swing holds at contact for a moment and jolts.
+var _slash_hold := 0.0
+var _slash_jolt := 0.0
 
 
 func play_slash(duration: float) -> void:
@@ -1066,17 +1069,42 @@ func play_slash(duration: float) -> void:
 	slash_t = 0.0
 	_slash_dur = clampf(duration * 0.85, 0.3, 0.6)
 	_slash_side = -_slash_side
+	_slash_hold = 0.0
+	_slash_jolt = 0.0
 
 
-## Wind-up across the body, a fast cut through the centre, then recover.
-## Offsets are in the pose's parent space (chest, or eye in first person).
+## The slash connected: hold the blade at contact and shake it (heavier on a kill).
+func slash_impact(heavy: bool) -> void:
+	if slash_t < 0.0:
+		return
+	slash_t = maxf(slash_t, 0.16)   # make sure the blade is through the centre
+	_slash_hold = 0.075 if heavy else 0.05
+	_slash_jolt = 1.0 if heavy else 0.7
+
+
+## Snap back across the body, an accelerating cut that lunges through the
+## centre, follow-through past it, then recover. Damage lands on the click, so
+## the wind-up is kept very short and the blade crosses the centre almost at
+## once. Offsets are in the pose's parent space (chest, or eye in first person).
 func _slash_pose(base: Transform3D, u: float) -> Transform3D:
 	var s := _slash_side
-	var wind := Transform3D(Basis.from_euler(Vector3(-0.35, s * 0.95, s * 0.65)), Vector3(s * 0.13, 0.07, 0.07))
-	var cut := Transform3D(Basis.from_euler(Vector3(0.25, -s * 0.85, -s * 0.55)), Vector3(-s * 0.16, -0.06, -0.14))
-	var strike := smoothstep(0.2, 0.46, u)
-	var off := wind.interpolate_with(cut, strike)
-	var w := smoothstep(0.0, 0.14, u) * (1.0 - smoothstep(0.55, 1.0, u))
+	var wind := Transform3D(Basis.from_euler(Vector3(-0.5, s * 1.2, s * 0.85)), Vector3(s * 0.21, 0.1, 0.1))
+	var cut := Transform3D(Basis.from_euler(Vector3(0.12, -s * 0.15, -s * 0.2)), Vector3(-s * 0.02, -0.02, -0.27))
+	var through := Transform3D(Basis.from_euler(Vector3(0.45, -s * 1.15, -s * 0.8)), Vector3(-s * 0.25, -0.11, -0.12))
+	var off: Transform3D
+	if u < 0.06:
+		var k := 1.0 - pow(1.0 - u / 0.06, 2.0)                 # snap out to the wind-up
+		off = Transform3D.IDENTITY.interpolate_with(wind, k)
+	elif u < 0.17:
+		off = wind.interpolate_with(cut, pow((u - 0.06) / 0.11, 2.2))   # accelerating cut
+	elif u < 0.34:
+		off = cut.interpolate_with(through, 1.0 - pow(1.0 - (u - 0.17) / 0.17, 3.0))   # follow-through
+	else:
+		off = through
+	if _slash_jolt > 0.0:
+		var j := _slash_jolt * 0.05
+		off = off * Transform3D(Basis.from_euler(Vector3(randf_range(-j, j), randf_range(-j, j), randf_range(-j, j) * 2.0)), Vector3.ZERO)
+	var w := 1.0 - smoothstep(0.34, 1.0, u)
 	var t := Transform3D(Basis.IDENTITY, off.origin * w) * base
 	return Transform3D(t.basis * Basis.IDENTITY.slerp(off.basis, w), t.origin)
 
@@ -1203,7 +1231,11 @@ func _update_weapon_pose(delta: float) -> void:
 		xf = xf * Transform3D(Basis(Vector3.RIGHT, f * 0.18 * sw_w), Vector3.ZERO)
 
 	if slash_t >= 0.0:
-		slash_t += delta / _slash_dur
+		_slash_jolt = maxf(_slash_jolt - delta * 9.0, 0.0)
+		if _slash_hold > 0.0:
+			_slash_hold -= delta
+		else:
+			slash_t += delta / _slash_dur
 		if slash_t >= 1.0:
 			slash_t = -1.0
 		else:

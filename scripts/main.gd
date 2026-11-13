@@ -20,7 +20,9 @@ const ML = preload("res://scripts/core/mesh_lib.gd")
 const PackProps = preload("res://scripts/core/pack_props.gd")
 const Transition = preload("res://scripts/ui/transition.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
+const FX = preload("res://scripts/fx/fx.gd")
 const WaveDirector = preload("res://scripts/modes/wave_director.gd")
+const ZombieShop = preload("res://scripts/modes/zombie_shop.gd")
 const Settings = preload("res://scripts/core/settings.gd")
 const Loadout = preload("res://scripts/core/loadout.gd")
 const PostFX = preload("res://scripts/fx/post_fx.gd")
@@ -138,6 +140,8 @@ func _ready() -> void:
 	if mode == "zombie":
 		tod.red_tint = 0.6
 
+	# zombie runs start with the pistol and knife only (the shop sells the rest)
+	Player.zombie_specs = ZombieShop.starting_specs() if mode == "zombie" else []
 	var my_id := Net.my_id()
 	player = Player.new()
 	player.name = "P%d" % my_id
@@ -171,8 +175,8 @@ func _ready() -> void:
 		director.name = "WaveDirector"
 		add_child(director)
 		director.setup(self)
-		for w in player.weapons:
-			w.reserve = int(w.stats.reserve) * 2
+		director.shop.apply_mods(player)
+		director.shop.sync(player)
 	else:
 		campaign = Campaign.new()
 		campaign.name = "Campaign"
@@ -315,7 +319,11 @@ func refresh_ammo() -> void:
 
 func on_deploy() -> void:
 	_deployed = true
+	if director != null:
+		Player.zombie_specs = director.shop.specs()   # the class pistol picked on the title screen
 	player.apply_loadout()
+	if director != null:
+		director.shop.apply_mods(player)
 	if Net.active and Net.is_server():
 		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout()}
 	player.grenades = 2
@@ -638,8 +646,12 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 		if result.hit != null and result.hit != player:
 			player.shots_hit += 1
 			hud.on_hit(result.killed, result.headshot, float(result.get("damage", 0.0)), result.get("hit_at", Vector3.ZERO), result.hit)
+			if result.get("melee", false):
+				_knife_impact(result)
 			if result.killed and director != null:
 				director.on_kill(result.headshot)
+			if director != null and result.hit.is_in_group("zombies"):
+				director.shop.on_hit(bool(result.killed), bool(result.headshot))
 			if result.killed:
 				if result.headshot:
 					headshot_kills += 1
@@ -656,6 +668,21 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 		var closest := Geometry3D.get_closest_point_to_segment(player.global_position + Vector3.UP, shooter_pos + Vector3.UP, p)
 		if closest.distance_to(player.global_position + Vector3.UP) < 1.5:
 			camera_rig.add_shake(0.08)
+
+
+## Knife connected: blood off the blade, a camera punch, a crunch layered on
+## the hit sound and a split-second freeze (single-player), all heavier for
+## kills and backstabs.
+func _knife_impact(result: Dictionary) -> void:
+	var heavy: bool = result.killed or result.backstab
+	var fwd := Vector3(-sin(player.aim_yaw), 0, -cos(player.aim_yaw))
+	var side := Vector3(-fwd.z, 0, fwd.x) * -float(player.rig._slash_side)
+	FX.knife_spray(self, result.hit_at, (side + fwd * 0.4).normalized(), heavy)
+	camera_rig.add_shake(0.42 if heavy else 0.26)
+	Sfx.play(player, "hit", result.hit_at, -3.0, 0.08)
+	if heavy:
+		Sfx.play(player, "break_wood", result.hit_at, -14.0, 0.1)   # bone crunch under the cut
+	hud._hitstop(0.085 if heavy else 0.05)
 
 
 func _on_player_damaged(_soldier: Node, amount: float, attacker: Node) -> void:
@@ -870,6 +897,8 @@ func respawn_local(pos: Vector3, yaw: float) -> void:
 	p.damaged.connect(_on_player_damaged)
 	p.died.connect(_on_player_died)
 	player = p
+	if director != null:
+		director.shop.apply_mods(p)   # perks and gun upgrades survive going down
 	players[id] = p
 	camera_rig.target = p
 	camera_rig.aim_source = p

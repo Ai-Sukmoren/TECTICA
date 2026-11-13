@@ -68,6 +68,13 @@ var _banner_t := 0.0
 var mp_open := false
 var mp_row := 0
 var mp_pause := false
+## Zombie shop panel (between waves).
+var shop_open := false
+var shop_index := 0
+var _shop_rects: Array = []
+var _shop_rows: Array = []
+var _shop_msg := ""
+var _shop_msg_t := 0.0
 var _mp_rects: Array = []
 var _mp_coop_mode := "ch1"
 var _mp_pvp_map := "forest"
@@ -471,6 +478,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if (get_tree().paused or mp_pause) and not main.game_over:
 		_pause_input(event)
 		return
+	if shop_open:
+		_shop_input(event)
+		return
+	if event.is_action_pressed("shop") and _shop_available():
+		_open_shop()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("toggle_debug"):
 		debug_visible = not debug_visible
 	elif event.is_action_pressed("quality"):
@@ -501,7 +515,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	PlayerScript.input_blocked = Net.active and (mp_pause or settings_open)
+	PlayerScript.input_blocked = (Net.active and (mp_pause or settings_open)) or shop_open
+	_shop_msg_t = maxf(_shop_msg_t - delta, 0.0)
+	if shop_open and not _shop_available():
+		_close_shop()   # the next wave started (or the operator went down)
 	hit_marker = maxf(hit_marker - delta, 0.0)
 	_flash_t = maxf(_flash_t - delta, 0.0)
 	for n in _dmg_nums:
@@ -660,6 +677,8 @@ func _draw_overlay(c: Control) -> void:
 	if w.skin != "":
 		wname += "  ·  " + String(preload("res://scripts/skins/skins.gd").finish_name(w.skin)).to_upper()
 	wname += "  ·  LV %d" % Progression.weapon_level(String(w.id))
+	if main.director != null and main.director.shop.upgrade_tag(String(w.id)) != "":
+		wname += "  ·  " + main.director.shop.upgrade_tag(String(w.id))
 	_text(c, Vector2(vp.x - 330, 46), wname, 15, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	if w.is_melee():
 		_text(c, Vector2(vp.x - 330, 86), "MELEE", 30, TEXT, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
@@ -712,9 +731,9 @@ func _draw_overlay(c: Control) -> void:
 		_text(c, Vector2(0, 92), "DEATHMATCH  ·  FIRST TO %d   ·   YOU  %d / %d%s" % [main.PVP_KILL_LIMIT, int(mine[1]), int(mine[2]), lead_s], 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		_text(c, Vector2(0, 110), "%d:%02d LEFT   ·   %s" % [int(tl) / 60, int(tl) % 60, main.tod.clock_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	elif dir_node != null:
-		var line := "WAVE %d   ·   INFECTED %d   ·   SCORE %d" % [dir_node.wave, dir_node.remaining(), dir_node.score]
+		var line := "WAVE %d   ·   INFECTED %d   ·   %d PTS" % [dir_node.wave, dir_node.remaining(), dir_node.shop.points]
 		if not dir_node.active:
-			line = "NEXT WAVE IN %d   ·   SCORE %d" % [int(ceil(dir_node.timer)), dir_node.score]
+			line = "NEXT WAVE IN %d   ·   %d PTS   ·   [%s] SHOP" % [int(ceil(dir_node.timer)), dir_node.shop.points, Settings.Controls.short("shop")]
 		_text(c, Vector2(0, 92), line, 14, WARN if not dir_node.active else TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		_text(c, Vector2(0, 110), "KILLS %d   ·   %s   ·   T+ %s" % [dir_node.kills, main.tod.clock_string(), main.time_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	else:
@@ -785,6 +804,8 @@ func _draw_overlay(c: Control) -> void:
 		_draw_settings(c, vp)
 	elif (get_tree().paused or mp_pause) and not main.game_over:
 		_draw_pause(c, vp)
+	elif shop_open:
+		_draw_shop(c, vp)
 	elif main.game_over and main.mode == "pvp":
 		_draw_pvp_over(c, vp)
 	elif main.game_over:
@@ -796,7 +817,7 @@ func _draw_overlay(c: Control) -> void:
 			var dn = main.director
 			var survived: int = dn.wave - 1 if dn.active else dn.wave
 			_text(c, Vector2(0, vp.y * 0.5), "YOU SURVIVED %d WAVE%s" % [survived, "" if survived == 1 else "S"], 44, DANGER, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-			_text(c, Vector2(0, vp.y * 0.5 + 40), "KILLS %d   ·   HEADSHOTS %d   ·   ACCURACY %d%%   ·   SCORE %d" % [dn.kills, dn.headshots, int(acc), dn.score],
+			_text(c, Vector2(0, vp.y * 0.5 + 40), "KILLS %d   ·   HEADSHOTS %d   ·   ACCURACY %d%%   ·   SCORE %d   ·   %d PTS EARNED" % [dn.kills, dn.headshots, int(acc), dn.score, dn.shop.earned],
 					15, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 			_text(c, Vector2(0, vp.y * 0.5 + 92), "BEST  ·  WAVE %d  ·  SCORE %d" % [dn.best_wave, dn.best_score], 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 		else:
@@ -1077,7 +1098,7 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 		["LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN" if main.map_id == "town" else "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN", TEXT, 14],
 		["SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET" if main.map_id == "town" else "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES", TEXT, 14],
 		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
-		["INTEL      HEADSHOTS SAVE AMMO - RESUPPLY BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
+		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("shop") + "] SHOP BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
 		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
 	] if main.is_zombie_mode() else (_pvp_briefing() if main.mode == "pvp" else _campaign_briefing())
 	var chars := int(t * 75.0)
@@ -1501,6 +1522,139 @@ func _copy_public() -> void:
 	if icode != "":
 		add_feed("INTERNET JOIN CODE  ·  %s" % icode, ACCENT)
 	add_feed("FRIENDS OVER THE INTERNET NEED UDP PORT %d FORWARDED ON YOUR ROUTER" % Net.port, WARN)
+
+
+# ================================================================ zombie shop
+
+func _shop_available() -> bool:
+	var d = main.director if main != null else null
+	return d != null and not d.active and _deployed_hud() and player != null and not player.is_dead and not main.game_over
+
+
+func _deployed_hud() -> bool:
+	return not title and bool(main.get("_deployed"))
+
+
+func _open_shop() -> void:
+	shop_open = true
+	shop_index = 0
+	main.director.shop_open = true
+	player.rig.cancel_inspect()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	Sfx.play(player, "mag_in", player.global_position, -4.0, 0.0)
+
+
+func _close_shop() -> void:
+	shop_open = false
+	if main.director != null:
+		main.director.shop_open = false
+	if player != null and not get_tree().paused:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if player.first_person else Input.MOUSE_MODE_CONFINED_HIDDEN
+
+
+func _shop_rows_now() -> Array:
+	var rows: Array = main.director.shop.items(player)
+	# solo / host: skip the rest of the break
+	if not Net.active or Net.is_server():
+		rows.append({"id": "start", "section": "", "label": "START NEXT WAVE", "desc": "", "price": 0, "ok": true, "note": "", "afford": true})
+	return rows
+
+
+func _shop_activate(i: int) -> void:
+	var rows := _shop_rows_now()
+	if i < 0 or i >= rows.size():
+		return
+	var r: Dictionary = rows[i]
+	if r.id == "start":
+		main.director.timer = 0.0
+		_close_shop()
+		return
+	var msg: String = main.director.shop.buy(String(r.id), player)
+	if msg == "":
+		_shop_msg = "ALREADY OWNED" if String(r.note) != "" else ("NOT ENOUGH POINTS" if not bool(r.afford) else "NOT NEEDED RIGHT NOW")
+		_shop_msg_t = 1.6
+		Sfx.play(player, "dry", player.global_position, -6.0, 0.0)
+		return
+	_shop_msg = msg
+	_shop_msg_t = 2.0
+	add_feed(msg, Color(1.0, 0.82, 0.35))
+	main.refresh_ammo()
+	Sfx.play(player, "mag_in", player.global_position, 0.0, 0.05)
+
+
+func _shop_input(event: InputEvent) -> void:
+	var n := _shop_rows_now().size()
+	if event.is_action_pressed("shop") or event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+		_close_shop()
+	elif event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
+		shop_index = posmod(shop_index - 1, n)
+	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
+		shop_index = posmod(shop_index + 1, n)
+	elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
+		_shop_activate(shop_index)
+	elif event is InputEventMouseMotion:
+		for i in _shop_rects.size():
+			if (_shop_rects[i] as Rect2).has_point(event.position):
+				shop_index = i
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		for i in _shop_rects.size():
+			if (_shop_rects[i] as Rect2).has_point(event.position):
+				shop_index = i
+				_shop_activate(i)
+	get_viewport().set_input_as_handled()
+
+
+func _draw_shop(c: Control, vp: Vector2) -> void:
+	var d = main.director
+	var rows := _shop_rows_now()
+	shop_index = clampi(shop_index, 0, rows.size() - 1)
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
+	var w := minf(760.0, vp.x - 40.0)
+	var row_h := minf(30.0, (vp.y - 230.0) / (rows.size() + 5))
+	var x0 := (vp.x - w) * 0.5
+	var y := maxf(40.0, (vp.y - (rows.size() + 5) * row_h - 120.0) * 0.5)
+	var panel := Rect2(x0 - 18, y - 18, w + 36, (rows.size() + 5) * row_h + 130)
+	c.draw_rect(panel, Color(0.025, 0.045, 0.055, 0.92))
+	c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
+	_brackets(c, panel, 14.0, Color(WARN, 0.6), 1.5)
+	_text(c, Vector2(x0, y + 26), "SUPPLY SHOP", 26, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(x0, y + 26), "%d PTS" % d.shop.points, 26, WARN, HORIZONTAL_ALIGNMENT_RIGHT, w, true)
+	var sub := "NEXT WAVE IN %d" % int(ceil(d.timer))
+	if not Net.active:
+		sub += "  ·  CLOCK STOPPED WHILE SHOPPING"
+	_text(c, Vector2(x0, y + 50), sub, 12, DIM)
+	y += 70.0
+	_shop_rects.clear()
+	var section := ""
+	for i in rows.size():
+		var r: Dictionary = rows[i]
+		if String(r.section) != section and String(r.section) != "":
+			section = String(r.section)
+			y += 6.0
+			_text(c, Vector2(x0, y + row_h * 0.62), section, 11, Color(ACCENT, 0.9), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			y += row_h * 0.7
+		elif r.id == "start":
+			y += 10.0
+		var rect := Rect2(x0, y, w, row_h - 3.0)
+		_shop_rects.append(rect)
+		var sel := i == shop_index
+		if sel:
+			c.draw_rect(rect, Color(RED, 0.22))
+			_brackets(c, rect, 8.0, RED, 1.5)
+		var ok := bool(r.ok)
+		var col := TEXT if ok else Color(DIM, 0.7)
+		if r.id == "start":
+			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.66), "START NEXT WAVE  ▶", 15, TEXT if sel else WARN, HORIZONTAL_ALIGNMENT_CENTER, w, true)
+		else:
+			_text(c, Vector2(rect.position.x + 10, rect.position.y + row_h * 0.66), String(r.label), 15, col, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			_text(c, Vector2(rect.position.x + w * 0.36, rect.position.y + row_h * 0.64), String(r.desc), 10, Color(DIM, 0.9 if ok else 0.6), HORIZONTAL_ALIGNMENT_LEFT, w * 0.5)
+			var tag: String = String(r.note) if String(r.note) != "" else "%d" % int(r.price)
+			var tcol := Color(DIM, 0.8) if String(r.note) != "" else (WARN if bool(r.afford) else DANGER)
+			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.66), tag, 15, tcol, HORIZONTAL_ALIGNMENT_RIGHT, w - 10, true)
+		y += row_h
+	if _shop_msg_t > 0.0:
+		_text(c, Vector2(x0, y + 26), _shop_msg, 14, Color(WARN, clampf(_shop_msg_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, w, true)
+	_text(c, Vector2(x0, y + 50), "W/S or mouse select  ·  ENTER / click buy  ·  [%s] or ESC close" % Settings.Controls.short("shop"), 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
 
 
 func _resume() -> void:

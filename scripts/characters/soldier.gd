@@ -296,6 +296,10 @@ func try_fire(target: Vector3) -> bool:
 	var result := w.fire(self, get_fire_origin(), target, get_spread())
 	if w.is_melee():
 		rig.play_slash(60.0 / float(w.stats.rpm))
+		var heavy: bool = result.killed or result.backstab
+		if result.hit != null:
+			rig.slash_impact(heavy)
+		_slash_trail(result.hit != null, heavy)
 	else:
 		rig.add_recoil(float(w.stats.recoil) * (float(w.stats.recoil_crouch) if crouching else 1.0))
 	fired.emit(self, w, result)
@@ -312,8 +316,15 @@ func net_shot(ends: Array) -> void:
 	w.fire_fx(ends)
 	if w.is_melee():
 		rig.play_slash(60.0 / float(w.stats.rpm))
+		_slash_trail(false, false)
 	else:
 		rig.add_recoil(float(w.stats.recoil) * (float(w.stats.recoil_crouch) if crouching else 1.0))
+
+
+## A pale arc where the blade swept, so a slash reads in top-down view too.
+func _slash_trail(hit: bool, heavy: bool) -> void:
+	var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	FX.slash_trail(self, global_position + Vector3.UP * chest_height(), fwd, rig._slash_side, hit, heavy)
 
 
 func start_reload() -> void:

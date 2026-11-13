@@ -100,6 +100,7 @@ var _ammo_taken: Array = []
 func _ready() -> void:
 	randomize()
 	Engine.time_scale = 1.0   # never carry a slow-mo / kill freeze into a new map
+	preload("res://scripts/core/platform.gd").first_launch_defaults(get_script())   # phones start on the light map
 	mode = saved_mode if saved_mode in ["ch1", "ch2", "zombie", "pvp"] else "ch1"
 	if mode == "pvp" and not Net.is_pvp():
 		mode = "ch1"   # deathmatch only exists in a multiplayer session
@@ -107,6 +108,7 @@ func _ready() -> void:
 	InputSetup.setup()
 	_setup_audio_bus()
 	Settings.ensure()
+	preload("res://scripts/core/platform.gd").setup_once()   # phones: UI scale, light settings, no tap-to-fire
 	preload("res://scripts/ui/retro.gd").install()
 	Settings.apply()
 	_build_environment()
@@ -353,16 +355,22 @@ func _setup_audio_bus() -> void:
 	var idx := AudioServer.bus_count - 1
 	AudioServer.set_bus_name(idx, "SFX")
 	AudioServer.set_bus_send(idx, "Master")
+	# a short, damped room: shots get some body without a long echo tail
 	var rev := AudioEffectReverb.new()
-	rev.room_size = 0.55
-	rev.damping = 0.6
-	rev.wet = 0.18
+	rev.room_size = 0.3
+	rev.damping = 0.85
+	rev.wet = 0.07
 	rev.dry = 1.0
 	AudioServer.add_bus_effect(idx, rev)
 	var comp := AudioEffectCompressor.new()
 	comp.threshold = -12.0
 	comp.ratio = 3.0
 	AudioServer.add_bus_effect(idx, comp)
+	# footsteps: dry (no reverb), follow the effects volume through SFX's send
+	AudioServer.add_bus()
+	var fi := AudioServer.bus_count - 1
+	AudioServer.set_bus_name(fi, "Foley")
+	AudioServer.set_bus_send(fi, "Master")
 
 
 # ================================================================ graphics

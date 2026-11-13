@@ -287,8 +287,8 @@ func _input(event: InputEvent) -> void:
 		# triggers rest at -1 on some pads; only a real pull or a firm stick push counts
 		if (trig and event.axis_value > 0.6) or (not trig and absf(event.axis_value) > 0.55):
 			using_pad = true
-	elif (event is InputEventMouseMotion and event.relative.length() > 3.0) or event is InputEventMouseButton or event is InputEventKey:
-		using_pad = false
+	elif ((event is InputEventMouseMotion and event.relative.length() > 3.0) or event is InputEventMouseButton or event is InputEventKey) 			and not preload("res://scripts/core/platform.gd").touch_mode():
+		using_pad = false   # on phones the touch sticks drive the stick-aim path
 	if first_person and not is_dead and event is InputEventMouseMotion 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var sens := MOUSE_SENS * float(Settings.v.sensitivity) * (0.6 if aiming else 1.0) / maxf(lerpf(1.0, float(current_weapon().stats.zoom), rig.aim_amt), 1.0)
 		aim_yaw = wrapf(aim_yaw - event.screen_relative.x * sens, -PI, PI)
@@ -733,8 +733,12 @@ func _start_vault(v: Dictionary, dir: Vector3) -> void:
 	aiming = false
 	if reload_timer > 0.0:
 		reload_timer = 0.0
-	aim_yaw = atan2(-dir.x, -dir.z)
-	_pad_dir = dir
+	# Face the jump only when it is roughly ahead. Backing over cover (or
+	# vaulting sideways) keeps the view where the player is looking.
+	var look := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	if look.dot(dir) > 0.2:
+		aim_yaw = atan2(-dir.x, -dir.z)
+		_pad_dir = dir
 	_peek_off = Vector3.ZERO
 	rig.lean_target = 0.0
 	rig.play_vault(_vault_dur, float(v.top), v.plant)

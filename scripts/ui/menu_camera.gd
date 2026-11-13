@@ -17,6 +17,8 @@ var fade := 1.0
 var _rig: Node
 var _base_yaw := 0.0
 var _idle_t := 0.0
+## Everyone else standing in the world (guards, infected): [rig, base yaw, phase].
+var _extras: Array = []
 
 
 func setup(main: Node) -> void:
@@ -29,6 +31,10 @@ func setup(main: Node) -> void:
 	_base_yaw = yaw
 	if _rig != null:
 		_rig.process_mode = Node.PROCESS_MODE_ALWAYS
+	for e in main.enemies:
+		if is_instance_valid(e) and not e.is_dead and e.get("rig") != null:
+			e.rig.process_mode = Node.PROCESS_MODE_ALWAYS
+			_extras.append([e.rig, float(e.rig.aim_yaw), randf() * TAU])
 	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
 	var right := Vector3(-fwd.z, 0, fwd.x)
 	var chest := p + Vector3.UP * 1.25
@@ -65,6 +71,11 @@ func release() -> void:
 	if is_instance_valid(_rig):
 		_rig.process_mode = Node.PROCESS_MODE_INHERIT
 		_rig.aim_yaw = _base_yaw
+	for x in _extras:
+		if is_instance_valid(x[0]):
+			x[0].process_mode = Node.PROCESS_MODE_INHERIT
+			x[0].aim_yaw = float(x[1])
+	_extras.clear()
 
 
 func _process(delta: float) -> void:
@@ -73,6 +84,11 @@ func _process(delta: float) -> void:
 	if is_instance_valid(_rig):
 		# an unhurried scan left and right, with a second slower drift on top
 		_rig.aim_yaw = _base_yaw + sin(_idle_t * 0.45) * 0.42 + sin(_idle_t * 0.17 + 1.3) * 0.2
+	for x in _extras:
+		if is_instance_valid(x[0]):
+			# guards scan their sector; each on its own rhythm
+			var ph: float = x[2]
+			x[0].aim_yaw = float(x[1]) + sin(_idle_t * 0.32 + ph) * 0.5 + sin(_idle_t * 0.11 + ph * 2.0) * 0.25
 	if t >= SHOT_TIME:
 		t = 0.0
 		shot = (shot + 1) % shots.size()

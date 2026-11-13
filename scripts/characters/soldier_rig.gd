@@ -57,10 +57,18 @@ const POSES := {
 }
 
 ## First-person weapon poses relative to the eye camera.
+## "sprint": carried across the body, muzzle low and canted (rifle), or
+## tucked down by the chest (pistol).
 const FP_POSES := {
-	"rifle": {"hip": [Vector3(0.16, -0.2, -0.34), Vector3(0.04, 0.06, 0.04)], "aim": [Vector3(0.0, -0.15, -0.19), Vector3.ZERO]},
-	"pistol": {"hip": [Vector3(0.13, -0.15, -0.36), Vector3(0.03, 0.05, 0.0)], "aim": [Vector3(0.0, -0.077, -0.4), Vector3.ZERO]},
+	"rifle": {"hip": [Vector3(0.16, -0.2, -0.34), Vector3(0.04, 0.06, 0.04)], "aim": [Vector3(0.0, -0.15, -0.19), Vector3.ZERO],
+			"sprint": [Vector3(0.1, -0.245, -0.31), Vector3(-0.38, 0.74, 0.55)]},
+	"pistol": {"hip": [Vector3(0.13, -0.15, -0.36), Vector3(0.03, 0.05, 0.0)], "aim": [Vector3(0.0, -0.077, -0.4), Vector3.ZERO],
+			"sprint": [Vector3(0.14, -0.22, -0.31), Vector3(-0.62, 0.32, 0.28)]},
 }
+## First-person gait motion on the gun: [side sway, footfall dip, roll, pitch]
+## at a walk and at a full sprint.
+const FP_GAIT_WALK := [0.006, 0.007, 0.018, 0.012]
+const FP_GAIT_SPRINT := [0.028, 0.03, 0.075, 0.05]
 
 # ---- inputs, written by the owning character every frame ----
 var move_velocity := Vector3.ZERO
@@ -1091,7 +1099,12 @@ func _update_weapon_pose(delta: float) -> void:
 				inspect_t = -1.0
 			else:
 				xf = _inspect_pose(kind, xf)
-	xf = xf.interpolate_with(_weapon_pose(kind, "sprint_1h" if one_hand_sprint else "sprint"), sprint_amt * (1.0 - aim_amt))
+	if fp_mode:
+		var fs: Array = FP_POSES[kind].sprint
+		xf = xf.interpolate_with(Transform3D(Basis.from_euler(fs[1]), fs[0]), sprint_amt * (1.0 - aim_amt))
+		xf = _fp_gait(xf)
+	else:
+		xf = xf.interpolate_with(_weapon_pose(kind, "sprint_1h" if one_hand_sprint else "sprint"), sprint_amt * (1.0 - aim_amt))
 	# third person only: first person keeps the gun gait-independent of the eye
 	if one_hand_sprint and not fp_mode:
 		# right arm swings forward with the left leg (counter to the free left arm)
@@ -1135,6 +1148,23 @@ func _update_weapon_pose(delta: float) -> void:
 	if fp_mode:
 		xf = chest.global_transform.affine_inverse() * fp_eye * xf
 	weapon_anchor.transform = xf
+
+
+## First person: the gun sways a figure-8 in time with the stride and dips
+## on every footfall; more at a run, almost nothing while aiming.
+func _fp_gait(xf: Transform3D) -> Transform3D:
+	var m := move_blend * (1.0 - slide_amt) * (1.0 - air_amt)
+	if m < 0.01:
+		return xf
+	var w := m * lerpf(1.0, 0.12, aim_amt)
+	var g: Array = []
+	for i in 4:
+		g.append(lerpf(float(FP_GAIT_WALK[i]), float(FP_GAIT_SPRINT[i]), sprint_amt) * w)
+	var side := sin(phase)                    # one sway per stride
+	var dip := absf(sin(phase))               # down on each footfall
+	var lag := sin(phase * 2.0 - 0.6)         # the gun trails the body a little
+	xf.origin += Vector3(side * g[0], -dip * g[1] + lag * g[1] * 0.25, 0.0)
+	return xf * Transform3D(Basis.from_euler(Vector3(-lag * g[3], side * g[3] * 0.6, side * g[2])), Vector3.ZERO)
 
 
 func _update_legs(delta: float) -> void:

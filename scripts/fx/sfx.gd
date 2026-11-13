@@ -29,6 +29,27 @@ static func play(ctx: Node, sound: String, pos: Vector3, volume_db: float = 0.0,
 	p.finished.connect(p.queue_free)
 
 
+## Close, dry body sounds (footsteps): quieter with distance, no room echo.
+static func play_foley(ctx: Node, sound: String, pos: Vector3, volume_db: float = 0.0, pitch_var: float = 0.07) -> void:
+	if ctx == null or not ctx.is_inside_tree():
+		return
+	var stream := _stream_for(sound)
+	var root := ctx.get_tree().current_scene
+	if stream == null or root == null:
+		return
+	var p := AudioStreamPlayer3D.new()
+	p.stream = stream
+	p.volume_db = volume_db
+	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
+	p.unit_size = 5.0
+	p.max_distance = 30.0
+	p.bus = &"Foley" if AudioServer.get_bus_index("Foley") != -1 else &"SFX"
+	root.add_child(p)
+	p.global_position = pos
+	p.play()
+	p.finished.connect(p.queue_free)
+
+
 static func _stream_for(sound: String) -> AudioStreamWAV:
 	if sound == "footstep":
 		return _footstep_variant()

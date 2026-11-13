@@ -100,6 +100,8 @@ var overlay: Overlay
 var gunsmith: Gunsmith
 var armory: Armory
 var admin_dash: AdminDashboard
+## On-screen sticks and buttons (phones only, see platform.gd).
+var touch: CanvasLayer
 
 
 func setup(p_main: Node) -> void:
@@ -142,6 +144,11 @@ func setup(p_main: Node) -> void:
 	admin_dash = AdminDashboard.new()
 	add_child(admin_dash)
 	admin_dash.setup(self)
+	if preload("res://scripts/core/platform.gd").touch_mode():
+		touch = preload("res://scripts/ui/touch_controls.gd").new()
+		touch.name = "TouchControls"
+		add_child(touch)
+		touch.setup(self)
 
 	menu_index = last_menu_index
 	Profile.seed_admin()
@@ -635,7 +642,10 @@ func _draw_overlay(c: Control) -> void:
 	_draw_damage_numbers(c)
 	_brackets(c, Rect2(Vector2(14, 14), vp - Vector2(28, 28)), 26.0, Color(TEXT, 0.25), 1.5)
 	_draw_compass(c, vp)
-	_draw_radar(c, Vector2(vp.x - 128, vp.y - 140), 100.0)
+	if touch != null:
+		_draw_radar(c, Vector2(vp.x - 410.0, 92.0), 66.0)   # phones: the corner belongs to FIRE
+	else:
+		_draw_radar(c, Vector2(vp.x - 128, vp.y - 140), 100.0)
 	if bool(Settings.v.show_fps):
 		_draw_fps(c, vp)
 	_draw_threats(c, vp)
@@ -750,7 +760,7 @@ func _draw_overlay(c: Control) -> void:
 
 	if briefing_t >= 0.0:
 		_draw_briefing(c, vp)
-	elif help_timer > 0.0:
+	elif help_timer > 0.0 and touch == null:
 		var a := clampf(help_timer / 2.0, 0.0, 1.0)
 		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Wheel switch weapon  ·  Shift sprint  ·  V dropkick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  F interact / first person  ·  Z/V rotate  ·  M music"
 		if player.using_pad:

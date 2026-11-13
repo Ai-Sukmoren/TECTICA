@@ -404,8 +404,8 @@ func _on_throw_release() -> void:
 
 
 func _on_footstep(pos: Vector3, intensity: float) -> void:
-	var vol := lerpf(-24.0, -11.0, intensity) - (6.0 if crouching else 0.0)
-	Sfx.play(self, "footstep", pos, vol, 0.25)
+	var vol := lerpf(-31.0, -20.0, intensity) - (6.0 if crouching else 0.0)
+	Sfx.play_foley(self, "footstep", pos, vol, 0.25)
 
 
 ## Shoves this body: `v` is the launch velocity (y lifts it off its feet).

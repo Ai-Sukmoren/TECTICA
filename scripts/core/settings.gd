@@ -219,9 +219,11 @@ static func apply() -> void:
 	_set_bus("Master", float(v.master_volume))
 	_set_bus("Music", float(v.music_volume))
 	_set_bus("SFX", float(v.sfx_volume))
+	_set_bus("Foley", float(v.sfx_volume))   # footsteps follow the effects slider
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(v.vsync) else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = BACKGROUND_FPS if _background else FPS_CAPS[clampi(int(v.max_fps), 0, FPS_CAPS.size() - 1)]
-	if DisplayServer.get_name() != "headless":
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
+		# browsers only allow fullscreen from a tap or click (touch_controls asks then)
 		var want: int = [DisplayServer.WINDOW_MODE_WINDOWED, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN,
 				DisplayServer.WINDOW_MODE_FULLSCREEN][clampi(int(v.window_mode), 0, 2)]
 		if DisplayServer.window_get_mode() != want:

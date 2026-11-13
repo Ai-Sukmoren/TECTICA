@@ -12,6 +12,12 @@ Soldiers, most weapons, both maps, FX and sound are generated in code; a few pro
 
 *Click the image to watch the promo (MP4, 36 s).*
 
+### Knife showcase (v1.16)
+
+[![Watch the TECTICA knife showcase](docs/screenshots/knife-showcase-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.16.0-beta/TECTICA-knife-showcase.mp4)
+
+*Combat knife, karambit and butterfly knife with their inspect animations (MP4, 25 s).*
+
 ## ⬇ Download & play (Windows)
 
 **[Download TECTICA for Windows (.zip)](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)**

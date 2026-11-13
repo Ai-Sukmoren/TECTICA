@@ -12,6 +12,12 @@ Soldiers, most weapons, both maps, FX and sound are generated in code; a few pro
 
 *Click the image to watch the promo (MP4, 36 s).*
 
+### 13 November update (v1.15 - v1.17)
+
+[![Watch the TECTICA update promo](docs/screenshots/update-promo-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.17.0-beta/TECTICA_v1.17_update_promo.mp4)
+
+*Visual upgrade, running animation, knives, co-op zombies on every map and phone touch controls (MP4, 49 s).*
+
 ### Knife showcase (v1.16)
 
 [![Watch the TECTICA knife showcase](docs/screenshots/knife-showcase-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.16.0-beta/TECTICA-knife-showcase.mp4)

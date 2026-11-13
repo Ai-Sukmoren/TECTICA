@@ -15,6 +15,9 @@ var seconds_per_hour := 60.0
 var running := true
 var night := 0.0
 var red_tint := 0.0      # zombie mode: blood-red dusk
+## Night vision 0..1: image intensifier gain (more the darker it is) and a
+## little ambient so unlit corners show; volumetric haze thinned so it doesn't glow.
+var nvg := 0.0
 var base_exposure := 1.0
 
 var env: Environment
@@ -126,7 +129,9 @@ func _apply(delta: float) -> void:
 	env.volumetric_fog_albedo = hor.lerp(amb, 0.5).lerp(Color(0.8, 0.78, 0.7), 0.35 * (1.0 - night))
 	env.fog_light_color = hor
 	var bright := float(Settings.v.get("brightness", 1.0))
-	env.tonemap_exposure = base_exposure * bright * lerpf(1.0, 1.75, night)
+	env.tonemap_exposure = base_exposure * bright * lerpf(1.0, 1.75, night) * lerpf(1.0, lerpf(1.6, 5.0, night), nvg)
+	env.ambient_light_energy += nvg * lerpf(0.3, 1.6, night)
+	env.volumetric_fog_density *= 1.0 - 0.7 * nvg
 	if level == null:
 		return
 

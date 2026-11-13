@@ -78,6 +78,8 @@ var _was_contact := false
 var _deployed := false
 var _base_exposure := 1.25
 var tod: TimeOfDay
+## Night vision 0..1 (fades in / out; see player.nvg_on).
+var nvg_amt := 0.0
 var campaign: Campaign
 var _variant := 0
 
@@ -582,6 +584,13 @@ func _process(_delta: float) -> void:
 	if player == null or hud == null:
 		return
 	_update_respawn(_delta)
+	if player.is_dead:
+		player.nvg_on = false
+	var nvg_want := 1.0 if player.nvg_on and _deployed and not hud.title else 0.0
+	nvg_amt = move_toward(nvg_amt, nvg_want, _delta * 5.0)
+	tod.nvg = nvg_amt
+	if post_fx:
+		post_fx.nvg = nvg_amt
 	var vcam := get_viewport().get_camera_3d()
 	if vcam != null:
 		Nature.set_view(vcam.global_position)

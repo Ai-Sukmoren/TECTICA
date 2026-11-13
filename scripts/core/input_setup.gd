@@ -42,6 +42,7 @@ static func setup() -> void:
 	_act("flashlight", [KEY_T], [JOY_BUTTON_BACK])
 	_act("interact", [KEY_F], [JOY_BUTTON_X])
 	_act("shop", [KEY_B])
+	_act("nvg", [KEY_N])
 	_act("toggle_view", [KEY_F], [JOY_BUTTON_RIGHT_STICK])
 	_act("quality", [KEY_F2])
 	_act("music", [KEY_M])

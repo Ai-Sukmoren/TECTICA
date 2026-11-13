@@ -89,6 +89,7 @@ func _layout() -> void:
 		["sprint", Vector2(150.0, s.y - 250.0), 30.0, "SPRINT", "sprint", "toggle"],
 		["pause", Vector2(44.0, 44.0), 26.0, "II", "pause", "tap"],
 		["shop", Vector2(s.x * 0.5, s.y - 140.0), 0.0, "SHOP", "shop", "tap"],
+		["nvg", Vector2(110.0, 140.0), 26.0, "NVG", "nvg", "tap"],
 	]
 	# zombie shop button only between waves
 	if main != null and main.director != null and not main.director.active and main.player != null and not main.player.is_dead:

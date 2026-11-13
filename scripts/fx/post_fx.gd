@@ -5,6 +5,8 @@ extends CanvasLayer
 var grain := 0.012
 var aberration := 0.0
 var desaturate := 0.0
+## Night vision 0..1 (green phosphor, tube vignette, noise).
+var nvg := 0.0
 var _rect: ColorRect
 var _mat: ShaderMaterial
 var _t := 0.0
@@ -46,6 +48,7 @@ uniform float grain = 0.012;
 uniform float aberration = 0.0;
 uniform float desaturate = 0.0;
 uniform float time_s = 0.0;
+uniform float nvg = 0.0;
 float rand(vec2 co) { return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -59,6 +62,20 @@ void fragment() {
 	col = mix(col, vec3(l), desaturate);
 	float n = rand(floor(uv * vec2(960.0, 540.0)) + fract(time_s * 7.0)) - 0.5;
 	col += n * grain;
+	if (nvg > 0.0) {
+		// image intensifier: luminance only, highlights compressed so lamps and
+		// muzzle flashes bloom instead of whiting out, green P43 phosphor
+		float y = dot(col, vec3(0.3, 0.59, 0.11));
+		y = y / (y + 0.45) * 1.45;
+		float sn = rand(floor(uv * vec2(640.0, 360.0)) + fract(time_s * 13.0)) - 0.5;
+		y += sn * 0.09;                                                  // sensor noise
+		y *= 0.93 + 0.07 * sin(uv.y * 900.0);                            // faint scan lines
+		vec3 g = vec3(0.22, 1.0, 0.42) * y + vec3(0.0, 0.025, 0.01);
+		// tube vignette: a soft circle, the edges fall to black
+		vec2 d = (uv - 0.5) * vec2(1.6, 1.0);
+		g *= 1.0 - smoothstep(0.45, 0.62, length(d));
+		col = mix(col, g, nvg);
+	}
 	COLOR = vec4(col, 1.0);
 }
 """
@@ -86,7 +103,8 @@ void fragment() {
 func _process(delta: float) -> void:
 	_t += delta
 	# Avoid copying and sampling the screen when all lens effects are off.
-	_rect.visible = grain > 0.0 or aberration > 0.0 or desaturate > 0.0
+	_rect.visible = grain > 0.0 or aberration > 0.0 or desaturate > 0.0 or nvg > 0.0
+	_mat.set_shader_parameter("nvg", nvg)
 	_mat.set_shader_parameter("grain", grain)
 	_mat.set_shader_parameter("aberration", aberration)
 	_mat.set_shader_parameter("desaturate", desaturate)

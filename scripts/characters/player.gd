@@ -62,6 +62,8 @@ var _kick_landed := false
 var _fall_speed := 0.0
 var flashlight_on := false
 var flashlight: SpotLight3D
+## Night-vision goggles (N): main.gd fades the effect in and out.
+var nvg_on := false
 var _chem_glow: OmniLight3D
 ## Player switched the light themselves (T): auto-on at dusk leaves it alone.
 var flashlight_manual := false
@@ -431,6 +433,9 @@ func _physics_process(delta: float) -> void:
 	var ctx := _interact_context()
 	if Input.is_action_just_pressed("toggle_view") and not ctx:
 		set_first_person(not first_person)
+	if Input.is_action_just_pressed("nvg") and not is_dead:
+		nvg_on = not nvg_on
+		Sfx.play(self, "switch", global_position + Vector3.UP * 1.6, -8.0, 0.0)
 	if Input.is_action_just_pressed("flashlight") and not is_dead:
 		set_flashlight(not flashlight_on)
 		flashlight_manual = true

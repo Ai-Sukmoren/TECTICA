@@ -773,6 +773,8 @@ func _draw_overlay(c: Control) -> void:
 	stance += "  ·  " + ("FPV" if player.first_person else "TOP-DOWN")
 	if player.flashlight_on:
 		stance += "  ·  LIGHT"
+	if player.nvg_on:
+		stance += "  ·  NVG"
 	_text(c, Vector2(26, vp.y - 34), stance, 11, DIM)
 
 	if debug_visible:
@@ -786,7 +788,7 @@ func _draw_overlay(c: Control) -> void:
 		_draw_briefing(c, vp)
 	elif help_timer > 0.0 and touch == null:
 		var a := clampf(help_timer / 2.0, 0.0, 1.0)
-		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Wheel switch weapon  ·  Shift sprint  ·  V dropkick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  F interact / first person  ·  Z/V rotate  ·  M music"
+		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Wheel switch weapon  ·  Shift sprint  ·  V dropkick (sprinting)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  N night vision  ·  F interact / first person  ·  Z/V rotate  ·  M music"
 		if player.using_pad:
 			help = "L-stick move  ·  R-stick aim  ·  RT fire  ·  LT ADS  ·  L3 sprint  ·  A vault  ·  LB/RB peek  ·  B crouch  ·  X reload / interact  ·  Y weapon  ·  Back flashlight  ·  R3 first person  ·  Start pause"
 		_text(c, Vector2(0, vp.y - 26), help, 12, Color(TEXT, a * 0.75), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -1359,9 +1361,10 @@ func _draw_reticle(c: Control) -> void:
 		var dist: float = Vector2(player.aim_point.x - player.global_position.x, player.aim_point.z - player.global_position.z).length()
 		spread_px = tan(deg_to_rad(player.current_spread())) * maxf(dist, 3.0) * ppm
 	var r := clampf(7.0 + spread_px, 7.0, 120.0)
-	var col := Color(1, 1, 1, 0.92)
+	var col := crosshair_color()
 	if player.hovered_enemy != null:
-		col = Color(1.0, 0.35, 0.3, 0.95)
+		# over an enemy: red, or yellow when the crosshair itself is red
+		col = Color(Color(1.0, 0.85, 0.2) if int(Settings.v.crosshair_color) == 4 else Color(1.0, 0.35, 0.3), col.a)
 	var ads: bool = player.first_person and player.rig.aim_amt > 0.7
 	if player.is_scoped():
 		_draw_scope(c, m, bool(player.current_weapon().stats.scope))
@@ -1371,10 +1374,7 @@ func _draw_reticle(c: Control) -> void:
 	elif player.first_person and player.rig.aim_amt > 0.15:
 		c.draw_circle(m, 1.6, Color(col, 1.0 - player.rig.aim_amt))
 	else:
-		c.draw_arc(m, 3.5, 0, TAU, 16, col, 1.5, true)
-		for k in 4:
-			var d := Vector2.RIGHT.rotated(k * PI * 0.5)
-			c.draw_line(m + d * r, m + d * (r + 8.0), col, 2.0, true)
+		draw_crosshair(c, m, r, col)
 	if player.reload_timer > 0.0:
 		var t: float = 1.0 - player.reload_timer / player.reload_duration
 		c.draw_arc(m, r + 14.0, -PI * 0.5, -PI * 0.5 + TAU * t, 40, WARN, 2.5, true)
@@ -1384,6 +1384,66 @@ func _draw_reticle(c: Control) -> void:
 		for k in 4:
 			var d := Vector2(1, 1).normalized().rotated(k * PI * 0.5)
 			c.draw_line(m + d * 9.0, m + d * 18.0, hc, 2.5, true)
+
+
+## Crosshair colour and opacity from the settings.
+func crosshair_color() -> Color:
+	var base: Color = Settings.CROSSHAIR_RGB[clampi(int(Settings.v.crosshair_color), 0, Settings.CROSSHAIR_RGB.size() - 1)]
+	return Color(base, float(Settings.v.crosshair_alpha))
+
+
+## The chosen crosshair style at `m`. `spread_r` is the gap the weapon's
+## spread asks for (ignored when "shows spread" is off).
+func draw_crosshair(c: Control, m: Vector2, spread_r: float, col: Color) -> void:
+	var style := int(Settings.v.crosshair)
+	var s := float(Settings.v.crosshair_size)
+	var gap: float = (spread_r if bool(Settings.v.crosshair_spread) else 7.0) * lerpf(1.0, s, 0.5)
+	var arm := 8.0 * s
+	var w := maxf(1.5 * s, 1.2)
+	var outline := bool(Settings.v.crosshair_outline) and style != 8
+	var oc := Color(0, 0, 0, col.a * 0.75) if col.get_luminance() > 0.25 else Color(1, 1, 1, col.a * 0.6)
+	var shapes: Array = []   # [kind, args...] drawn twice: outline first, then colour
+	match style:
+		0:   # classic: small ring + four ticks that open with spread
+			shapes.append(["ring", 3.5 * s])
+			for k in 4:
+				shapes.append(["tick", Vector2.RIGHT.rotated(k * PI * 0.5), gap, arm])
+		1:   # dot
+			shapes.append(["dot", 2.2 * s])
+		2, 3:   # cross (+ dot)
+			for k in 4:
+				shapes.append(["tick", Vector2.RIGHT.rotated(k * PI * 0.5), gap * 0.6, arm])
+			if style == 3:
+				shapes.append(["dot", 1.6 * s])
+		4, 5:   # circle (+ dot)
+			shapes.append(["ring", maxf(gap, 9.0 * s)])
+			if style == 5:
+				shapes.append(["dot", 1.6 * s])
+		6:   # T: no top arm
+			for k in [0, 1, 2]:
+				shapes.append(["tick", Vector2.RIGHT.rotated(k * PI * 0.5), gap * 0.6, arm])
+		7:   # chevron
+			shapes.append(["chevron", 7.0 * s])
+		_:
+			return   # none
+	for pass_i in (2 if outline else 1):
+		var o := pass_i == 0 and outline
+		var cc := oc if o else col
+		var ww := w + (2.0 if o else 0.0)
+		for sh in shapes:
+			match String(sh[0]):
+				"dot":
+					c.draw_circle(m, float(sh[1]) + (1.0 if o else 0.0), cc)
+				"ring":
+					c.draw_arc(m, float(sh[1]), 0, TAU, 32, cc, ww, true)
+				"tick":
+					var d: Vector2 = sh[1]
+					var a := m + d * float(sh[2]) - (d * 1.0 if o else Vector2.ZERO)
+					var b := m + d * (float(sh[2]) + float(sh[3])) + (d * 1.0 if o else Vector2.ZERO)
+					c.draw_line(a, b, cc, ww, true)
+				"chevron":
+					var h := float(sh[1])
+					c.draw_polyline(PackedVector2Array([m + Vector2(-h, h * 0.7), m, m + Vector2(h, h * 0.7)]), cc, ww, true)
 
 
 func _draw_scope(c: Control, m: Vector2, sniper: bool) -> void:
@@ -1896,10 +1956,27 @@ func _draw_settings(c: Control, vp: Vector2) -> void:
 		else:
 			_text(c, Vector2(x0 + 14, y), "SAVE & BACK", 15, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		y += row_h
+	if settings_row < rows.size() and String(rows[settings_row][0]).begins_with("crosshair"):
+		_draw_crosshair_preview(c, Rect2(x0 + w + 24.0, vp.y * 0.11 + 84.0, 200.0, 200.0))
 	var hint := "Q/E or LB/RB tabs   ·   W/S select   ·   A/D or click adjust   ·   Esc / B back"
 	if Settings.TABS[settings_tab] == "CONTROLS":
 		hint = "Q/E tabs   ·   W/S select   ·   Enter or click  rebind   ·   Esc back   ·   controller buttons stay as they are"
 	_text(c, Vector2(0, vp.y - 30), hint, 13, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+## Crosshair preview on a light and a dark backdrop, with the spread gap
+## breathing so the effect of every option is visible.
+func _draw_crosshair_preview(c: Control, r: Rect2) -> void:
+	if r.end.x > c.size.x - 10.0:
+		r.position.x = c.size.x - r.size.x - 10.0
+	var half := Rect2(r.position, Vector2(r.size.x * 0.5, r.size.y))
+	c.draw_rect(half, Color(0.72, 0.74, 0.7))
+	c.draw_rect(Rect2(half.position + Vector2(half.size.x, 0), half.size), Color(0.08, 0.09, 0.1))
+	c.draw_rect(r, Color(ACCENT, 0.5), false, 1.5)
+	_text(c, r.position + Vector2(0, -8), "PREVIEW", 12, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var spread := 8.0 + 10.0 * (0.5 + 0.5 * sin(_time * 2.0))
+	draw_crosshair(c, r.position + Vector2(r.size.x * 0.25, r.size.y * 0.5), spread, crosshair_color())
+	draw_crosshair(c, r.position + Vector2(r.size.x * 0.75, r.size.y * 0.5), spread, crosshair_color())
 
 
 # ================================================================ threat indicators

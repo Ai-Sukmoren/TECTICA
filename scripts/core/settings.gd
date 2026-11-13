@@ -20,6 +20,11 @@ const WINDOW := ["WINDOWED", "FULLSCREEN", "BORDERLESS"]
 ## "UNLIMITED" still has a ceiling: thousands of FPS in menus / loading screens
 ## cause GPU power spikes that can hard-reset PCs with a marginal PSU.
 const FPS_CAPS := [30, 60, 120, 144, 240, 300]
+## Crosshair styles (hud.gd draw_crosshair) and colours.
+const CROSSHAIRS := ["CLASSIC", "DOT", "CROSS", "CROSS + DOT", "CIRCLE", "CIRCLE + DOT", "T-SHAPE", "CHEVRON", "NONE"]
+const CROSSHAIR_COLORS := ["WHITE", "GREEN", "CYAN", "YELLOW", "RED", "MAGENTA", "ORANGE", "BLACK"]
+const CROSSHAIR_RGB := [Color(1, 1, 1), Color(0.3, 1.0, 0.35), Color(0.2, 0.95, 1.0), Color(1.0, 0.92, 0.2),
+		Color(1.0, 0.22, 0.2), Color(1.0, 0.3, 0.95), Color(1.0, 0.6, 0.15), Color(0.03, 0.03, 0.03)]
 const BACKGROUND_FPS := 30
 ## Bump when a saved setting must be migrated (2: unlimited FPS default -> 144,
 ## 3: PC freezes on ULTRA -> force V-sync, 60 FPS cap, HIGH preset once,
@@ -33,6 +38,12 @@ const ROWS := {
 		["show_fps", "SHOW FPS", null],
 		["damage_numbers", "DAMAGE NUMBERS", null],
 		["killcam", "KILL CAM", null],
+		["crosshair", "CROSSHAIR STYLE", CROSSHAIRS],
+		["crosshair_color", "CROSSHAIR COLOR", CROSSHAIR_COLORS],
+		["crosshair_size", "CROSSHAIR SIZE", 0.5, 2.0, 0.1],
+		["crosshair_alpha", "CROSSHAIR OPACITY", 0.2, 1.0, 0.05],
+		["crosshair_outline", "CROSSHAIR OUTLINE", null],
+		["crosshair_spread", "CROSSHAIR SHOWS SPREAD", null],
 	],
 	"VIDEO": [
 		["preset", "QUALITY PRESET", PRESETS],
@@ -76,7 +87,9 @@ const PRESET_VALUES := {
 
 static var v := {
 	"sensitivity": 1.0, "fov": 78.0, "master_volume": 0.9, "music_volume": 0.7, "sfx_volume": 0.9,
-	"shake": 1.0, "show_fps": false, "damage_numbers": true, "killcam": true, "film_grain": true, "vsync": true,
+	"shake": 1.0, "show_fps": false, "damage_numbers": true, "killcam": true,
+	"crosshair": 0, "crosshair_color": 0, "crosshair_size": 1.0, "crosshair_alpha": 0.92,
+	"crosshair_outline": true, "crosshair_spread": true, "film_grain": true, "vsync": true,
 	"preset": 2, "tactical_fov": 38.0, "render_scale": 1.0, "aa": 2, "shadows": 2,
 	"ssao": true, "ssr": true, "ssil": false, "gi": false, "fog": true, "bloom": true,
 	"brightness": 1.0, "retro_crt": false, "window_mode": 1, "max_fps": 1,
@@ -201,7 +214,7 @@ static func label_value(row: Array) -> String:
 		return "ON" if bool(val) else "OFF"
 	if is_choice(row):
 		return String(row[2][int(val)])
-	if key.ends_with("volume") or key == "render_scale" or key == "brightness":
+	if key.ends_with("volume") or key == "render_scale" or key == "brightness" or key.begins_with("crosshair_"):
 		return "%d%%" % int(round(float(val) * 100.0))
 	if key.ends_with("fov"):
 		return "%d°" % int(val)

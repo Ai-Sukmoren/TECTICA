@@ -31,6 +31,7 @@ WINDOWED = {
 PAIRS = {
     "multiplayer_test": [["host", "coop"], ["client", "coop"]],
     "join_code_e2e": [["host"], ["client"]],
+    "mp_zombie_maps_test": [["host", "town"], ["client", "town"]],
 }
 
 

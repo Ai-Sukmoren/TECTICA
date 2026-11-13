@@ -39,7 +39,7 @@ const POSES := {
 	"rifle": {
 		"ready": [Vector3(0.09, -0.07, -0.25), Vector3(-0.34, 0.14, 0.06)],
 		"aim": [Vector3(0.08, 0.075, -0.24), Vector3(0.0, 0.0, 0.0)],
-		"sprint": [Vector3(0.05, 0.02, -0.24), Vector3(0.95, 0.42, -0.35)],
+		"sprint": [Vector3(0.05, -0.03, -0.25), Vector3(0.78, 0.42, -0.35)],
 		"sprint_1h": [Vector3(0.27, -0.23, -0.2), Vector3(-0.42, 0.04, 0.12)],
 		"reload": [Vector3(0.07, -0.03, -0.3), Vector3(0.22, 0.38, 0.6)],
 		"lower": [Vector3(0.2, -0.32, -0.12), Vector3(-1.15, 0.2, 0.0)],
@@ -1291,9 +1291,18 @@ func _update_weapon_pose(delta: float) -> void:
 		xf = xf.interpolate_with(Transform3D(Basis.from_euler(fs[1]), fs[0]), sprint_amt * (1.0 - aim_amt))
 		xf = _fp_gait(xf)
 	else:
-		xf = xf.interpolate_with(_weapon_pose(kind, "sprint_1h" if one_hand_sprint else "sprint"), sprint_amt * (1.0 - aim_amt))
+		xf = xf.interpolate_with(_weapon_pose(kind, "sprint_1h" if _one_hand_run() else "sprint"), sprint_amt * (1.0 - aim_amt))
 	# third person only: first person keeps the gun gait-independent of the eye
-	if one_hand_sprint and not fp_mode:
+	if not fp_mode and not _one_hand_run() and kind == "rifle":
+		# two-handed carry across the chest: the rifle rides the torso's
+		# counter-rotation, rocks with each stride and punches a little
+		# forward and back with the arms
+		var cw := sprint_amt * (1.0 - aim_amt) * move_blend * (1.0 - slide_amt)
+		var s := sin(phase)
+		var c2 := cos(phase)
+		xf.origin += Vector3(s * 0.035, absf(c2) * 0.025 - 0.0125, c2 * 0.03) * cw
+		xf = Transform3D(Basis(Vector3.UP, -s * 0.16 * cw) * Basis(Vector3.BACK, s * 0.1 * cw), Vector3.ZERO) * xf
+	if _one_hand_run() and not fp_mode:
 		# right arm swings forward with the left leg (counter to the free left arm)
 		var sw_w := sprint_amt * (1.0 - aim_amt) * move_blend * (1.0 - slide_amt)
 		var f := cos(phase)
@@ -1469,7 +1478,7 @@ func _update_arms(delta: float) -> void:
 		l_basis = l_basis.slerp(palm, plant_w)
 	# one-handed sprint: left hand leaves the handguard and pumps with the stride
 	var free_want := 0.0
-	if one_hand_sprint and reload_t < 0.0 and throw_t < 0.0 and vault_t < 0.0:
+	if _one_hand_run() and reload_t < 0.0 and throw_t < 0.0 and vault_t < 0.0:
 		free_want = sprint_amt * (1.0 - aim_amt) * (1.0 - slide_amt)
 	var kwa := _kick_w()
 	if kwa > 0.0 or weapon.is_melee():
@@ -1501,6 +1510,16 @@ func _update_arms(delta: float) -> void:
 	if _free_arm > 0.001:
 		l_basis = l_basis.orthonormalized().slerp(elbows[0].global_transform.basis.orthonormalized(), _free_arm)
 	_set_basis(hands[0], l_basis)
+
+
+## Sprinting with the gun in the right hand only and the left arm pumping:
+## pistols and knives always; long guns only in first person (where the left
+## hand swings up into view). A third-person rifle stays in both hands,
+## carried across the chest like a real operator runs with it.
+func _one_hand_run() -> bool:
+	if not one_hand_sprint or weapon == null:
+		return false
+	return fp_mode or weapon.is_pistol() or weapon.is_melee()
 
 
 func _reach_shoulder(i: int, target: Vector3, tp_limit: float) -> void:

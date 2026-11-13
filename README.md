@@ -6,6 +6,12 @@ A tactical military shooter for **Godot 4.7** (GDScript, Forward+), playable in 
 campaign chapters, zombie survival, online co-op and PvP deathmatch.
 Soldiers, most weapons, both maps, FX and sound are generated in code; a few props and two guns come from an optional asset pack.
 
+## ▶ Promo video
+
+[![Watch the TECTICA promo video](docs/screenshots/promo-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.16.0-beta/TECTICA-promo.mp4)
+
+*Click the image to watch the promo (MP4, 36 s).*
+
 ## ⬇ Download & play (Windows)
 
 **[Download TECTICA for Windows (.zip)](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)**

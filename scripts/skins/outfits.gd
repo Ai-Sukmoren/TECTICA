@@ -7,8 +7,9 @@ const M = preload("res://scripts/core/materials.gd")
 
 const DEFAULT := "multicam"
 ## Same rarity colours / names as weapon skins (skins.gd).
-const RARITY_NAMES := ["STANDARD", "RARE", "EPIC", "LEGENDARY"]
-const RARITY_COLORS := [Color(0.7, 0.72, 0.75), Color(0.3, 0.6, 1.0), Color(0.75, 0.35, 1.0), Color(1.0, 0.72, 0.2)]
+## MYTHIC (4) outfits are admin exclusive, like mythic weapon skins: never sold.
+const RARITY_NAMES := ["STANDARD", "RARE", "EPIC", "LEGENDARY", "MYTHIC"]
+const RARITY_COLORS := [Color(0.7, 0.72, 0.75), Color(0.3, 0.6, 1.0), Color(0.75, 0.35, 1.0), Color(1.0, 0.72, 0.2), Color(1.0, 0.16, 0.26)]
 
 ## id -> look. camo: 4 colours; vest/gear/helmet/gloves/boots/face: colours;
 ## glow: emissive accent colour on gear (neon outfits); headgear: helmet/cap/beanie/none.
@@ -51,7 +52,17 @@ const OUTFITS := {
 		"vest": Color(0.85, 0.65, 0.2), "gear": Color(0.3, 0.24, 0.12), "helmet": Color(0.9, 0.7, 0.22),
 		"face": Color(0.08, 0.07, 0.06), "gloves": Color(0.12, 0.1, 0.08), "boots": Color(0.1, 0.08, 0.06), "headgear": "helmet",
 		"goggles": true, "metal": true},
+	"carbon": {"name": "CARBON PHANTOM", "rarity": 4, "price": 0, "admin": true,
+		"desc": "Carbon-weave suit, lacquered carbon plates, red trims.",
+		"camo": [Color(0.05, 0.05, 0.06), Color(0.16, 0.17, 0.19), Color(0.03, 0.03, 0.035), Color(0.1, 0.1, 0.12)],
+		"vest": Color(0.08, 0.085, 0.1), "gear": Color(0.06, 0.06, 0.07), "helmet": Color(0.1, 0.105, 0.12),
+		"face": Color(0.03, 0.03, 0.035), "gloves": Color(0.05, 0.05, 0.055), "boots": Color(0.06, 0.06, 0.065), "headgear": "helmet",
+		"goggles": true, "carbon": true, "trim": Color(0.42, 0.02, 0.05)},
 }
+
+
+static func is_admin(id: String) -> bool:
+	return bool(OUTFITS.get(id, {}).get("admin", false))
 
 
 static func ids() -> Array:
@@ -82,12 +93,20 @@ static func palette(id: String) -> Dictionary:
 		helmet = M.solid(o.helmet, 0.25, 0.9)
 	else:
 		helmet = M.matte("outfit_helmet_" + id, o.helmet, 0.72)
+	var carbon := bool(o.get("carbon", false))
+	if carbon:
+		helmet = M.carbon_fiber("outfit_carbon_plate", true, 22.0)
+	var detail: Material = M.solid(Color(0.14, 0.14, 0.12), 0.6, 0.2)
+	if o.has("trim"):
+		detail = M.emissive("outfit_trim_" + id, o.trim, 0.55)   # deep red, soft glow
 	return {
-		"camo": M.camo("outfit_camo_" + id, o.camo, 3.5),
-		"vest": M.solid(o.vest, 0.3, 0.9) if metal else M.fabric("outfit_vest_" + id, o.vest),
+		"camo": M.carbon_fiber("outfit_carbon_suit", false, 28.0) if carbon else M.camo("outfit_camo_" + id, o.camo, 3.5),
+		"vest": M.carbon_fiber("outfit_carbon_plate", true, 22.0) if carbon else (M.solid(o.vest, 0.3, 0.9) if metal else M.fabric("outfit_vest_" + id, o.vest)),
 		"gear": gear,
 		"helmet": helmet,
-		"detail": M.solid(Color(0.14, 0.14, 0.12), 0.6, 0.2),
+		"detail": detail,
+		"bedroll": M.carbon_fiber("outfit_carbon_suit", false, 28.0) if carbon else M.fabric("bedroll", Color(0.25, 0.27, 0.2)),
+		"wrap": M.fabric("outfit_wrap_" + id, Color(0.05, 0.05, 0.06), 7.0) if carbon else M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0),
 		"skin": M.solid(Color(0.76, 0.58, 0.47), 0.7),
 		"face": M.fabric("outfit_face_" + id, o.face),
 		"gloves": M.fabric("outfit_gloves_" + id, o.gloves, 12.0),

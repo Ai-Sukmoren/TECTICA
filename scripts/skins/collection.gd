@@ -75,6 +75,8 @@ static func buy_outfit(id: String) -> String:
 		return "UNKNOWN OUTFIT"
 	if has_outfit(id):
 		return "ALREADY OWNED"
+	if Outfits.is_admin(id):
+		return "ADMIN EXCLUSIVE"
 	var price := int(Outfits.info(id).price)
 	if credits < price:
 		return "NOT ENOUGH CREDITS"

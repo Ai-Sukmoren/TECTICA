@@ -5,7 +5,7 @@ extends SceneTree
 ##   godot --path . -s res://tests/previews/skin_grid_preview.gd -- <out_dir> [gun ids...]
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 
-const SKINS := ["", "woodland", "urban_digital", "carbon_weave", "damascus", "gilded_royale", "neon_tide", "mythicskin"]
+const SKINS := ["", "woodland", "carbon_mythic", "carbon_weave", "damascus", "gilded_royale", "neon_tide", "mythicskin"]
 
 func _initialize() -> void:
 	call_deferred("run")

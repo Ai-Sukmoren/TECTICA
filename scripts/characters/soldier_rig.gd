@@ -267,7 +267,7 @@ func build(p: Dictionary) -> void:
 	# assault backpack with bedroll and side pouches
 	_mesh(chest, ML.rbox(Vector3(0.31, 0.38, 0.17)), gear, Vector3(0, 0.1, 0.25))
 	_mesh(chest, ML.rbox(Vector3(0.24, 0.16, 0.04)), vest, Vector3(0, 0.03, 0.345))
-	_mesh(chest, ML.capsule(0.07, 0.36), M.fabric("bedroll", Color(0.25, 0.27, 0.2)), Vector3(0, 0.33, 0.23), Vector3(0, 0, PI * 0.5))
+	_mesh(chest, ML.capsule(0.07, 0.36), p.get("bedroll", M.fabric("bedroll", Color(0.25, 0.27, 0.2))), Vector3(0, 0.33, 0.23), Vector3(0, 0, PI * 0.5))
 	for side in [-1, 1]:
 		_mesh(chest, ML.rbox(Vector3(0.06, 0.18, 0.11)), vest, Vector3(side * 0.185, 0.06, 0.25))
 
@@ -320,7 +320,7 @@ func _build_details(p: Dictionary) -> void:
 		_mesh(chest, ML.rbox(Vector3(0.3, 0.014, 0.012)), strap, Vector3(0, 0.2 + i * 0.045, -0.169))
 	_mesh(chest, ML.rbox(Vector3(0.11, 0.022, 0.03)), strap, Vector3(0, 0.275, 0.135))
 	# shemagh / neck wrap: hides the neck seam and softens the silhouette
-	var wrap := M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0)
+	var wrap: Material = p.get("wrap", M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0))
 	_mesh(chest, ML.cylinder(0.07, 0.092, 0.075, 14), wrap, Vector3(0, 0.305, 0.0))
 	_mesh(chest, ML.sphere(0.06, false, 10), wrap, Vector3(0.0, 0.285, -0.075), Vector3.ZERO, Vector3(1.5, 0.75, 0.7))
 	# arms: rounded elbow pads, glove cuffs, wrist GPS on the support arm

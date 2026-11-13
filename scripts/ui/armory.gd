@@ -849,7 +849,7 @@ func _draw_outfits(c: Control, vp: Vector2) -> void:
 		hud._text(c, Vector2(r.position.x + 100, r.position.y + 22), String(o.name), 15, hud.TEXT if sel else Color(hud.TEXT, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		hud._text(c, Vector2(r.position.x + 100, r.position.y + 40), Outfits.RARITY_NAMES[int(o.rarity)], 10, rc, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		var wearing := Collection.outfit == id
-		var right := "WEARING" if wearing else ("OWNED" if have else "CR " + _thousands(int(o.price)))
+		var right := "WEARING" if wearing else ("OWNED" if have else ("ADMIN ONLY" if Outfits.is_admin(id) else "CR " + _thousands(int(o.price))))
 		var rcol: Color = hud.ACCENT if wearing else (hud.TEXT if have else (hud.WARN if Collection.credits >= int(o.price) else Color(hud.DANGER, 0.85)))
 		hud._text(c, Vector2(r.position.x, r.position.y + 31), right, 13, rcol, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 14, true)
 		if sel:
@@ -868,7 +868,7 @@ func _draw_outfits(c: Control, vp: Vector2) -> void:
 	hud._text(c, Vector2(dx, 214), Outfits.RARITY_NAMES[int(info.rarity)] + "  OUTFIT", 12, Outfits.RARITY_COLORS[int(info.rarity)], HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(dx, 246), String(info.desc), 14, Color(hud.TEXT, 0.8), HORIZONTAL_ALIGNMENT_LEFT, maxf(vp.x - dx - 40.0, 200.0))
 	var owned := Collection.has_outfit(cur)
-	var status := "WEARING" if Collection.outfit == cur else ("OWNED  ·  ENTER TO WEAR" if owned else "CR %s  ·  ENTER TO BUY" % _thousands(int(info.price)))
+	var status := "WEARING" if Collection.outfit == cur else ("OWNED  ·  ENTER TO WEAR" if owned else ("ADMIN EXCLUSIVE" if Outfits.is_admin(cur) else "CR %s  ·  ENTER TO BUY" % _thousands(int(info.price))))
 	hud._text(c, Vector2(dx, 290), status, 16, hud.ACCENT if owned else hud.WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(dx, 316), "Other players see your outfit in co-op and PvP.", 12, hud.DIM)
 	hud._text(c, Vector2(0, vp.y - 30), "W/S outfit   ·   Enter / click  buy or wear   ·   Q/E or Tab  tabs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)

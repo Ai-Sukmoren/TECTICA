@@ -344,3 +344,66 @@ static func road_paint(key: String, color: Color, cover: float = 0.68) -> Standa
 	m.uv1_scale = Vector3.ONE * 0.5
 	_cache[key] = m
 	return m
+
+
+static var _weave_tex: Array = []
+
+
+## 2x2 twill carbon weave: [albedo, normal] textures, built once.
+static func _carbon_textures() -> Array:
+	if not _weave_tex.is_empty():
+		return _weave_tex
+	var n := 128
+	var tows := 8.0
+	var alb := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var hgt := PackedFloat32Array()
+	hgt.resize(n * n)
+	for y in n:
+		for x in n:
+			var u := x * tows / n
+			var v := y * tows / n
+			var cx := floorf(u)
+			var cy := floorf(v)
+			var warp := fposmod(cx + cy, 4.0) < 2.0
+			var across := (u - cx) if warp else (v - cy)
+			var along := (v - cy) if warp else (u - cx)
+			var tow := sin(across * PI)
+			var fil := 0.88 + 0.12 * sin(along * 50.0 + across * 2.0)
+			var lum := tow * fil * (0.6 if warp else 1.0)
+			alb.set_pixel(x, y, Color(0.04, 0.042, 0.048).lerp(Color(0.2, 0.21, 0.235), lum))
+			hgt[y * n + x] = tow * (0.8 if warp else 1.0)
+	var nrm := Image.create(n, n, false, Image.FORMAT_RGB8)
+	for y in n:
+		for x in n:
+			var dx := hgt[y * n + (x + 1) % n] - hgt[y * n + (x - 1 + n) % n]
+			var dy := hgt[((y + 1) % n) * n + x] - hgt[((y - 1 + n) % n) * n + x]
+			var nv := Vector3(-dx * 2.0, -dy * 2.0, 1.0).normalized()
+			nrm.set_pixel(x, y, Color(nv.x * 0.5 + 0.5, nv.y * 0.5 + 0.5, nv.z * 0.5 + 0.5))
+	alb.generate_mipmaps()
+	nrm.generate_mipmaps()
+	_weave_tex = [ImageTexture.create_from_image(alb), ImageTexture.create_from_image(nrm)]
+	return _weave_tex
+
+
+## Carbon fibre. `gloss` true: lacquered armour plates (clear coat, low
+## roughness); false: carbon-weave fabric for the suit (satin).
+static func carbon_fiber(key: String, gloss: bool, scale: float = 12.0) -> StandardMaterial3D:
+	if _cache.has(key):
+		return _cache[key]
+	var tex := _carbon_textures()
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex[0]
+	m.normal_enabled = true
+	m.normal_texture = tex[1]
+	m.normal_scale = 0.7 if gloss else 0.9
+	m.roughness = 0.22 if gloss else 0.55
+	m.metallic = 0.3 if gloss else 0.1
+	if gloss:
+		m.clearcoat_enabled = true
+		m.clearcoat = 0.8
+		m.clearcoat_roughness = 0.05
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * scale
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_cache[key] = m
+	return m

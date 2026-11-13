@@ -39,6 +39,8 @@ Needs a 64-bit Windows 10/11 PC with a Vulkan-capable graphics card.
 - **Host:** **MULTIPLAYER**, then **HOST CO-OP** or **HOST PVP DEATHMATCH**. Your **join code** (5 characters, for
   example `B7AHG`) is shown on the multiplayer screen, in the top-left corner while you play, and under
   **Esc → COPY JOIN CODE**. Tell it to your friends.
+- **Co-op zombies on any map:** on **HOST CO-OP**, press A/D (or ←/→) to pick a chapter or
+  **ZOMBIE SURVIVAL** on any map (Pinewood Valley, Dead End). Friends who join load the same map.
 - **Join a friend:** **MULTIPLAYER → JOIN**, type the code, press **Enter**.
 - A 5-character code works for friends on the **same Wi-Fi / network** or on the **same Tailscale network**
   (there is one code for each). The code is the host's address packed into a few letters; there is no lobby server.

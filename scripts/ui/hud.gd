@@ -1799,7 +1799,27 @@ func _mp_open() -> void:
 	_mp_replace_join_text = true
 	Net.port = int(Settings.v.get("mp_port", Net.port))
 	_mp_port_text = str(Net.port)
-	_mp_coop_mode = main.mode if main.mode in MODES else "ch1"
+	_mp_coop_mode = main.mode_token() if main.mode_token() in _mp_coop_options() else "ch1"
+
+
+## Co-op host choices: each campaign chapter, then Zombie Survival on every map
+## ("zombie" = Pinewood Valley, "zombie@town" = Dead End, ...).
+func _mp_coop_options() -> Array:
+	var out: Array = []
+	for m in MODES:
+		if m != "zombie":
+			out.append(m)
+	for id in main.MAPS.keys():
+		out.append("zombie" if id == "forest" else "zombie@" + String(id))
+	return out
+
+
+func _mp_coop_label(token: String) -> String:
+	var parts := token.split("@")
+	if parts[0] != "zombie":
+		return _mode_label(token)
+	var map_id := parts[1] if parts.size() > 1 else "forest"
+	return "ZOMBIE SURVIVAL  ·  " + String(main.MAPS.get(map_id, map_id))
 
 
 func _mp_input_port() -> int:
@@ -1819,7 +1839,7 @@ func _mp_items() -> Array:
 	var cur := "_" if int(_time * 2.0) % 2 == 0 else " "
 	return [
 		"NAME:  " + Net.player_name + (cur if mp_row == 0 else ""),
-		"HOST CO-OP:  " + _mode_label(_mp_coop_mode),
+		"HOST CO-OP:  " + _mp_coop_label(_mp_coop_mode),
 		"HOST PVP DEATHMATCH",
 		"JOIN  (CODE, IP OR LINK):  " + Net.join_ip + (cur if mp_row == 3 else ""),
 		"PORT:  " + _mp_port_text + (cur if mp_row == 4 else ""),
@@ -1834,7 +1854,8 @@ func _mp_activate(i: int, dir: int = 0) -> void:
 			mp_row = 1
 		1:
 			if dir != 0:
-				_mp_coop_mode = MODES[posmod(MODES.find(_mp_coop_mode) + dir, MODES.size())]
+				var opts := _mp_coop_options()
+				_mp_coop_mode = opts[posmod(opts.find(_mp_coop_mode) + dir, opts.size())]
 				return
 			_mp_save()
 			if Net.host("coop", Net.port, mp_online) == OK:

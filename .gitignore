@@ -1,5 +1,6 @@
 # Godot cache / imports (rebuilt automatically)
 .godot/
+__pycache__/
 *.tmp
 # local backups, logs and builds
 *.bak

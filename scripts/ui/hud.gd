@@ -6,6 +6,7 @@ extends CanvasLayer
 
 const LOGO_PATH := "res://assets/logo.png"
 const Gunsmith = preload("res://scripts/ui/gunsmith.gd")
+const RoomBrowser = preload("res://scripts/ui/room_browser.gd")
 const Armory = preload("res://scripts/ui/armory.gd")
 const AdminDashboard = preload("res://scripts/ui/admin_dashboard.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
@@ -72,7 +73,9 @@ var _mp_coop_mode := "ch1"
 var _mp_port_text := ""
 var _mp_replace_join_text := true
 ## host online through Tailscale Funnel (WebSocket) instead of direct UDP
-static var mp_online := false
+static var mp_online := true
+var room_browser: RoomBrowser
+var _open_rooms_rect := Rect2()
 
 var _fps := 60.0
 var _vignette: GradientTexture2D
@@ -130,6 +133,9 @@ func setup(p_main: Node) -> void:
 	gunsmith = Gunsmith.new()
 	add_child(gunsmith)
 	gunsmith.setup(self)
+	room_browser = RoomBrowser.new()
+	add_child(room_browser)
+	room_browser.setup(self)
 	armory = Armory.new()
 	add_child(armory)
 	armory.setup(self)
@@ -286,6 +292,7 @@ func _menu_entries() -> Array:
 		{"id": "mode", "sec": "PLAY", "label": "MISSION", "value": _mode_label(main.mode), "arrow": true},
 		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode == "zombie" else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode == "zombie"},
 		{"id": "mp", "sec": "PLAY", "label": "MULTIPLAYER", "value": "CO-OP  /  PVP"},
+		{"id": "rooms", "sec": "PLAY", "label": "OPEN ROOMS", "value": "CLICK TO JOIN"},
 		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
 		{"id": "armory", "sec": "OPERATOR", "label": "ARMORY", "value": "CR " + str(Collection.credits)},
 		{"id": "view", "sec": "SYSTEM", "label": "VIEW", "value": "FIRST PERSON" if main.start_first_person else "TOP-DOWN", "arrow": true},
@@ -333,6 +340,8 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 	if i < 0 or i >= e.size():
 		return
 	match String(e[i].id):
+		"rooms":
+			room_browser.open()
 		"update":
 			OS.shell_open("https://github.com/Ai-Sukmoren/TECTICA/releases/latest")
 		"deploy":
@@ -404,6 +413,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _needs_auth():
 		_auth_input(event)
+		return
+	if title and room_browser.is_open:
+		if room_browser.handle(event):
+			room_browser.close()
 		return
 	if title and gunsmith.is_open:
 		if gunsmith.handle(event):
@@ -807,6 +820,9 @@ func _draw_title(c: Control, vp: Vector2) -> void:
 	if settings_open:
 		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.02, 0.025, 0.03, 0.85))
 		_draw_settings(c, vp)
+		return
+	if room_browser.is_open:
+		room_browser.draw(c, vp)
 		return
 	if gunsmith.is_open:
 		gunsmith.draw(c, vp)
@@ -1835,6 +1851,9 @@ func _mp_activate(i: int, dir: int = 0) -> void:
 
 
 func _mp_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and _open_rooms_rect.has_point(event.position):
+		room_browser.open()
+		return
 	# typing into the text rows (name / IP / port)
 	if event is InputEventKey and event.pressed and event.ctrl_pressed and event.keycode == KEY_V and mp_row in [3, 4]:
 		var inv := Net.parse_invite(DisplayServer.clipboard_get(), _mp_input_port())
@@ -1902,6 +1921,9 @@ func _mp_input(event: InputEvent) -> void:
 
 func _draw_mp(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.028, 0.04, 0.82))
+	_open_rooms_rect = Rect2(vp.x - 280, 50, 220, 44)
+	c.draw_rect(_open_rooms_rect, Color(ACCENT, 0.18))
+	_text(c, _open_rooms_rect.position + Vector2(0, 28), "OPEN ROOMS  →", 16, ACCENT, HORIZONTAL_ALIGNMENT_CENTER, _open_rooms_rect.size.x, true)
 	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.2), minf(vp.x * 0.4, 600.0), 0.95)
 	_text(c, Vector2(0, vp.y * 0.36), "MULTIPLAYER", 30, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	_text(c, Vector2(0, vp.y * 0.36 + 24), "CO-OP: CAMPAIGN CHAPTERS OR ZOMBIE SURVIVAL TOGETHER   ·   PVP: FREE-FOR-ALL, FIRST TO %d" % main.PVP_KILL_LIMIT, 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -2124,6 +2146,7 @@ func _draw_auth(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(px - 30, top - 50, pw + 60, 360), Color(0.03, 0.045, 0.055, 0.85))
 	_brackets(c, Rect2(px - 30, top - 50, pw + 60, 360), 16.0, Color(TEXT, 0.35), 1.5)
 	_text(c, Vector2(0, top - 18), "SIGN IN", 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_text(c, Vector2(0, top - 42), "Successful sign-ins report your username, time and game version to the game owner.", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	var cur := "_" if int(_time * 2.0) % 2 == 0 else " "
 	var pin_show := ""
 	for i in Profile.PIN_LEN:

@@ -130,6 +130,7 @@ static func create(name: String, pin: String) -> String:
 	_fails = 0
 	_ensure_admin()
 	log_event(current, "created")
+	_report_login()
 	return ""
 
 
@@ -166,7 +167,17 @@ static func sign_in(name: String, pin: String) -> String:
 	current = String(u.get("name", name.strip_edges()))
 	_ensure_admin()
 	log_event(current, "sign_in")
+	_report_login()
 	return ""
+
+
+static func _report_login() -> void:
+	if _is_test_run():
+		return
+	var tree := Engine.get_main_loop() as SceneTree
+	var service := tree.root.get_node_or_null("Community")
+	if service != null:
+		service.record_login(current)
 
 
 static func sign_out() -> void:

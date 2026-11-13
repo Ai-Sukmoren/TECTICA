@@ -15,6 +15,9 @@ var msg_t := 0.0
 var _rows: Array = []
 var _log: Array = []
 var _row_rects: Array = []
+var _global := true
+var _service
+var _refresh_in := 0.0
 
 const EVENT_LABELS := {
 	"sign_in": "SIGNED IN", "sign_out": "SIGNED OUT", "created": "ACCOUNT CREATED",
@@ -25,6 +28,8 @@ const EVENT_LABELS := {
 func setup(p_hud) -> void:
 	hud = p_hud
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_service = get_tree().root.get_node("Community")
+	_service.dashboard_updated.connect(_global_received)
 
 
 func open() -> void:
@@ -40,6 +45,10 @@ func close() -> void:
 
 
 func refresh() -> void:
+	if _global:
+		_service.refresh_dashboard()
+		_refresh_in = 15.0
+		return
 	_rows = Profile.dashboard_rows()
 	_log = Profile.login_log(200)
 	row = clampi(row, 0, maxi(_rows.size() - 1, 0))
@@ -47,6 +56,18 @@ func refresh() -> void:
 
 func _process(delta: float) -> void:
 	msg_t = maxf(msg_t - delta, 0.0)
+	if is_open and _global:
+		_refresh_in -= delta
+		if _refresh_in <= 0.0:
+			refresh()
+
+
+func _global_received() -> void:
+	if not _global:
+		return
+	_rows = _service.dashboard.get("rows", [])
+	_log = _service.dashboard.get("events", [])
+	row = clampi(row, 0, maxi(_rows.size() - 1, 0))
 
 
 static func when(t: float) -> String:
@@ -60,6 +81,14 @@ static func when(t: float) -> String:
 func handle(event: InputEvent) -> bool:
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
 		return true
+	if event is InputEventKey and event.pressed and event.keycode == KEY_TAB:
+		_global = not _global
+		_rows = []
+		_log = []
+		row = 0
+		log_scroll = 0
+		refresh()
+		return false
 	if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
 		row = posmod(row - 1, maxi(_rows.size(), 1))
 	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
@@ -72,7 +101,7 @@ func handle(event: InputEvent) -> bool:
 		log_scroll = mini(log_scroll + 3, maxi(_log.size() - 10, 0))
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 		log_scroll = maxi(log_scroll - 3, 0)
-	elif event is InputEventKey and event.pressed and event.keycode == KEY_G and not _rows.is_empty():
+	elif event is InputEventKey and event.pressed and event.keycode == KEY_G and not _global and not _rows.is_empty():
 		var r: Dictionary = _rows[row]
 		if Profile.set_admin(String(r.name), not bool(r.admin)):
 			msg = ("ADMIN GRANTED  ·  " if not bool(r.admin) else "ADMIN REVOKED  ·  ") + String(r.name).to_upper()
@@ -90,6 +119,9 @@ func handle(event: InputEvent) -> bool:
 
 
 func draw(c: Control, vp: Vector2) -> void:
+	if _global:
+		_draw_global(c, vp)
+		return
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.02, 0.03, 0.95))
 	hud._text(c, Vector2(60, 66), "ADMIN  //  DASHBOARD", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(60, 90), "SIGNED IN AS  " + Profile.current.to_upper() + "   ·   LOCAL ACCOUNTS ON THIS PC", 12, hud.DIM)
@@ -168,4 +200,35 @@ func draw(c: Control, vp: Vector2) -> void:
 
 	if msg_t > 0.0:
 		hud._text(c, Vector2(0, vp.y - 58), msg, 14, Color(hud.WARN, clampf(msg_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-	hud._text(c, Vector2(0, vp.y - 30), "W/S select player   ·   G grant / revoke admin   ·   wheel / PgUp PgDn scroll log   ·   F5 refresh   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	hud._text(c, Vector2(0, vp.y - 30), "Tab global sign-ins   ·   W/S select   ·   G admin role   ·   wheel scroll log   ·   F5 refresh   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+func _draw_global(c: Control, vp: Vector2) -> void:
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.02, 0.03, 0.95))
+	hud._text(c, Vector2(60, 66), "ADMIN  //  GLOBAL SIGN-INS", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	hud._text(c, Vector2(60, 94), str(_service.dashboard_status), 12, hud.DIM)
+	hud._text(c, Vector2(60, 128), "%d RECORDED PLAYERS   ·   %d SIGN-INS   ·   %d ACTIVE IN 24 HOURS" % [
+		_rows.size(), int(_service.dashboard.get("total", 0)), int(_service.dashboard.get("active", 0))], 14, hud.ACCENT)
+	hud._text(c, Vector2(60, 156), "Successful local sign-ins reported by updated game clients. Installation IDs distinguish identical names.", 11, hud.DIM)
+	var first := maxi(row - 7, 0)
+	_row_rects.clear()
+	for i in range(first, mini(first + 8, _rows.size())):
+		var r: Dictionary = _rows[i]
+		var y := 196.0 + (i - first) * 30.0
+		if i == row:
+			c.draw_rect(Rect2(54, y - 20, vp.x - 114, 28), Color(hud.RED, 0.2))
+		hud._text(c, Vector2(60, y), str(r.name), 14, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		hud._text(c, Vector2(280, y), "PC " + str(r.device), 12, hud.DIM)
+		hud._text(c, Vector2(450, y), when(float(r.last)), 12, hud.TEXT)
+		hud._text(c, Vector2(690, y), "%d sign-ins" % int(r.logins), 12, hud.ACCENT)
+	if _rows.is_empty():
+		hud._text(c, Vector2(60, 196), "No player sign-ins received yet.", 14, hud.DIM)
+	hud._text(c, Vector2(60, 460), "RECENT SIGN-INS", 14, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var lines := maxi(int((vp.y - 550) / 24), 0)
+	for i in range(log_scroll, mini(_log.size(), log_scroll + lines)):
+		var e: Dictionary = _log[i]
+		var y := 490 + (i - log_scroll) * 24
+		hud._text(c, Vector2(60, y), when(float(e.t)), 12, hud.DIM)
+		hud._text(c, Vector2(280, y), str(e.user), 12, hud.TEXT)
+		hud._text(c, Vector2(510, y), "PC %s  ·  v%s" % [e.device, e.version], 12, hud.DIM)
+	hud._text(c, Vector2(60, vp.y - 30), "W/S select player   ·   wheel scroll log   ·   F5 refresh   ·   Tab local accounts   ·   Esc back", 12, hud.DIM)

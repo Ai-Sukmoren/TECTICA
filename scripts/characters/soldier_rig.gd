@@ -174,6 +174,11 @@ const INSPECT_DURATION := 2.6
 var death_t := -1.0
 var _death_dir := Vector3.FORWARD
 var _death_hip := HIP_STAND
+## Random roll onto one side as the body lands (radians), and which knee stays bent.
+var _death_roll := 0.0
+var _death_knee := 0
+## Falling backwards (shot from the front): the spine relaxes back instead of curling.
+var _death_back := true
 
 # nodes
 var pivot: Node3D
@@ -739,6 +744,10 @@ func play_death(dir: Vector3) -> void:
 	_death_hip = hips.position.y
 	var d := Vector3(dir.x, 0, dir.z)
 	_death_dir = d.normalized() if d.length() > 0.01 else Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
+	_death_roll = randf_range(0.25, 0.6) * (1.0 if randf() < 0.5 else -1.0)
+	_death_knee = randi() % 2
+	var facing := -chest.global_transform.basis.z
+	_death_back = Vector3(facing.x, 0, facing.z).normalized().dot(_death_dir) < 0.0
 	cancel_reload()
 	_drop_weapon()
 
@@ -1534,24 +1543,45 @@ func _update_death(delta: float) -> void:
 	death_t += delta
 	var t := death_t
 	# phase 1: knees buckle, legs still IK-planted
-	if t < 0.45:
-		var buckle := smoothstep(0.0, 0.4, t)
-		hips.position.y = lerpf(_death_hip, 0.5, buckle)
+	if t < 0.4:
+		var buckle := smoothstep(0.0, 0.36, t)
+		hips.position.y = lerpf(_death_hip, lerpf(_death_hip, 0.5, 0.75), buckle)
 		move_blend = lerpf(move_blend, 0.0, 1.0 - exp(-12.0 * delta))
 		_update_legs(delta)
+	else:
+		# phase 2b: as the body goes over, the legs go limp and straighten out
+		# with it (no kneeling corpse with its thighs in the air)
+		var ext := smoothstep(0.4, 0.85, t)
+		hips.position.y = lerpf(lerpf(_death_hip, 0.5, 0.75), _death_hip, ext)
+		var k := 1.0 - exp(-9.0 * delta)
+		for i in thighs.size():
+			var side := -1.0 if i == 0 else 1.0
+			var thigh_rest := Basis.from_euler(Vector3(0.1 + 0.12 * i, 0.0, side * 0.07))
+			(thighs[i] as Node3D).basis = (thighs[i] as Node3D).basis.slerp(thigh_rest, k)
+			var bend := -0.75 if i == _death_knee else -0.1   # one knee stays bent
+			var thigh_lift := 0.45 if i == _death_knee else 0.0
+			(thighs[i] as Node3D).basis = (thighs[i] as Node3D).basis.slerp(Basis.from_euler(Vector3(thigh_lift, 0.0, 0.0)) * thigh_rest, k)
+			(shins[i] as Node3D).basis = (shins[i] as Node3D).basis.slerp(Basis.from_euler(Vector3(bend, 0.0, 0.0)), k)
+			(feet[i] as Node3D).basis = (feet[i] as Node3D).basis.slerp(Basis.from_euler(Vector3(0.35, 0.0, side * 0.2)), k)
 	# phase 2: body topples in the direction of the killing shot
 	var f := clampf((t - 0.18) / 0.62, 0.0, 1.0)
 	var fall := f * f
 	if t > 0.8:
 		fall = 1.0 + sin(clampf((t - 0.8) / 0.22, 0.0, 1.0) * PI) * 0.04
 	var axis := Vector3.UP.cross(_death_dir).normalized()
-	pivot.transform = Transform3D(Basis(axis, fall * 1.47), Vector3(0, 0.13 * minf(fall, 1.0), 0))
+	# topple, and roll part-way onto one side as it goes down
+	pivot.transform = Transform3D(Basis(axis, fall * 1.5) * Basis(Vector3.UP, _death_roll * minf(fall, 1.0)), Vector3(0, 0.1 * minf(fall, 1.0), 0))
 	# slump torso and head, limp arms
 	var slump := smoothstep(0.0, 0.9, t)
 	# Preserve the existing 60 Hz response at every render frequency.
 	var slump_blend := 1.0 - pow(1.0 - slump * 0.15, delta * 60.0)
-	spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(-0.35, 0.2, 0.15)), slump_blend)
-	head.basis = head.basis.slerp(Basis.from_euler(Vector3(-0.5, 0.4, 0.3)), slump_blend)
+	if _death_back:
+		# on its back: torso flat, head lolls to one side
+		spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(0.12, 0.15, 0.1)), slump_blend)
+		head.basis = head.basis.slerp(Basis.from_euler(Vector3(0.2, 0.7 * signf(_death_roll), 0.25)), slump_blend)
+	else:
+		spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(-0.35, 0.2, 0.15)), slump_blend)
+		head.basis = head.basis.slerp(Basis.from_euler(Vector3(-0.5, 0.4, 0.3)), slump_blend)
 	if t < 1.3:
 		var down := pivot.global_transform.basis * Vector3.DOWN
 		var cb := chest.global_transform.basis

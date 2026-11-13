@@ -110,6 +110,8 @@ func init_zombie(p_player, p_kind: String, hp: float, spd: float, dmg: float, va
 			_shape.height = 0.6
 			_col.position.y = CreatureBody.BAT_HOVER
 			motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	if not Types.is_creature(kind):
+		_add_hit_zone()
 	nav = NavigationAgent3D.new()
 	nav.path_desired_distance = 0.6
 	nav.target_desired_distance = 0.8
@@ -183,7 +185,91 @@ func is_head_hit(hit_pos: Vector3) -> bool:
 			var local := hit_pos - global_position
 			var forward := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
 			return local.dot(forward) > 0.3 and local.y > 0.4 and local.y < 1.0
+	if _humanoid_hits():
+		# the real head, wherever the lurch or crouch has put it
+		var hc := _head_center()
+		return hit_pos.distance_to(hc) <= _head_radius() + 0.03
 	return super.is_head_hit(hit_pos)
+
+
+# ---------------------------------------------------------------- hit shapes
+## Humanoid infected are hit-tested against shapes that follow the animated
+## skeleton (head sphere, torso, arm and leg capsules) instead of the big
+## movement capsule, which is much wider than the body and knows nothing of
+## the lurching posture. weapon.gd asks hit_part() after the capsule is hit.
+func _humanoid_hits() -> bool:
+	return not Types.is_creature(kind) and rig != null and rig.visible and rig.head != null
+
+
+func _head_center() -> Vector3:
+	return rig.head.global_position + rig.head.global_transform.basis.y.normalized() * 0.01 * rig.scale.y
+
+
+func _head_radius() -> float:
+	return 0.125 * rig.scale.x
+
+
+var _hit_zone: Area3D
+
+
+## Bullet-only capsule, wider than the movement capsule so reaching arms count.
+func _add_hit_zone() -> void:
+	_hit_zone = Area3D.new()
+	_hit_zone.name = "HitZone"
+	_hit_zone.collision_layer = Layers.HITZONE
+	_hit_zone.collision_mask = 0
+	_hit_zone.monitoring = false
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	var sc := rig.scale.x if rig != null else 1.0
+	cap.radius = 0.62 * sc
+	cap.height = 2.1 * rig.scale.y if rig != null else 2.1
+	cs.shape = cap
+	cs.position.y = cap.height * 0.5
+	_hit_zone.add_child(cs)
+	add_child(_hit_zone)
+
+
+## [name, a, b, radius] capsules (a == b for spheres) in world space.
+func hit_shapes() -> Array:
+	var s := rig.scale.x
+	var up: Vector3 = rig.chest.global_transform.basis.y.normalized()
+	var out: Array = []
+	out.append(["head", _head_center(), _head_center(), _head_radius()])
+	var neck_top: Vector3 = rig.chest.global_position + up * 0.36 * rig.scale.y
+	var belly := 1.25 if kind == "bloater" else 1.0
+	out.append(["torso", rig.hips.global_position, rig.chest.global_position + up * 0.24 * rig.scale.y, 0.19 * s * belly])
+	out.append(["neck", rig.chest.global_position + up * 0.24 * rig.scale.y, neck_top, 0.07 * s])
+	for i in 2:
+		out.append(["upper_arm", rig.shoulders[i].global_position, rig.elbows[i].global_position, 0.075 * s])
+		out.append(["forearm", rig.elbows[i].global_position, rig.hands[i].global_position, 0.07 * s])
+		out.append(["thigh", rig.thighs[i].global_position, rig.shins[i].global_position, 0.1 * s])
+		out.append(["shin", rig.shins[i].global_position, rig.feet[i].global_position, 0.085 * s])
+	return out
+
+
+## First body part a shot from `from` along `dir` hits: {"part", "pos"}, or {}
+## when the shot passes through the capsule without touching the body.
+func hit_part(from: Vector3, dir: Vector3, reach: float = 300.0) -> Dictionary:
+	if not _humanoid_hits():
+		return {"part": "body", "pos": Vector3.INF}
+	var best := {}
+	var best_t := INF
+	var to := from + dir * reach
+	for sh in hit_shapes():
+		var a: Vector3 = sh[1]
+		var b: Vector3 = sh[2]
+		var r: float = sh[3]
+		var pts := Geometry3D.get_closest_points_between_segments(from, to, a, b)
+		var d: float = (pts[0] as Vector3).distance_to(pts[1])
+		if d > r:
+			continue
+		# step back from the closest approach to the surface
+		var t: float = from.distance_to(pts[0]) - sqrt(maxf(r * r - d * d, 0.0))
+		if t < best_t:
+			best_t = t
+			best = {"part": String(sh[0]), "pos": from + dir * maxf(t, 0.0)}
+	return best
 
 
 func chest_height() -> float:
@@ -246,6 +332,8 @@ func apply_knockback(v: Vector3, stun: float = 0.5) -> void:
 
 func die(dir: Vector3) -> void:
 	death_time = Time.get_ticks_msec() / 1000.0
+	if is_instance_valid(_hit_zone):
+		_hit_zone.queue_free()   # corpses stop catching bullets
 	super.die(dir)
 	if kind == "bloater":
 		_detonate()

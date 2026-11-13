@@ -293,8 +293,33 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 		if right.length() > 0.01:
 			dir = dir.rotated(right.normalized(), pitch)
 		var end := origin + dir * float(stats.range)
-		var q := PhysicsRayQueryParameters3D.create(origin, end, Layers.SHOTS, [shooter.get_rid()])
-		var hit := space.intersect_ray(q)
+		var skip: Array = [shooter.get_rid()]
+		var hit := _trace(space, origin, end, skip)
+		# humanoid infected: their wide bullet zone / movement capsule is only
+		# the broad check; the shot must touch an actual body part (head,
+		# torso, arm, leg), otherwise it flies on past to whatever is behind
+		for pass_i in 6:
+			if hit.is_empty():
+				break
+			var who: Object = hit.collider
+			if who is Area3D:
+				who = (who as Node).get_parent()
+			if who == null or not who.has_method("hit_part"):
+				break
+			var part: Dictionary = who.hit_part(origin, dir, float(stats.range))
+			if not part.is_empty():
+				hit.collider = who
+				if (part.pos as Vector3) != Vector3.INF:
+					hit.position = part.pos
+					hit.normal = -dir
+				break
+			skip.append((who as CollisionObject3D).get_rid())
+			if (hit.collider as Object) is CollisionObject3D and hit.collider != who:
+				skip.append((hit.collider as CollisionObject3D).get_rid())
+			var zone = (who as Node).get_node_or_null("HitZone")
+			if zone != null:
+				skip.append((zone as CollisionObject3D).get_rid())
+			hit = _trace(space, origin, end, skip)
 		# [end, normal, kind]: 0 = nothing, 1 = world / prop, 2 = flesh (replayed on other peers)
 		var shot_end := [end, Vector3.UP, 0]
 		if not hit.is_empty():
@@ -327,6 +352,13 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 		cycle_pending = 0.12
 	Sfx.play(self, String(stats.sound), from, float(stats.volume))
 	return result
+
+
+## Bullet ray: world, bodies and the bullet-only zones around infected.
+func _trace(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, skip: Array) -> Dictionary:
+	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.SHOTS | Layers.HITZONE, skip)
+	q.collide_with_areas = true
+	return space.intersect_ray(q)
 
 
 ## Replays another peer's shot from its end points: tracers, impacts, blood,

@@ -62,6 +62,7 @@ var _kick_landed := false
 var _fall_speed := 0.0
 var flashlight_on := false
 var flashlight: SpotLight3D
+var _chem_glow: OmniLight3D
 ## Player switched the light themselves (T): auto-on at dusk leaves it alone.
 var flashlight_manual := false
 var _torch: Node3D
@@ -265,6 +266,22 @@ func _build_chem_lights() -> void:
 	light.light_volumetric_fog_energy = 0.0
 	light.position = Vector3(0, 0.15, 0)
 	rig.chest.add_child(light)
+	_chem_glow = light
+
+
+## Chem sticks always glow, but their light only matters after dark: by day
+## it tinted the whole operator green, and in first person it lit the arms
+## and weapon from the inside.
+func _update_chem_glow() -> void:
+	if _chem_glow == null:
+		return
+	var night := 1.0
+	var m = get_tree().current_scene
+	if m != null and m.get("tod") != null:
+		night = float(m.tod.night)
+	var e := 0.55 * smoothstep(0.3, 0.7, night) * (0.0 if rig.fp_mode else 1.0)
+	_chem_glow.light_energy = e
+	_chem_glow.visible = e > 0.01
 
 
 func set_flashlight(on: bool) -> void:
@@ -365,6 +382,7 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if rig == null:
 		return
+	_update_chem_glow()
 	_tick_actions(delta)
 	if puppet:
 		_puppet_physics(delta)

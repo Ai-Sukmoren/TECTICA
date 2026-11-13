@@ -63,15 +63,27 @@ static func _curve() -> Curve:
 static func muzzle_flash(muzzle: Node3D, strength: float) -> void:
 	if muzzle == null or not muzzle.is_inside_tree():
 		return
-	var flash := MeshInstance3D.new()
-	flash.mesh = ML.sphere(0.05, false, 8)
-	flash.material_override = _mat("flash")
-	flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var s := clampf(strength, 0.15, 1.5)
-	flash.scale = Vector3(1.0, 1.0, 3.6) * s * randf_range(0.8, 1.2)
-	flash.position = Vector3(0, 0, -0.1 * s)
+	var flash := Node3D.new()
 	flash.rotation.z = randf() * TAU
+	flash.scale = Vector3.ONE * s * randf_range(0.8, 1.2)
 	muzzle.add_child(flash)
+	# hot core plus three crossed petals: a star-shaped bloom instead of a blob
+	var core := MeshInstance3D.new()
+	core.mesh = ML.sphere(0.045, false, 8)
+	core.material_override = _mat("flash")
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	core.scale = Vector3(1.0, 1.0, 2.2)
+	core.position = Vector3(0, 0, -0.06)
+	flash.add_child(core)
+	for i in 3:
+		var petal := MeshInstance3D.new()
+		petal.mesh = ML.quad(Vector2(0.11, 0.4))
+		petal.material_override = _mat("flash")
+		petal.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		petal.basis = Basis(Vector3.BACK, i * PI / 3.0) * Basis(Vector3.RIGHT, PI * 0.5)
+		petal.position = Vector3(0, 0, -0.22)
+		flash.add_child(petal)
 	var light := OmniLight3D.new()
 	light.light_color = Color(1.0, 0.7, 0.35)
 	light.light_energy = 3.5 * s
@@ -81,6 +93,12 @@ static func muzzle_flash(muzzle: Node3D, strength: float) -> void:
 	var tree := muzzle.get_tree()
 	tree.create_timer(0.04).timeout.connect(flash.queue_free)
 	tree.create_timer(0.05).timeout.connect(light.queue_free)
+	# a wisp of propellant smoke drifting off the muzzle
+	var root := _root(muzzle)
+	if root != null and s > 0.3:
+		var dir := -muzzle.global_transform.basis.z
+		_particles(root, muzzle.global_position + dir * 0.15, dir, 3, 0.55, 0.5, 1.3, 20.0,
+				ML.sphere(0.05, false, 6), _mat("dust"), Vector3(0, 0.5, 0), 0.7, 1.8)
 
 
 static func tracer(ctx: Node, from: Vector3, to: Vector3, dim: bool) -> void:

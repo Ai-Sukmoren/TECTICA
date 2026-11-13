@@ -81,7 +81,7 @@ static func palette(id: String) -> Dictionary:
 	elif metal:
 		helmet = M.solid(o.helmet, 0.25, 0.9)
 	else:
-		helmet = M.solid(o.helmet, 0.75)
+		helmet = M.matte("outfit_helmet_" + id, o.helmet, 0.72)
 	return {
 		"camo": M.camo("outfit_camo_" + id, o.camo, 3.5),
 		"vest": M.solid(o.vest, 0.3, 0.9) if metal else M.fabric("outfit_vest_" + id, o.vest),
@@ -90,8 +90,8 @@ static func palette(id: String) -> Dictionary:
 		"detail": M.solid(Color(0.14, 0.14, 0.12), 0.6, 0.2),
 		"skin": M.solid(Color(0.76, 0.58, 0.47), 0.7),
 		"face": M.fabric("outfit_face_" + id, o.face),
-		"gloves": M.solid(o.gloves, 0.8),
-		"boots": M.solid(o.boots, 0.75),
+		"gloves": M.fabric("outfit_gloves_" + id, o.gloves, 12.0),
+		"boots": M.leather("outfit_boots_" + id, o.boots),
 		"headgear": String(o.get("headgear", "helmet")),
 		"goggles": bool(o.get("goggles", true)),
 		"nvg": bool(o.get("nvg", false)),

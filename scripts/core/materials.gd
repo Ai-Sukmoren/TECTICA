@@ -82,8 +82,8 @@ static func camo(key: String, colors: Array, scale: float = 3.0) -> StandardMate
 	m.uv1_scale = Vector3.ONE * scale
 	_add_normal(m, 0.09, 3.0, 0.5)
 	m.rim_enabled = true
-	m.rim = 0.25
-	m.rim_tint = 0.4
+	m.rim = 0.1
+	m.rim_tint = 0.6
 	_cache[key] = m
 	return m
 
@@ -269,5 +269,78 @@ static func blot(key: String, color: Color) -> StandardMaterial3D:
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.roughness = 0.4
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_cache[key] = m
+	return m
+
+
+## Matte painted / moulded surface (helmets, plastics, hard gear): subtle tone
+## variation and a fine micro-normal, so it catches light without looking glossy.
+static func matte(key: String, color: Color, roughness: float = 0.7, metallic: float = 0.0) -> StandardMaterial3D:
+	if _cache.has(key):
+		return _cache[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = noise_texture([color.darkened(0.14), color, color.lightened(0.05)], [0.0, 0.5, 1.0],
+			0.06, absi(hash(key)) % 9999)
+	m.roughness = roughness
+	m.metallic = metallic
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * 8.0
+	_add_normal(m, 0.3, 1.6, 0.3)
+	_cache[key] = m
+	return m
+
+
+## Worn leather / rubber (boots, slings, straps): creased, mid roughness.
+static func leather(key: String, color: Color) -> StandardMaterial3D:
+	if _cache.has(key):
+		return _cache[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = noise_texture([color.darkened(0.3), color, color.lightened(0.1), color.darkened(0.1)],
+			[0.0, 0.45, 0.7, 1.0], 0.07, absi(hash(key)) % 9999)
+	m.roughness = 0.62
+	m.roughness_texture = noise_texture([Color(0.6, 0.6, 0.6), Color.WHITE], [0.0, 1.0], 0.12, 77)
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * 9.0
+	_add_normal(m, 0.12, 3.0, 0.5)
+	_cache[key] = m
+	return m
+
+
+## Automotive paint: metallic flake under a clear coat, with roughness variation.
+static func car_paint(key: String, color: Color) -> StandardMaterial3D:
+	if _cache.has(key):
+		return _cache[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = noise_texture([color.darkened(0.3), color, color.lightened(0.06), color.darkened(0.12)],
+			[0.0, 0.3, 0.62, 1.0], 0.05, absi(hash(key)) % 9999)
+	m.metallic = 0.5
+	m.roughness = 0.38
+	m.roughness_texture = noise_texture([Color(0.55, 0.55, 0.55), Color.WHITE], [0.0, 1.0], 0.09, 41 + absi(hash(key)) % 97)
+	m.clearcoat_enabled = true
+	m.clearcoat = 0.55
+	m.clearcoat_roughness = 0.15
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE * 0.5
+	_add_normal(m, 0.05, 1.5, 0.2)
+	_cache[key] = m
+	return m
+
+
+## Road / floor paint that has flaked and scuffed: the surface below shows
+## through the gaps (alpha scissor, world-space so every stripe matches).
+static func road_paint(key: String, color: Color, cover: float = 0.68) -> StandardMaterial3D:
+	if _cache.has(key):
+		return _cache[key]
+	var m := StandardMaterial3D.new()
+	var gone := 1.0 - cover
+	m.albedo_texture = noise_texture([Color(color, 0.0), Color(color, 0.0), Color(color.darkened(0.2), 1.0), Color(color, 1.0)],
+			[0.0, gone * 0.9, gone * 1.1, 1.0], 0.16, absi(hash(key)) % 9999)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.roughness = 0.78
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE * 0.5
 	_cache[key] = m
 	return m

@@ -18,6 +18,14 @@ Soldiers, most weapons, both maps, FX and sound are generated in code; a few pro
 
 *Combat knife, karambit and butterfly knife with their inspect animations (MP4, 24 s).*
 
+### Screenshots (v1.17 visual upgrade)
+
+| Dead End, first person | Dead End, top-down | Pinewood Valley, first person |
+|---|---|---|
+| ![Dead End first person](docs/screenshots/town-fp-v1.17.jpg) | ![Dead End top-down](docs/screenshots/town-td-v1.17.jpg) | ![Pinewood Valley first person](docs/screenshots/forest-fp-v1.17.jpg) |
+
+*Brick, siding and plaster facades, worn asphalt and road paint, weeds, detailed cars, lit city skyline, matte helmets and leather boots, star-shaped muzzle flash.*
+
 ## ⬇ Download & play (Windows)
 
 **[Download TECTICA for Windows (.zip)](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)**

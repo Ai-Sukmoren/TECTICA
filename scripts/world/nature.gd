@@ -52,9 +52,9 @@ void fragment() {
 	float forest = smoothstep(0.15, 0.75, m.a + (n3 - 0.5) * 0.45);
 
 	// compacted dirt road with gravel and darker damp patches
-	vec3 dirt = mix(vec3(0.34, 0.27, 0.19), vec3(0.22, 0.17, 0.12), n2);
+	vec3 dirt = mix(vec3(0.2, 0.15, 0.1), vec3(0.13, 0.1, 0.065), n2);
 	dirt *= 0.84 + 0.28 * grain;
-	dirt = mix(dirt, vec3(0.46, 0.44, 0.4), step(0.8, grain) * 0.45);
+	dirt = mix(dirt, vec3(0.34, 0.32, 0.29), step(0.8, grain) * 0.4);
 	vec3 mud = mix(vec3(0.1, 0.08, 0.055), vec3(0.16, 0.12, 0.08), n2);
 
 	float d = smoothstep(0.3, 0.7, clamp(m.r + (n2 - 0.5) * 0.45, 0.0, 1.0));
@@ -273,8 +273,8 @@ static func set_fade(center: Vector3, r_in: float, r_out: float) -> void:
 const GRASS_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
-uniform vec3 tip : source_color = vec3(0.3, 0.47, 0.1);
-uniform vec3 dry_tip : source_color = vec3(0.6, 0.53, 0.24);
+uniform vec3 tip : source_color = vec3(0.24, 0.4, 0.1);
+uniform vec3 dry_tip : source_color = vec3(0.52, 0.46, 0.2);
 uniform vec3 root : source_color = vec3(0.08, 0.16, 0.035);
 varying float hgt;
 varying float dry;
@@ -297,7 +297,7 @@ void fragment() {
 	ALBEDO = mix(root, t, smoothstep(0.0, 0.85, hgt)) * icol;
 	ROUGHNESS = 0.7;
 	SPECULAR = 0.35;
-	BACKLIGHT = vec3(0.36, 0.44, 0.1) * hgt;
+	BACKLIGHT = vec3(0.2, 0.26, 0.06) * hgt;
 	AO = mix(0.72, 1.0, hgt);
 	AO_LIGHT_AFFECT = 0.6;
 }
@@ -886,4 +886,258 @@ static func sky_material() -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("cloud_noise", _noise(0.018, 83, 512))
+	return m
+
+
+# ------------------------------------------------------------------ town materials
+
+## Running-bond brick: per-brick tone, recessed mortar, over-fired dark bricks,
+## rain streaks and a band of dirt rising from the ground.
+const BRICK_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.5, 0.26, 0.18);
+uniform vec3 mortar_color : source_color = vec3(0.6, 0.58, 0.54);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float grime_h = 0.9;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	bool wall = abs(wn.y) <= 0.6;
+	float n = texture(noise, uv * 0.11).r;
+	float fine = texture(noise, uv * 2.2).r;
+	vec3 col;
+	float rough = 0.9;
+	if (wall) {
+		float course = 0.068;
+		float blen = 0.215;
+		float row = floor(uv.y / course);
+		float u = uv.x + mod(row, 2.0) * blen * 0.5;
+		float bi = floor(u / blen);
+		vec2 f = vec2(fract(u / blen), fract(uv.y / course));
+		float h = hash1(bi * 3.1 + row * 7.7);
+		vec3 brick = base_color * (0.72 + 0.5 * h) * (0.85 + 0.3 * fine);
+		brick = mix(brick, brick * vec3(0.6, 0.62, 0.7), smoothstep(0.78, 0.95, h) * 0.6);
+		float mx = min(f.x, 1.0 - f.x) * blen;
+		float my = min(f.y, 1.0 - f.y) * course;
+		float mortar = 1.0 - smoothstep(0.004, 0.011, min(mx, my));
+		col = mix(brick, mortar_color * (0.8 + 0.3 * fine), mortar);
+		rough = mix(0.88, 0.97, mortar);
+		float streak = texture(noise, vec2(uv.x * 1.3, uv.y * 0.05)).r;
+		col *= 1.0 - smoothstep(0.55, 0.85, streak) * 0.22;
+		col *= mix(0.55, 1.0, smoothstep(0.0, grime_h, wp.y + (n - 0.5) * 0.5));
+	} else {
+		col = mortar_color * 0.8 * (0.8 + 0.3 * n);
+	}
+	col *= 0.86 + 0.28 * n;
+	ALBEDO = col;
+	ROUGHNESS = rough;
+	SPECULAR = 0.25;
+}
+"""
+
+## Horizontal clapboard siding: overlapping boards with a shadow under each,
+## peeling paint showing grey wood, mud splashed along the base.
+const SIDING_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.58, 0.6, 0.52);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float board = 0.21;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	bool wall = abs(wn.y) <= 0.6;
+	float n = texture(noise, uv * 0.13).r;
+	float fine = texture(noise, vec2(uv.x * 0.6, uv.y * 3.0)).r;
+	vec3 col = base_color;
+	float rough = 0.9;
+	if (wall) {
+		float row = floor(uv.y / board);
+		float f = fract(uv.y / board);
+		float h = hash1(row * 5.3 + floor(uv.x / 3.7) * 1.7);
+		col *= 0.82 + 0.3 * h;
+		col *= mix(0.45, 1.0, smoothstep(0.0, 0.14, f));
+		col *= mix(1.0, 1.12, smoothstep(0.86, 1.0, f));
+		float peel = texture(noise, uv * 0.9 + h).r;
+		float bare = smoothstep(0.62, 0.72, peel + (1.0 - smoothstep(0.0, 1.5, wp.y)) * 0.15);
+		col = mix(col, vec3(0.42, 0.38, 0.33) * (0.7 + 0.5 * fine), bare);
+		col *= mix(0.62, 1.0, smoothstep(0.0, 0.7, wp.y + (n - 0.5) * 0.4));
+		rough = mix(0.72, 0.95, bare);
+	} else {
+		col *= 0.75 + 0.3 * n;
+	}
+	col *= 0.9 + 0.2 * fine;
+	ALBEDO = col;
+	ROUGHNESS = rough;
+	SPECULAR = 0.3;
+}
+"""
+
+## Rendered plaster / stucco: blotchy repairs, hairline cracks, rain streaks, dirty base.
+const PLASTER_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.47, 0.45, 0.41);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	bool wall = abs(wn.y) <= 0.6;
+	float n = texture(noise, uv * 0.09).r;
+	float mid = texture(noise, uv * 0.35 + 0.2).r;
+	float fine = texture(noise, uv * 3.1).r;
+	vec3 col = base_color * (0.8 + 0.3 * n) * (0.88 + 0.24 * fine);
+	col = mix(col, col * vec3(0.92, 0.9, 0.86), smoothstep(0.55, 0.75, mid) * 0.5);
+	float crack = 1.0 - smoothstep(0.0, 0.012, abs(texture(noise, uv * 0.21 + 0.6).r - 0.5));
+	crack *= smoothstep(0.5, 0.7, n);
+	col *= 1.0 - crack * 0.55;
+	if (wall) {
+		float streak = texture(noise, vec2(uv.x * 1.1, uv.y * 0.06)).r;
+		col *= 1.0 - smoothstep(0.55, 0.85, streak) * 0.2;
+		col *= mix(0.6, 1.0, smoothstep(0.0, 1.0, wp.y + (n - 0.5) * 0.5));
+	}
+	ALBEDO = col;
+	ROUGHNESS = 0.92;
+	SPECULAR = 0.2;
+}
+"""
+
+## Asphalt: speckled aggregate, faded old patches, tar-sealed cracks and
+## darker, smoother tyre tracks `lane` metres either side of the road axis.
+const ASPHALT_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.1, 0.1, 0.105);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float lane = 2.5;
+%s
+void fragment() {
+	vec2 p = wp.xz;
+	float macro = texture(noise, p * 0.012).r;
+	float n = texture(noise, p * 0.08).r;
+	float grain = texture(noise, p * 2.4).r;
+	float grain2 = texture(noise, p * 5.1 + 0.3).r;
+	vec3 col = base_color * (0.8 + 0.5 * macro) * (0.82 + 0.4 * n);
+	col *= 0.75 + 0.8 * grain * grain2;
+	col = mix(col, vec3(0.3, 0.3, 0.29), step(0.86, grain2) * 0.35);
+	float old = smoothstep(0.55, 0.8, texture(noise, p * 0.02 + 0.7).r);
+	col = mix(col, col * vec3(1.6, 1.58, 1.5), old * 0.6);
+	float cf = texture(noise, p * 0.09 + 0.25).r;
+	float crack = 1.0 - smoothstep(0.0, 0.01, abs(cf - 0.5));
+	crack *= smoothstep(0.45, 0.6, texture(noise, p * 0.03 + 0.9).r);
+	col *= 1.0 - crack * 0.6;
+	float wear = 0.0;
+	if (lane > 0.0) {
+		float wx = min(abs(abs(p.x) - (lane - 0.8)), abs(abs(p.x) - (lane + 0.8)));
+		float wz = min(abs(abs(p.y) - (lane - 0.8)), abs(abs(p.y) - (lane + 0.8)));
+		wear = (1.0 - smoothstep(0.12, 0.5, min(wx, wz))) * (0.6 + 0.4 * macro);
+	}
+	col *= 1.0 - wear * 0.35;
+	ALBEDO = col;
+	ROUGHNESS = mix(0.9, 0.7, wear) - crack * 0.1;
+	SPECULAR = 0.3;
+	NORMAL_MAP = texture(nrm, p * 0.8).rgb;
+	NORMAL_MAP_DEPTH = 0.5;
+}
+"""
+
+## Concrete sidewalk slabs with bevelled joints, a few cracked slabs and stains.
+const SIDEWALK_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.44, 0.44, 0.42);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float slab = 1.5;
+%s
+void fragment() {
+	vec2 p = wp.xz;
+	vec2 cell = floor(p / slab);
+	vec2 f = fract(p / slab);
+	float h = hash1(cell.x * 13.1 + cell.y * 7.3);
+	float n = texture(noise, p * 0.07).r;
+	float fine = texture(noise, p * 2.0).r;
+	vec3 col = base_color * (0.86 + 0.22 * h) * (0.86 + 0.26 * n) * (0.9 + 0.2 * fine);
+	float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)) * slab;
+	col *= mix(0.5, 1.0, smoothstep(0.0, 0.025, edge));
+	col *= mix(1.0, 1.08, 1.0 - smoothstep(0.025, 0.06, edge));
+	float crack = 1.0 - smoothstep(0.0, 0.01, abs(texture(noise, p * 0.17 + 0.4).r - 0.5));
+	crack *= step(0.72, h);
+	col *= 1.0 - crack * 0.5;
+	float stain = smoothstep(0.6, 0.85, texture(noise, p * 0.05 + 0.33).r);
+	col *= 1.0 - stain * 0.25;
+	ALBEDO = col;
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.25;
+	NORMAL_MAP = texture(nrm, p * 0.6).rgb;
+	NORMAL_MAP_DEPTH = 0.25;
+}
+"""
+
+## Distant city blocks beyond the wall: dark facades with a grid of windows
+## that light up (randomly, per window) as night falls.
+const SKYLINE_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_color : source_color = vec3(0.1, 0.105, 0.115);
+uniform vec3 window_color : source_color = vec3(1.0, 0.8, 0.5);
+uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float night = 0.0;
+%s
+void fragment() {
+	vec2 uv = face_uv();
+	bool wall = abs(wn.y) <= 0.6;
+	float n = texture(noise, uv * 0.05).r;
+	vec3 col = base_color * (0.8 + 0.4 * n);
+	vec3 emit = vec3(0.0);
+	if (wall) {
+		vec2 g = vec2(uv.x / 2.6, (uv.y - 1.2) / 3.1);
+		vec2 cell = floor(g);
+		vec2 f = fract(g);
+		float win = step(0.25, f.x) * step(f.x, 0.8) * step(0.2, f.y) * step(f.y, 0.7) * step(1.2, uv.y);
+		float h = hash1(cell.x * 17.3 + cell.y * 5.9 + floor(wp.x * 0.07) * 3.3 + floor(wp.z * 0.07) * 2.1);
+		float lit = step(0.88 - night * 0.45, h) * win;
+		col = mix(col, vec3(0.03, 0.035, 0.05), win * 0.8);
+		emit = window_color * lit * (0.25 + 1.3 * night) * (0.6 + 0.4 * hash1(h * 50.0));
+		col *= mix(0.6, 1.0, smoothstep(0.0, 6.0, wp.y));
+	}
+	ALBEDO = col;
+	EMISSION = emit;
+	ROUGHNESS = 0.8;
+	SPECULAR = 0.2;
+}
+"""
+
+
+static func brick_material(color: Color, mortar: Color = Color(0.6, 0.58, 0.54)) -> ShaderMaterial:
+	var m := _face_material(BRICK_SHADER, color, 71)
+	m.set_shader_parameter("mortar_color", mortar)
+	return m
+
+
+static func siding_material(color: Color) -> ShaderMaterial:
+	return _face_material(SIDING_SHADER, color, 79)
+
+
+static func plaster_material(color: Color) -> ShaderMaterial:
+	return _face_material(PLASTER_SHADER, color, 83)
+
+
+static func skyline_material() -> ShaderMaterial:
+	return _face_material(SKYLINE_SHADER, Color(0.1, 0.105, 0.115), 89)
+
+
+## lane: distance of the tyre tracks from the road axis (0 = none, e.g. parking lots).
+static func asphalt_material(lane: float = 2.5) -> ShaderMaterial:
+	var m := _face_material(ASPHALT_SHADER, Color(0.1, 0.1, 0.105), 97)
+	m.set_shader_parameter("nrm", M.normal_tex(0.2, 23, 4.0, true))
+	m.set_shader_parameter("lane", lane)
+	return m
+
+
+static func sidewalk_material(color: Color = Color(0.44, 0.44, 0.42)) -> ShaderMaterial:
+	var m := _face_material(SIDEWALK_SHADER, color, 101)
+	m.set_shader_parameter("nrm", M.normal_tex(0.1, 29, 3.0))
 	return m

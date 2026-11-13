@@ -90,7 +90,7 @@ func _apply(delta: float) -> void:
 	if elev > -3.5:
 		sun.basis = Basis.looking_at(-sun_dir, Vector3.UP)
 		sun.light_color = day_col
-		sun.light_energy = 2.7 * sun_k + 0.0001
+		sun.light_energy = 2.2 * sun_k + 0.0001
 	else:
 		sun.basis = Basis.looking_at(-moon_dir, Vector3.UP)
 		sun.light_color = moon_col
@@ -120,7 +120,7 @@ func _apply(delta: float) -> void:
 	if red_tint > 0.0:
 		amb = amb.lerp(Color(0.6, 0.3, 0.28), red_tint * 0.5)
 	env.ambient_light_color = amb
-	env.ambient_light_energy = lerpf(0.6, 0.5, night)
+	env.ambient_light_energy = lerpf(0.68, 0.5, night)
 	var morning := clampf(1.0 - absf(hour - 6.8) / 2.0, 0.0, 1.0)
 	env.volumetric_fog_density = 0.003 + morning * 0.008 + golden * 0.005 + night * 0.005 + red_tint * 0.012
 	env.volumetric_fog_albedo = hor.lerp(amb, 0.5).lerp(Color(0.8, 0.78, 0.7), 0.35 * (1.0 - night))
@@ -132,6 +132,8 @@ func _apply(delta: float) -> void:
 
 	# --- lamps
 	level.night = night
+	if level.get("skyline_mat") != null:
+		level.skyline_mat.set_shader_parameter("night", night)
 	var lamp_on := smoothstep(0.25, 0.6, night)
 	for e in level.lamp_lights:
 		var l: Light3D = e.light

@@ -383,18 +383,19 @@ func _build_environment() -> void:
 	env.ambient_light_color = Color(0.5, 0.56, 0.68)
 	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.12
+	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0
 	# contact shadows: wide, strong ambient occlusion that also dims direct light a little
-	env.ssao_radius = 1.6
-	env.ssao_intensity = 2.6
+	env.ssao_radius = 1.4
+	env.ssao_intensity = 2.2
 	env.ssao_power = 1.7
 	env.ssao_detail = 0.7
 	env.ssao_light_affect = 0.22
 	env.ssao_ao_channel_affect = 0.35
 	env.ssil_radius = 4.0
 	env.ssil_intensity = 1.2
-	env.ssr_max_steps = 48
+	env.ssr_max_steps = 64
+	env.ssr_depth_tolerance = 0.3
 	env.ssr_fade_in = 0.1
 	env.ssr_fade_out = 2.5
 	env.glow_enabled = true
@@ -421,8 +422,8 @@ func _build_environment() -> void:
 	env.sdfgi_min_cell_size = 0.2
 	env.sdfgi_energy = 0.9
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.16
-	env.adjustment_saturation = 1.14
+	env.adjustment_contrast = 1.1
+	env.adjustment_saturation = 1.06
 	env.adjustment_brightness = 1.0
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -438,7 +439,7 @@ func _build_environment() -> void:
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.1
 	sun.light_volumetric_fog_energy = 0.6
-	sun.light_angular_distance = 0.6          # soft penumbra that widens with distance
+	sun.light_angular_distance = 0.5          # soft penumbra that widens with distance
 	sun.directional_shadow_max_distance = 80.0
 	sun.directional_shadow_fade_start = 0.85
 	sun.directional_shadow_blend_splits = true

@@ -38,6 +38,7 @@ var _mat_roof: Material
 var _mat_glass_lit: Material
 var _mat_glass_dark: Material
 var _mat_fence: Material
+var skyline_mat: ShaderMaterial
 
 ## Navigation is identical on every load (fixed seed): bake once, reuse.
 static var _nav_cache: NavigationMesh
@@ -46,20 +47,20 @@ static var _nav_cache: NavigationMesh
 func build() -> void:
 	seed(4242)   # same town every time
 	Terrain.clear()
-	_mat_wall = M.concrete("town_wall", Color(0.42, 0.41, 0.39), 0.4)
+	_mat_wall = Nature.plaster_material(Color(0.47, 0.45, 0.41))
 	_mat_wall_trim = M.solid(Color(0.18, 0.18, 0.19), 0.8)
 	_mat_crate = M.wood("crate", Color(0.46, 0.4, 0.28))
 	_mat_crate_frame = M.wood("crate_frame", Color(0.34, 0.29, 0.2))
 	_mat_sandbag = M.fabric("sandbag", Color(0.52, 0.47, 0.36), 4.0)
 	_mat_concrete = M.concrete("barrier", Color(0.58, 0.57, 0.54), 0.6)
 	_mat_metal = M.painted_metal("metal_grey", Color(0.3, 0.32, 0.33))
-	_mat_asphalt = M.concrete("asphalt", Color(0.085, 0.087, 0.095), 0.9)
-	_mat_walk = M.concrete("sidewalk", Color(0.36, 0.36, 0.35), 0.5)
-	_mat_lot = M.concrete("town_lot", Color(0.2, 0.22, 0.16), 0.25)
-	_mat_line = M.solid(Color(0.85, 0.66, 0.12), 0.8)
-	_mat_white = M.solid(Color(0.82, 0.82, 0.78), 0.8)
-	_mat_brick = M.concrete("brick", Color(0.4, 0.2, 0.15), 1.4)
-	_mat_siding = M.wood("siding", Color(0.45, 0.47, 0.42))
+	_mat_asphalt = Nature.asphalt_material(2.5)
+	_mat_walk = Nature.sidewalk_material(Color(0.44, 0.44, 0.42))
+	_mat_lot = Nature.ground_material(_lot_mask(), HALF * 2.6)
+	_mat_line = M.road_paint("line_yellow", Color(0.8, 0.6, 0.12), 0.84)
+	_mat_white = M.road_paint("line_white", Color(0.74, 0.73, 0.68), 0.8)
+	_mat_brick = Nature.brick_material(Color(0.5, 0.25, 0.17))
+	_mat_siding = Nature.siding_material(Color(0.58, 0.6, 0.52))
 	_mat_roof = Nature.roof_material(Color(0.2, 0.18, 0.17))
 	Nature.fade_materials = Nature.fade_materials.filter(func(m): return m == _mat_roof)
 	_mat_glass_lit = M.emissive("window_lit", Color(1.0, 0.78, 0.45), 1.6)
@@ -78,6 +79,7 @@ func build() -> void:
 	_build_truck_yard()
 	_build_street_props()
 	_build_lamps()
+	_build_weeds()
 	_build_boundary()
 	_define_mode()
 	_bake_navigation()
@@ -86,6 +88,74 @@ func build() -> void:
 
 func ground_y(_x: float, _z: float) -> float:
 	return 0.0
+
+
+## Ground mask for the lots between the buildings (see Nature.GROUND_SHADER:
+## r = bare dirt, g = trodden, b = mud, a = leaf litter): dead, weedy lawns,
+## a worn strip along the kerbs, bare dirt in the truck yard and forecourt.
+func _lot_mask() -> ImageTexture:
+	var res := 128
+	var img := Image.create(res, res, false, Image.FORMAT_RGBA8)
+	var size := HALF * 2.6
+	for y in res:
+		for x in res:
+			var wx := (float(x) / res - 0.5) * size
+			var wz := (float(y) / res - 0.5) * size
+			var n := 0.5 + 0.5 * sin(wx * 0.21 + sin(wz * 0.13) * 2.0) * cos(wz * 0.17 + sin(wx * 0.09) * 1.5)
+			var trod := 0.35 + 0.45 * n
+			var road := minf(absf(wx), absf(wz))
+			var dirt := clampf(1.0 - (road - WALK) / 2.5, 0.0, 1.0) * 0.6
+			if wx > 8.0 and wx < 44.0 and wz > 16.0 and wz < 52.0:
+				dirt = maxf(dirt, 0.9)   # truck yard
+			elif wx > 8.0 and wx < 30.0 and wz < -8.0 and wz > -28.0:
+				dirt = maxf(dirt, 0.7)   # gas station forecourt
+			img.set_pixel(x, y, Color(dirt, trod, 0.0, 0.0))
+	return ImageTexture.create_from_image(img)
+
+
+## Weeds through the dead lawns and the odd tuft in the sidewalk joints
+## (no collision, fades out at distance).
+func _build_weeds() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 777
+	var tuft := Nature.grass_tuft_mesh(7)
+	var mat := Nature.grass_material()
+	mat.set_shader_parameter("tip", Color(0.3, 0.38, 0.14))
+	mat.set_shader_parameter("dry_tip", Color(0.58, 0.5, 0.24))
+	var chunks := {}
+	for i in 26000:
+		var x := rng.randf_range(-HALF + 1.0, HALF - 1.0)
+		var z := rng.randf_range(-HALF + 1.0, HALF - 1.0)
+		var road := minf(absf(x), absf(z))
+		if road < WALK - 0.3:
+			if road < ROAD + 0.15 or rng.randf() > 0.12:
+				continue
+		elif not _free(Vector3(x, 0, z), -0.8):
+			continue
+		var ck := Vector2i(int(floor(x / 16.0)), int(floor(z / 16.0)))
+		if not chunks.has(ck):
+			chunks[ck] = []
+		var s := rng.randf_range(0.6, 1.3)
+		chunks[ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.7, 1.2), s)), Vector3(x, 0.0, z)),
+				Color(rng.randf_range(0.8, 1.05), rng.randf_range(0.8, 1.0), rng.randf_range(0.7, 0.95))])
+	for ck in chunks:
+		var items: Array = chunks[ck]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = tuft
+		mm.instance_count = items.size()
+		for i in items.size():
+			mm.set_instance_transform(i, items[i][0])
+			mm.set_instance_color(i, items[i][1])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = mat
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.visibility_range_end = 48.0
+		mmi.visibility_range_end_margin = 6.0
+		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		add_child(mmi)
 
 
 # ================================================================ ground
@@ -155,7 +225,10 @@ func _building(c: Vector3, w: float, d: float, h: float, mat: Material, doors: D
 				var glow := randf() < lit
 				var pane := Vector3(1.2, 1.0, 0.04) if along_x else Vector3(0.04, 1.0, 1.2)
 				var off := Vector3(wo, 1.55, sgn * (t * 0.5 + 0.02)) if along_x else Vector3(sgn * (t * 0.5 + 0.02), 1.55, wo)
+				var nrm := Vector3(0, 0, sgn) if along_x else Vector3(sgn, 0, 0)
+				_mesh(b, ML.box(Vector3(1.34, 1.14, 0.05) if along_x else Vector3(0.05, 1.14, 1.34)), _mat_wall_trim, off - nrm * 0.03)
 				_mesh(b, ML.box(pane), _mat_glass_lit if glow else _mat_glass_dark, off).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				_mesh(b, ML.box(Vector3(1.42, 0.06, 0.14) if along_x else Vector3(0.14, 0.06, 1.42)), _mat_wall_trim, off + Vector3(0, -0.58, 0) + nrm * 0.04)
 		for g in gaps:
 			# lintel above the doorway
 			var gl: float = g[1] - g[0]
@@ -338,17 +411,36 @@ func _build_barricade() -> void:
 func _car(p: Vector3, rot: float, paint_col: Color, burning: bool = false) -> void:
 	var b := _body(p, rot, "metal")
 	_box_shape(b, Vector3(1.9, 1.45, 4.3), Vector3(0, 0.72, 0))
-	var paint := M.painted_metal("car_" + paint_col.to_html(), paint_col.darkened(0.6) if burning else paint_col)
-	var tire := M.solid(Color(0.06, 0.06, 0.06), 0.9)
-	var glass := _mat_glass_dark
-	_mesh(b, ML.box(Vector3(1.85, 0.62, 4.2)), paint, Vector3(0, 0.62, 0))
-	_mesh(b, ML.box(Vector3(1.6, 0.55, 2.1)), paint, Vector3(0, 1.2, 0.2))
-	_mesh(b, ML.box(Vector3(1.5, 0.45, 0.05)), glass, Vector3(0, 1.2, -0.88), Vector3(-0.45, 0, 0))
-	_mesh(b, ML.box(Vector3(1.5, 0.42, 0.05)), glass, Vector3(0, 1.2, 1.27), Vector3(0.4, 0, 0))
+	var paint: Material = M.matte("car_burnt", Color(0.07, 0.065, 0.06), 0.95) if burning else M.car_paint("car_" + paint_col.to_html(), paint_col)
+	var trim := M.matte("car_trim", Color(0.05, 0.05, 0.055), 0.6)
+	var chrome := M.solid(Color(0.6, 0.62, 0.64), 0.25, 0.9)
+	var tire := M.matte("tire", Color(0.05, 0.05, 0.05), 0.92)
+	var glass: Material = M.solid(Color(0.12, 0.11, 0.1), 0.9) if burning else _mat_glass_dark
+	# body: sills, bonnet, cabin, boot (rounded boxes read as pressed panels)
+	_mesh(b, ML.rbox(Vector3(1.85, 0.5, 4.2)), paint, Vector3(0, 0.6, 0))
+	_mesh(b, ML.rbox(Vector3(1.8, 0.26, 1.35)), paint, Vector3(0, 0.95, -1.4), Vector3(0.06, 0, 0))
+	_mesh(b, ML.rbox(Vector3(1.62, 0.56, 2.05)), paint, Vector3(0, 1.2, 0.22))
+	_mesh(b, ML.rbox(Vector3(1.8, 0.28, 1.0)), paint, Vector3(0, 0.95, 1.7))
+	# glazing: windscreen, rear window, side glass
+	_mesh(b, ML.box(Vector3(1.5, 0.46, 0.05)), glass, Vector3(0, 1.22, -0.84), Vector3(-0.5, 0, 0))
+	_mesh(b, ML.box(Vector3(1.5, 0.42, 0.05)), glass, Vector3(0, 1.22, 1.28), Vector3(0.42, 0, 0))
+	_mesh(b, ML.box(Vector3(1.66, 0.34, 1.5)), glass, Vector3(0, 1.26, 0.2))
+	var lamp: Material = M.emissive("headlamp_dead", Color(0.3, 0.3, 0.28), 0.0) if burning else M.emissive("headlamp", Color(0.9, 0.9, 0.8), 0.15)
+	for sx in [-1.0, 1.0]:
+		_mesh(b, ML.box(Vector3(0.04, 0.5, 0.012)), trim, Vector3(sx * 0.93, 0.62, -0.25))   # door seams
+		_mesh(b, ML.box(Vector3(0.04, 0.5, 0.012)), trim, Vector3(sx * 0.93, 0.62, 0.85))
+		_mesh(b, ML.rbox(Vector3(0.1, 0.08, 0.16)), trim, Vector3(sx * 0.98, 1.12, -0.7))      # mirrors
+		_mesh(b, ML.box(Vector3(0.36, 0.14, 0.04)), lamp, Vector3(sx * 0.62, 0.82, -2.12))
+		_mesh(b, ML.box(Vector3(0.4, 0.12, 0.04)), M.emissive("tail", Color(0.6, 0.05, 0.03), 0.6), Vector3(sx * 0.6, 0.82, 2.12))
+	# bumpers + grille
+	for sz in [-2.15, 2.15]:
+		_mesh(b, ML.rbox(Vector3(1.9, 0.2, 0.14)), trim, Vector3(0, 0.46, sz))
+	_mesh(b, ML.box(Vector3(0.7, 0.16, 0.03)), trim, Vector3(0, 0.82, -2.12))
+	# wheels with alloy rims
 	for sz in [-1.35, 1.35]:
 		for sx in [-0.86, 0.86]:
-			_mesh(b, ML.cylinder(0.34, 0.34, 0.24, 14), tire, Vector3(sx, 0.34, sz), Vector3(0, 0, PI * 0.5))
-	_mesh(b, ML.box(Vector3(1.5, 0.12, 0.05)), M.emissive("tail", Color(0.6, 0.05, 0.03), 0.6), Vector3(0, 0.75, 2.11))
+			_mesh(b, ML.cylinder(0.34, 0.34, 0.24, 18), tire, Vector3(sx, 0.34, sz), Vector3(0, 0, PI * 0.5))
+			_mesh(b, ML.cylinder(0.2, 0.2, 0.26, 12), chrome, Vector3(sx, 0.34, sz), Vector3(0, 0, PI * 0.5))
 	_add_cover(p, Vector3(1.9, 1.45, 4.3), rot, b)
 	b.finalize()
 	if burning:
@@ -467,7 +559,8 @@ func _build_boundary() -> void:
 		solid_box(Vector3(0, 0, s * HALF), Vector3(HALF * 2 + 0.6, 3.6, 0.6), _mat_wall)
 		solid_box(Vector3(s * HALF, 0, 0), Vector3(0.6, 3.6, HALF * 2 + 0.6), _mat_wall)
 	# dark skyline beyond the wall
-	var dark := M.solid(Color(0.08, 0.085, 0.095), 0.9)
+	skyline_mat = Nature.skyline_material()
+	var dark: Material = skyline_mat
 	for k in 44:
 		var side := k % 4
 		var t := randf_range(-HALF - 20, HALF + 20)
@@ -479,13 +572,10 @@ func _build_boundary() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		for wi in 3:
 			if randf() < 0.6:
-				var wp := Vector3(randf_range(-size.x * 0.35, size.x * 0.35), randf_range(3, h - 2), 0)
-				var face := Vector3(0, 0, size.z * 0.5 + 0.02) * (1.0 if p.z < 0 else -1.0)
+				randf()   # keeps the RNG sequence of the old window placement
+				randf()
 				if side >= 2:
-					face = Vector3(size.x * 0.5 + 0.02, 0, 0) * (1.0 if p.x < 0 else -1.0)
-					wp = Vector3(0, wp.y, randf_range(-size.z * 0.35, size.z * 0.35))
-				var win := _mesh(self, ML.box(Vector3(0.9, 0.7, 0.9)), _mat_glass_lit, p + face + wp)
-				win.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+					randf()
 
 
 # ================================================================ modes

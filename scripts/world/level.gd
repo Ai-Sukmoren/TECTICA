@@ -248,9 +248,20 @@ func vehicle(pos: Vector3, rot_y: float) -> void:
 	var canvas := M.fabric("canvas", Color(0.36, 0.37, 0.27), 2.0)
 	_mesh(b, ML.box(Vector3(2.2, 0.9, 3.4)), canvas, Vector3(0, 1.45, 0.95))
 	_mesh(b, ML.box(Vector3(1.6, 0.12, 3.4)), canvas, Vector3(0, 1.94, 0.95))
+	var trim := M.matte("truck_trim", Color(0.05, 0.05, 0.055), 0.6)
+	var rim := M.solid(Color(0.3, 0.31, 0.3), 0.4, 0.8)
+	for z in [-0.5, 0.95, 2.4]:
+		_mesh(b, ML.box(Vector3(2.24, 0.04, 0.05)), trim, Vector3(0, 1.97, z))   # canvas hoops
+	_mesh(b, ML.rbox(Vector3(2.3, 0.22, 0.16)), trim, Vector3(0, 0.55, -3.32))   # front bumper
+	_mesh(b, ML.box(Vector3(0.9, 0.4, 0.03)), trim, Vector3(0, 1.05, -3.26))      # grille
+	for sx in [-1, 1]:
+		_mesh(b, ML.box(Vector3(0.28, 0.2, 0.04)), M.emissive("headlamp", Color(0.9, 0.9, 0.8), 0.15), Vector3(sx * 0.8, 1.05, -3.26))
+		_mesh(b, ML.rbox(Vector3(0.08, 0.22, 0.14)), trim, Vector3(sx * 1.2, 1.7, -2.3))   # mirrors
+	_mesh(b, ML.cylinder(0.05, 0.05, 1.4, 8), trim, Vector3(1.1, 1.6, -0.95))     # exhaust stack
 	for z in [-1.9, 0.4, 1.9]:
 		for sx in [-1, 1]:
 			_mesh(b, ML.cylinder(0.45, 0.45, 0.35, 16), tire, Vector3(sx * 1.0, 0.45, z), Vector3(0, 0, PI * 0.5))
+			_mesh(b, ML.cylinder(0.26, 0.26, 0.37, 12), rim, Vector3(sx * 1.0, 0.45, z), Vector3(0, 0, PI * 0.5))
 
 
 func rack(pos: Vector3, rot_y: float, length: float) -> void:

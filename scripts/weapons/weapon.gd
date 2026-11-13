@@ -51,7 +51,10 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	attachments = stats.attachments
 	ammo = int(stats.mag)
 	reserve = int(stats.reserve) if reserve_override < 0 else reserve_override
-	var parts: Dictionary = Model.build(String(stats.model), attachments)
+	var parts: Dictionary = preload("res://scripts/weapons/knife_model.gd").build(String(stats.model)) if is_melee() \
+			else Model.build(String(stats.model), attachments)
+	_spin = parts.get("spin")
+	_handles = [parts.get("handle_safe"), parts.get("handle_bite")]
 	add_child(parts.root)
 	_model_root = parts.root
 	grip = parts.grip
@@ -83,6 +86,8 @@ func apply_skin(finish: String) -> void:
 
 ## Places the current finish's sticker (if it has one) per `cfg` (see sticker.gd).
 func apply_sticker(cfg: Dictionary) -> void:
+	if is_melee():
+		return   # no room for a sticker on a blade
 	var id := String(Skins.FINISHES[skin].get("sticker", "")) if Skins.FINISHES.has(skin) else ""
 	if id == "":
 		Sticker.remove(_model_root)
@@ -94,7 +99,117 @@ func is_pistol() -> bool:
 	return stats.kind == "pistol"
 
 
+func is_melee() -> bool:
+	return stats.kind == "melee"
+
+
+# ---------------------------------------------------------------- knives
+
+var _spin: Node3D
+var _handles: Array = []
+var _inspecting := false
+
+
+## Knife flourish for the inspect animation, t in 0..1 (or < 0 to reset):
+## combat knife flips over in the palm, the karambit spins round its finger
+## ring, the butterfly knife's handles flip closed and open twice.
+func inspect_motion(t: float) -> void:
+	if not is_melee() or _spin == null:
+		return
+	if t < 0.0:
+		if _inspecting:
+			_inspecting = false
+			_spin.transform = Transform3D.IDENTITY
+			for h in _handles:
+				if h != null:
+					h.rotation = Vector3.ZERO
+		return
+	_inspecting = true
+	match String(stats.get("inspect", "combat")):
+		"karambit":
+			var u := smoothstep(0.28, 0.72, t)
+			var ring := Vector3(0, 0.002, 0.095)
+			_spin.transform = Transform3D(Basis.IDENTITY, ring) * Transform3D(Basis(Vector3.RIGHT, -u * TAU * 2.0), Vector3.ZERO) \
+					* Transform3D(Basis.IDENTITY, -ring)
+		"butterfly":
+			# closed = handles swung 180 deg round their pins over the blade
+			var flips := clampf((t - 0.22) / 0.52, 0.0, 1.0) * 4.0
+			var k: float = flips - floorf(flips)
+			var closed := (1.0 - absf(1.0 - 2.0 * k)) if flips > 0.0 and flips < 4.0 else 0.0
+			var e := closed * closed * (3.0 - 2.0 * closed)
+			if _handles[0] != null:
+				_handles[0].rotation.x = e * PI
+			if _handles[1] != null:
+				_handles[1].rotation.x = -e * PI
+			_spin.rotation.z = smoothstep(0.22, 0.74, t) * TAU
+		_:
+			_spin.rotation.z = smoothstep(0.3, 0.55, t) * PI + smoothstep(0.62, 0.84, t) * PI
+
+
+## A knife slash: hits the closest hostile in a cone in front, through no
+## walls. A hit from behind does `backstab` times the damage.
+func _slash(shooter: CharacterBody3D, origin: Vector3, target: Vector3) -> Dictionary:
+	cooldown = 60.0 / float(stats.rpm)
+	var fwd := target - origin
+	fwd.y = 0.0
+	if fwd.length() < 0.05:
+		fwd = -shooter.global_transform.basis.z
+	fwd = fwd.normalized()
+	var reach := float(stats.range)
+	var result := {"hit": null, "headshot": false, "killed": false, "position": origin + fwd * reach, "ends": [],
+			"damage": 0.0, "hit_at": Vector3.ZERO, "melee": true, "backstab": false}
+	var space := get_world_3d().direct_space_state
+	var pool: Array = get_tree().get_nodes_in_group("enemies") + get_tree().get_nodes_in_group("player")
+	var best = null
+	var best_d := INF
+	for v in pool:
+		if v == shooter or not is_instance_valid(v) or v.get("is_dead") != false or not v.has_method("apply_damage"):
+			continue
+		if v.get("team") != null and v.get("team") == shooter.get("team"):
+			continue
+		var to: Vector3 = v.global_position - shooter.global_position
+		var dy := to.y
+		to.y = 0.0
+		var d := to.length()
+		if d > reach or absf(dy) > 1.7:
+			continue
+		if d > 0.35 and fwd.dot(to / d) < 0.55:     # about a 113 deg arc in front
+			continue
+		var chest: Vector3 = v.global_position + Vector3.UP * (float(v.chest_height()) if v.has_method("chest_height") else 1.2)
+		var q := PhysicsRayQueryParameters3D.create(origin, chest, Layers.WORLD, [shooter.get_rid()])
+		if not space.intersect_ray(q).is_empty():
+			continue
+		if d < best_d:
+			best_d = d
+			best = v
+	if best != null:
+		var at: Vector3 = best.global_position + Vector3.UP * (float(best.chest_height()) if best.has_method("chest_height") else 1.2)
+		var dmg := float(stats.damage)
+		var their_fwd := Vector3(-sin(float(best.get("aim_yaw"))), 0, -cos(float(best.get("aim_yaw")))) if best.get("aim_yaw") != null else -fwd
+		if their_fwd.dot(fwd) > 0.55:
+			dmg *= float(stats.get("backstab", 1.0))
+			result.backstab = true
+		best.apply_damage(dmg, at, fwd, shooter)
+		result.hit = best
+		result.hit_at = at
+		result.damage = dmg
+		result.position = at
+		result.killed = best.get("is_dead") == true
+		Sfx.play(self, "knife_hit", at, -2.0, 0.12)
+	else:
+		# blade on a wall or prop: sparks and a scrape
+		var q2 := PhysicsRayQueryParameters3D.create(origin, origin + fwd * reach, Layers.WORLD, [shooter.get_rid()])
+		var wall := space.intersect_ray(q2)
+		if not wall.is_empty():
+			FX.impact(self, wall.position, wall.normal)
+			Sfx.play(self, "helmet_ping", wall.position, -10.0, 0.2)
+	Sfx.play(self, String(stats.sound), origin, float(stats.volume), 0.12)
+	return result
+
+
 func apply_charm(charm_id: String) -> void:
+	if is_melee():
+		return
 	var next := Charm.sanitize(charm_id)
 	if next == charm:
 		return
@@ -148,6 +263,8 @@ func finish_reload(tactical: bool) -> void:
 
 ## Hitscan shot (or pellet volley) from `origin` toward `target`. Returns hit info.
 func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg: float) -> Dictionary:
+	if is_melee():
+		return _slash(shooter, origin, target)
 	if is_instance_valid(_charm):
 		_charm.kick()
 	cooldown = 60.0 / float(stats.rpm)
@@ -213,6 +330,9 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 ## Replays another peer's shot from its end points: tracers, impacts, blood,
 ## muzzle flash, casing and sound. No ammo, no damage.
 func fire_fx(ends: Array) -> void:
+	if is_melee():
+		Sfx.play(self, String(stats.sound), global_position, float(stats.volume), 0.12)
+		return
 	if muzzle == null or not is_inside_tree():
 		return
 	var from := muzzle.global_position

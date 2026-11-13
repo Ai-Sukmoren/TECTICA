@@ -14,6 +14,7 @@ func _initialize():
 	current_scene = main
 	RenderingServer.frame_post_draw.connect(capture)
 func _process(delta):
+	Engine.max_fps = 0   # the frame count must not depend on the saved frame cap (settings re-apply it on load)
 	dt = delta
 	frame += 1
 	if frame == 2:

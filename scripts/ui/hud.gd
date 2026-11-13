@@ -660,25 +660,29 @@ func _draw_overlay(c: Control) -> void:
 		wname += "  ·  " + String(preload("res://scripts/skins/skins.gd").finish_name(w.skin)).to_upper()
 	wname += "  ·  LV %d" % Progression.weapon_level(String(w.id))
 	_text(c, Vector2(vp.x - 330, 46), wname, 15, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
-	_text(c, Vector2(vp.x - 330, 86), "%d" % w.ammo, 42, ammo_col, HORIZONTAL_ALIGNMENT_RIGHT, 230, true)
-	_text(c, Vector2(vp.x - 95, 86), "/ %d" % w.reserve, 18, DIM)
-	var pips := int(w.stats.mag)
-	if pips > 45:
-		c.draw_rect(Rect2(vp.x - 250, 96, 220, 6), Color(DIM, 0.25))
-		c.draw_rect(Rect2(vp.x - 250, 96, 220.0 * w.ammo / pips, 6), TEXT)
+	if w.is_melee():
+		_text(c, Vector2(vp.x - 330, 86), "MELEE", 30, TEXT, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
+		_text(c, Vector2(vp.x - 330, 120), "BACKSTAB x%.1f  ·  HOLD FIRE TO KEEP SLASHING" % float(w.stats.get("backstab", 1.0)), 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300)
 	else:
-		var pip_w := minf(220.0 / pips, 7.0)
-		for i in pips:
-			var x: float = vp.x - 30 - (pips - i) * pip_w
-			c.draw_rect(Rect2(x, 96, pip_w - 2.0, 6), TEXT if i < w.ammo else Color(DIM, 0.25))
-	var mode := ("AUTO" if bool(w.stats.auto) else ("BOLT" if w.stats.cycle == "bolt" else ("PUMP" if w.stats.cycle == "pump" else "SEMI")))
-	var att: Dictionary = w.attachments
-	for slot in ["optic", "muzzle", "underbarrel"]:
-		if att.get(slot, "none") not in ["none", "iron", "integral"]:
-			mode += "  ·  " + String(WData.ATTACHMENTS[slot][att[slot]].name).to_upper()
-	if bool(w.stats.suppressed) and att.get("muzzle") != "suppressor":
-		mode += "  ·  SUPPRESSED"
-	_text(c, Vector2(vp.x - 330, 120), mode, 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300)
+		_text(c, Vector2(vp.x - 330, 86), "%d" % w.ammo, 42, ammo_col, HORIZONTAL_ALIGNMENT_RIGHT, 230, true)
+		_text(c, Vector2(vp.x - 95, 86), "/ %d" % w.reserve, 18, DIM)
+		var pips := int(w.stats.mag)
+		if pips > 45:
+			c.draw_rect(Rect2(vp.x - 250, 96, 220, 6), Color(DIM, 0.25))
+			c.draw_rect(Rect2(vp.x - 250, 96, 220.0 * w.ammo / pips, 6), TEXT)
+		else:
+			var pip_w := minf(220.0 / pips, 7.0)
+			for i in pips:
+				var x: float = vp.x - 30 - (pips - i) * pip_w
+				c.draw_rect(Rect2(x, 96, pip_w - 2.0, 6), TEXT if i < w.ammo else Color(DIM, 0.25))
+		var mode := ("AUTO" if bool(w.stats.auto) else ("BOLT" if w.stats.cycle == "bolt" else ("PUMP" if w.stats.cycle == "pump" else "SEMI")))
+		var att: Dictionary = w.attachments
+		for slot in ["optic", "muzzle", "underbarrel"]:
+			if att.get(slot, "none") not in ["none", "iron", "integral"]:
+				mode += "  ·  " + String(WData.ATTACHMENTS[slot][att[slot]].name).to_upper()
+		if bool(w.stats.suppressed) and att.get("muzzle") != "suppressor":
+			mode += "  ·  SUPPRESSED"
+		_text(c, Vector2(vp.x - 330, 120), mode, 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300)
 	if player.reload_timer > 0.0:
 		_text(c, Vector2(vp.x - 330, 140), "TACTICAL RELOAD" if player.reload_tactical else "RELOADING", 12, WARN, HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	elif w.ammo == 0:

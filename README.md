@@ -196,21 +196,36 @@ Classes: ASSAULT, RIFLEMAN, RECON, CQB, BREACHER, SUPPORT, SPEC OPS. Each is ful
 
 ## Structure
 ```
+project.godot             Godot 4.7 project (Forward+; the web build uses Compatibility)
+export_presets.cfg        Windows Desktop and Web exports (to ../builds/)
+scenes/                   main.tscn, loading screen
+assets/                   icon, logo, fonts, skins; assets/thirdparty/ is local-only (see Assets)
 scripts/
   main.gd                 bootstrap, environment, rules, signals
-  core/                   input map, physics layers, materials, mesh cache, palettes
-  characters/
-    soldier_rig.gd        procedural soldier model and animation system
-    soldier.gd            shared body: movement, health, hit zones, weapons
-    player.gd             player controller
-    enemy.gd              AI: perception, awareness, patrol/suspicious/combat/search
-  weapons/                weapon data, procedural weapon models, hitscan firing
-  world/level.gd          compound layout, props, cover points, navmesh bake
-  camera/camera_rig.gd    follow, look-ahead, zoom, rotation, shake
-  fx/                     tracers, flashes, impacts, blood, casings, synth audio
-  ui/hud.gd               HUD overlay
-tests/smoke_test.gd       headless test: godot --headless --path . -s res://tests/smoke_test.gd
+  core/                   input map + rebinding, settings, accounts, loadout, progression, platform (phones)
+  characters/             soldier rig (procedural animation), player, AI enemies, infected, creatures
+  weapons/                weapon data, procedural gun and knife models, hitscan + melee
+  world/                  forest and town maps, terrain, nature, destructibles, time of day
+  modes/                  campaign, zombie wave director
+  net/                    multiplayer sync, join codes, open-room service client
+  skins/                  weapon skins, outfits, stickers, charms, collection
+  camera/  fx/  audio/    camera rig, effects + synthesized sounds, adaptive music
+  ui/                     HUD, menus, armory, gunsmith, touch controls, kill cam
+tests/                    automated tests (run them all with tools/run_tests.py)
+  previews/               windowed screenshot / render tools (not run automatically)
+  perf/                   benchmarks
+tools/                    test runner, community server, asset helpers
+docs/screenshots/         development screenshots
 ```
+
+## Tests
+```
+python tools/run_tests.py            # every automated test, with a pass/fail summary
+python tools/run_tests.py knife      # just the tests whose name contains "knife"
+godot --headless --path . -s res://tests/smoke_test.gd    # one test by hand
+```
+Set the `GODOT` environment variable to the Godot 4.7 executable if `godot` is not on PATH.
+Tests save into a separate sandbox (`user://test_sandbox/`), never into real accounts.
 
 ## Animation system
 `soldier_rig.gd` animates a segmented rig procedurally instead of using AnimationPlayer clips:
@@ -233,7 +248,7 @@ weapon bob and turning sway while preserving firing recoil.
 
 Rendered checks (run without `--headless`):
 ```
-godot --path . -s res://tests/render_benchmark.gd -- 1
+godot --path . -s res://tests/perf/render_benchmark.gd -- 1
 godot --path . --max-fps 144 -s res://tests/aim_stability_test.gd
 ```
 The benchmark samples 360 frames after 120 warmup frames at the fixed title view;
@@ -256,7 +271,7 @@ flow-aligned ripple normals, translucent banks and broken shoreline foam.
 The bridge crossing remains level. All cabins, the comms bunker, sawmill shed,
 watchtower shelters, tent entrances and supply ruin have light fixtures. Interior
 lights stay on during daytime; outpost interior lights follow generator power.
-`tests/river_lighting_check.gd` checks daytime/nighttime lamps, generator shutdown
+`tests/previews/river_lighting_check.gd` checks daytime/nighttime lamps, generator shutdown
 and navigation across the river, and captures river/room previews.
 
 

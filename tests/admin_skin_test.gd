@@ -46,6 +46,9 @@ func run() -> void:
 	for id in Skins.weapon_ids():
 		var w := Weapon.new()
 		w.setup(id, {})
+		if w.is_melee():
+			w.free()
+			continue   # knives take skins but no stickers
 		scene.add_child(w)
 		w.apply_skin("ruby")
 		w.apply_sticker({"side": 2, "u": 0.5, "v": 0.6, "s": 1.0})

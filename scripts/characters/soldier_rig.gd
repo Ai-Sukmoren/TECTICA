@@ -45,6 +45,15 @@ const POSES := {
 		"lower": [Vector3(0.2, -0.32, -0.12), Vector3(-1.15, 0.2, 0.0)],
 		"vault": [Vector3(0.26, 0.12, -0.08), Vector3(1.1, -0.35, -0.7)],
 	},
+	"knife": {
+		"ready": [Vector3(0.16, -0.06, -0.34), Vector3(-0.15, 0.18, -0.12)],
+		"aim": [Vector3(0.16, -0.06, -0.34), Vector3(-0.15, 0.18, -0.12)],
+		"sprint": [Vector3(0.2, -0.24, -0.18), Vector3(-0.45, 0.1, 0.0)],
+		"sprint_1h": [Vector3(0.24, -0.26, -0.16), Vector3(-0.5, 0.1, 0.1)],
+		"reload": [Vector3(0.16, -0.06, -0.34), Vector3(-0.15, 0.18, -0.12)],
+		"lower": [Vector3(0.2, -0.34, -0.06), Vector3(-1.2, 0.0, 0.0)],
+		"vault": [Vector3(0.24, 0.0, -0.12), Vector3(0.5, -0.3, -0.4)],
+	},
 	"pistol": {
 		"ready": [Vector3(0.06, -0.08, -0.3), Vector3(-0.55, 0.05, 0.0)],
 		"aim": [Vector3(0.04, 0.1, -0.45), Vector3(0.0, 0.0, 0.0)],
@@ -62,6 +71,8 @@ const POSES := {
 const FP_POSES := {
 	"rifle": {"hip": [Vector3(0.16, -0.2, -0.34), Vector3(0.04, 0.06, 0.04)], "aim": [Vector3(0.0, -0.15, -0.19), Vector3.ZERO],
 			"sprint": [Vector3(0.1, -0.245, -0.31), Vector3(-0.38, 0.74, 0.55)]},
+	"knife": {"hip": [Vector3(0.16, -0.21, -0.3), Vector3(-0.05, 0.3, -0.2)], "aim": [Vector3(0.16, -0.21, -0.3), Vector3(-0.05, 0.3, -0.2)],
+			"sprint": [Vector3(0.19, -0.27, -0.28), Vector3(-0.45, 0.25, 0.1)]},
 	"pistol": {"hip": [Vector3(0.13, -0.15, -0.36), Vector3(0.03, 0.05, 0.0)], "aim": [Vector3(0.0, -0.077, -0.4), Vector3.ZERO],
 			"sprint": [Vector3(0.14, -0.22, -0.31), Vector3(-0.62, 0.32, 0.28)]},
 }
@@ -579,7 +590,7 @@ func set_weapon(active: Weapon, others: Array) -> void:
 	_pump_base = active.pump.position if active.pump != null else Vector3.ZERO
 	_attach(active, weapon_anchor)
 	for w in others:
-		_attach(w, thigh_slot if w.is_pistol() else back_slot)
+		_attach(w, _knife_slot() if w.is_melee() else (thigh_slot if w.is_pistol() else back_slot))
 	for c in hand_mag.get_children():
 		c.queue_free()
 	if active.mag_node:
@@ -587,6 +598,17 @@ func set_weapon(active: Weapon, others: Array) -> void:
 		copy.position = Vector3.ZERO
 		hand_mag.add_child(copy)
 	hand_mag.visible = false
+
+
+## Sheath on the front-left of the vest, blade down.
+var knife_slot: Node3D
+
+
+func _knife_slot() -> Node3D:
+	if knife_slot == null:
+		knife_slot = _node(chest, "KnifeSlot", Vector3(-0.15, -0.02, -0.16))
+		knife_slot.rotation = Vector3(PI, 0.0, 0.15)   # blade (up in the hand) points down in the sheath
+	return knife_slot
 
 
 func _attach(n: Node3D, parent: Node3D) -> void:
@@ -1033,6 +1055,32 @@ func _weapon_pose(kind: String, pose_name: String) -> Transform3D:
 	return hip * _pose(kind, "ready").affine_inverse() * _pose(kind, pose_name)
 
 
+## Knife slash, alternating forehand and backhand.
+var slash_t := -1.0
+var _slash_dur := 0.45
+var _slash_side := 1.0
+
+
+func play_slash(duration: float) -> void:
+	cancel_inspect()
+	slash_t = 0.0
+	_slash_dur = clampf(duration * 0.85, 0.3, 0.6)
+	_slash_side = -_slash_side
+
+
+## Wind-up across the body, a fast cut through the centre, then recover.
+## Offsets are in the pose's parent space (chest, or eye in first person).
+func _slash_pose(base: Transform3D, u: float) -> Transform3D:
+	var s := _slash_side
+	var wind := Transform3D(Basis.from_euler(Vector3(-0.35, s * 0.95, s * 0.65)), Vector3(s * 0.13, 0.07, 0.07))
+	var cut := Transform3D(Basis.from_euler(Vector3(0.25, -s * 0.85, -s * 0.55)), Vector3(-s * 0.16, -0.06, -0.14))
+	var strike := smoothstep(0.2, 0.46, u)
+	var off := wind.interpolate_with(cut, strike)
+	var w := smoothstep(0.0, 0.14, u) * (1.0 - smoothstep(0.55, 1.0, u))
+	var t := Transform3D(Basis.IDENTITY, off.origin * w) * base
+	return Transform3D(t.basis * Basis.IDENTITY.slerp(off.basis, w), t.origin)
+
+
 func play_inspect() -> bool:
 	if weapon == null or dead or inspect_t >= 0.0 or reload_t >= 0.0 or switch_t >= 0.0 \
 			or throw_t >= 0.0 or vault_t >= 0.0 or kick_t >= 0.0 or cycle_t >= 0.0 \
@@ -1056,19 +1104,57 @@ func cancel_inspect() -> void:
 ## The hand targets remain attached to the gun; the eye never follows it.
 ## Starting pose offsets: both receiver sides must stay inside the camera,
 ## with positive eye-space clearance. Reduce angles if long guns clip hands.
+## Inspect keys: [t, position, euler]. The rest pose is the first and last
+## key; between them the gun is shown right side, rolled to the left side,
+## then tipped up to check the underside. Pairs of close keys keep it
+## drifting instead of freezing in place. Positions are eye-relative.
+const INSPECT_KEYS := {
+	"rifle": [
+		[0.13, Vector3(0.160, -0.100, -0.396), Vector3(0.1, 1.05, -0.3)],
+		[0.3, Vector3(0.172, -0.088, -0.410), Vector3(0.05, 1.18, -0.38)],
+		[0.45, Vector3(-0.056, -0.068, -0.396), Vector3(0.18, -0.95, 0.34)],
+		[0.6, Vector3(-0.080, -0.080, -0.410), Vector3(0.13, -1.06, 0.42)],
+		[0.72, Vector3(0.06, -0.12, -0.42), Vector3(0.12, 0.3, 1.1)],
+		[0.85, Vector3(0.07, -0.115, -0.41), Vector3(0.08, 0.22, 1.0)],
+	],
+	"pistol": [
+		[0.13, Vector3(0.056, -0.084, -0.288), Vector3(0.08, 1.1, -0.25)],
+		[0.3, Vector3(0.064, -0.076, -0.302), Vector3(0.02, 1.22, -0.32)],
+		[0.45, Vector3(-0.024, -0.076, -0.302), Vector3(0.12, -1.05, 0.28)],
+		[0.6, Vector3(-0.036, -0.084, -0.310), Vector3(0.08, -1.16, 0.36)],
+		[0.72, Vector3(0.024, -0.116, -0.259), Vector3(-0.7, 0.1, 1.2)],
+		[0.85, Vector3(0.032, -0.108, -0.252), Vector3(-0.62, 0.05, 1.05)],
+	],
+	"knife": [
+		[0.14, Vector3(0.056, -0.100, -0.259), Vector3(0.1, 0.95, 0.15)],
+		[0.5, Vector3(0.040, -0.084, -0.266), Vector3(-0.05, 0.6, 0.05)],
+		[0.78, Vector3(0.024, -0.092, -0.259), Vector3(0.15, -0.4, -0.25)],
+		[0.88, Vector3(0.040, -0.100, -0.252), Vector3(0.05, 0.15, -0.15)],
+	],
+}
+
+
 func _inspect_pose(kind: String, base: Transform3D) -> Transform3D:
-	var pistol := kind == "pistol"
-	var position_a := Vector3(0.08, -0.08, -0.42) if pistol else Vector3(0.22, -0.08, -0.6)
-	var position_b := Vector3(-0.02, -0.08, -0.44) if pistol else Vector3(-0.12, -0.08, -0.6)
-	if not fp_mode:
-		position_a += Vector3(-0.05, 0.15, 0.2)
-		position_b += Vector3(0.05, 0.15, 0.2)
-	var a := Transform3D(Basis.from_euler(Vector3(0.08, 1.12, -0.28)), position_a)
-	var b := Transform3D(Basis.from_euler(Vector3(0.12, -1.05, 0.24)), position_b)
-	var reveal := smoothstep(0.0, 0.18, inspect_t)
-	var roll := smoothstep(0.38, 0.64, inspect_t)
-	var recover := 1.0 - smoothstep(0.8, 1.0, inspect_t)
-	return base.interpolate_with(a.interpolate_with(b, roll), reveal * recover)
+	var keys: Array = INSPECT_KEYS.get(kind, INSPECT_KEYS.rifle)
+	var lift := Vector3.ZERO if fp_mode else Vector3(-0.03, 0.15, 0.2)
+	var times: Array = [0.0]
+	var poses: Array = [base]
+	for k in keys:
+		times.append(float(k[0]))
+		poses.append(Transform3D(Basis.from_euler(k[2]), (k[1] as Vector3) + lift))
+	times.append(1.0)
+	poses.append(base)
+	var t := clampf(inspect_t, 0.0, 1.0)
+	var i := 0
+	while i < times.size() - 2 and t > float(times[i + 1]):
+		i += 1
+	var u := (t - float(times[i])) / maxf(float(times[i + 1]) - float(times[i]), 0.001)
+	u = u * u * u * (u * (u * 6.0 - 15.0) + 10.0)   # smootherstep: no snap at the keys
+	var xf: Transform3D = (poses[i] as Transform3D).interpolate_with(poses[i + 1], u)
+	# a breath of hand sway while it is held up
+	var held := smoothstep(0.05, 0.15, t) * (1.0 - smoothstep(0.88, 0.98, t))
+	xf.origin += Vector3(sin(t * 9.0) * 0.004, sin(t * 7.0 + 1.0) * 0.003, 0.0) * held
+	return xf
 
 
 func _update_weapon_pose(delta: float) -> void:
@@ -1083,12 +1169,12 @@ func _update_weapon_pose(delta: float) -> void:
 	_recoil_yaw_v += (-k * _recoil_yaw - c * _recoil_yaw_v) * delta
 	_recoil_yaw += _recoil_yaw_v * delta
 
-	var kind := "pistol" if weapon.is_pistol() else "rifle"
+	var kind := "knife" if weapon.is_melee() else ("pistol" if weapon.is_pistol() else "rifle")
 	var xf := _weapon_pose(kind, "ready").interpolate_with(_weapon_pose(kind, "aim"), aim_amt)
 	if fp_mode:
 		var fp: Dictionary = FP_POSES[kind]
 		var hip := Transform3D(Basis.from_euler(fp.hip[1]), fp.hip[0])
-		var ads := Transform3D(Basis.IDENTITY, weapon.ads_offset)
+		var ads := Transform3D(Basis.from_euler(fp.aim[1]), fp.aim[0]) if kind == "knife" else Transform3D(Basis.IDENTITY, weapon.ads_offset)
 		xf = hip.interpolate_with(ads, aim_amt)
 	if inspect_t >= 0.0:
 		if aim_target > 0.0 or sprint_target > 0.0 or slide_target > 0.0:
@@ -1099,6 +1185,9 @@ func _update_weapon_pose(delta: float) -> void:
 				inspect_t = -1.0
 			else:
 				xf = _inspect_pose(kind, xf)
+				weapon.inspect_motion(inspect_t)
+	if inspect_t < 0.0:
+		weapon.inspect_motion(-1.0)
 	if fp_mode:
 		var fs: Array = FP_POSES[kind].sprint
 		xf = xf.interpolate_with(Transform3D(Basis.from_euler(fs[1]), fs[0]), sprint_amt * (1.0 - aim_amt))
@@ -1113,6 +1202,12 @@ func _update_weapon_pose(delta: float) -> void:
 		xf.origin += Vector3(0.0, maxf(f, 0.0) * 0.04, -f * 0.09) * sw_w
 		xf = xf * Transform3D(Basis(Vector3.RIGHT, f * 0.18 * sw_w), Vector3.ZERO)
 
+	if slash_t >= 0.0:
+		slash_t += delta / _slash_dur
+		if slash_t >= 1.0:
+			slash_t = -1.0
+		else:
+			xf = _slash_pose(xf, slash_t)
 	if reload_t >= 0.0:
 		reload_t += delta / _reload_dur
 		var w := smoothstep(0.0, 0.12, reload_t) * (1.0 - smoothstep(0.86, 1.0, reload_t))
@@ -1275,8 +1370,8 @@ func _update_arms(delta: float) -> void:
 	if one_hand_sprint and reload_t < 0.0 and throw_t < 0.0 and vault_t < 0.0:
 		free_want = sprint_amt * (1.0 - aim_amt) * (1.0 - slide_amt)
 	var kwa := _kick_w()
-	if kwa > 0.0:
-		free_want = 1.0
+	if kwa > 0.0 or weapon.is_melee():
+		free_want = 1.0   # kicking, or a knife in one hand: the left arm is free
 	_free_arm = lerpf(_free_arm, free_want, 1.0 - exp(-14.0 * delta))
 	var r_pole := Vector3(0.8, -1.0, 0.45).lerp(Vector3(0.35, -0.6, 1.0), _free_arm)
 	var l_pole := Vector3(-0.9, -1.0, 0.15 + plant_w * 0.6).lerp(Vector3(-0.3, -0.6, 1.0), _free_arm)

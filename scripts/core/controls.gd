@@ -12,7 +12,7 @@ const BINDABLE := [
 	["move_forward", "MOVE FORWARD"], ["move_back", "MOVE BACK"], ["move_left", "MOVE LEFT"], ["move_right", "MOVE RIGHT"],
 	["fire", "FIRE"], ["aim", "AIM DOWN SIGHTS"], ["sprint", "SPRINT"], ["crouch", "CROUCH"], ["vault", "JUMP / VAULT"],
 	["kick", "DROPKICK (WHILE SPRINTING)"], ["reload", "RELOAD"], ["switch_weapon", "SWITCH WEAPON"],
-	["weapon_1", "PRIMARY"], ["weapon_2", "SECONDARY"], ["peek_left", "PEEK LEFT"], ["peek_right", "PEEK RIGHT"],
+	["weapon_1", "PRIMARY"], ["weapon_2", "SECONDARY"], ["weapon_3", "KNIFE"], ["peek_left", "PEEK LEFT"], ["peek_right", "PEEK RIGHT"],
 	["grenade", "FRAG GRENADE"], ["flashbang", "FLASHBANG"], ["flashlight", "FLASHLIGHT"], ["interact", "INTERACT"],
 	["toggle_view", "FIRST PERSON / TOP-DOWN"], ["inspect", "INSPECT WEAPON"], ["cam_rot_left", "ROTATE CAMERA LEFT"],
 	["cam_rot_right", "ROTATE CAMERA RIGHT"], ["music", "MUSIC ON / OFF"],

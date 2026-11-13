@@ -9,6 +9,8 @@ const Collection = preload("res://scripts/skins/collection.gd")
 const Charm = preload("res://scripts/skins/charm.gd")
 
 static var class_index := 0
+## The knife carried in every class (melee slot, key 3).
+static var knife := "knife_combat"
 static var classes: Array = []
 static var _loaded := false
 
@@ -24,6 +26,8 @@ static func ensure() -> void:
 	if cfg.load(Profile.path("loadout.cfg")) != OK:
 		return
 	class_index = clampi(int(cfg.get_value("main", "class", 0)), 0, classes.size() - 1)
+	var kn := String(cfg.get_value("main", "knife", "knife_combat"))
+	knife = kn if kn in Data.KNIVES else "knife_combat"
 	for i in classes.size():
 		for slot in ["primary", "secondary"]:
 			var sec := "class%d_%s" % [i, slot]
@@ -49,6 +53,7 @@ static func save() -> void:
 	ensure()
 	var cfg := ConfigFile.new()
 	cfg.set_value("main", "class", class_index)
+	cfg.set_value("main", "knife", knife)
 	for i in classes.size():
 		for slot in ["primary", "secondary"]:
 			var e: Dictionary = classes[i][slot]
@@ -78,7 +83,15 @@ static func cycle_class(dir: int) -> void:
 
 
 static func entry(slot: String) -> Dictionary:
+	if slot == "knife":
+		ensure()
+		return {"id": knife, "att": Data.sanitize(knife, {}), "charm": ""}
 	return current()[slot]
+
+
+static func cycle_knife(dir: int) -> void:
+	ensure()
+	knife = Data.KNIVES[posmod(Data.KNIVES.find(knife) + dir, Data.KNIVES.size())]
 
 
 static func cycle_weapon(slot: String, dir: int) -> void:
@@ -112,4 +125,5 @@ static func reset_class() -> void:
 static func weapon_list() -> Array:
 	var c := current()
 	return [[c.primary.id, c.primary.att, Collection.skin_for(String(c.primary.id)), Collection.sticker_for(String(c.primary.id)), Charm.sanitize(String(c.primary.get("charm", "")))],
-			[c.secondary.id, c.secondary.att, Collection.skin_for(String(c.secondary.id)), Collection.sticker_for(String(c.secondary.id)), Charm.sanitize(String(c.secondary.get("charm", "")))]]
+			[c.secondary.id, c.secondary.att, Collection.skin_for(String(c.secondary.id)), Collection.sticker_for(String(c.secondary.id)), Charm.sanitize(String(c.secondary.get("charm", "")))],
+			[knife, Data.sanitize(knife, {}), Collection.skin_for(knife), {}, ""]]

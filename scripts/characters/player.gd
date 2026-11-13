@@ -224,7 +224,10 @@ func _place_torch() -> void:
 	if _torch == null or weapons.is_empty():
 		return
 	# right side of the handguard (rifles) or under the slide (pistols)
-	_torch.position = Vector3(0.0, -0.05, -0.17) if current_weapon().is_pistol() else Vector3(0.034, 0.005, -0.4)
+	if current_weapon().is_melee():
+		_torch.position = Vector3(0.0, -0.035, 0.03)   # knives: a small light by the grip
+	else:
+		_torch.position = Vector3(0.0, -0.05, -0.17) if current_weapon().is_pistol() else Vector3(0.034, 0.005, -0.4)
 
 
 func _update_torch_lens() -> void:
@@ -415,7 +418,7 @@ func _physics_process(delta: float) -> void:
 		cam_yaw = aim_yaw
 	var wish := Basis(Vector3.UP, cam_yaw) * Vector3(iv.x, 0, iv.y)
 
-	aiming = Input.is_action_pressed("aim")
+	aiming = Input.is_action_pressed("aim") and not current_weapon().is_melee()
 	_slide_cd = maxf(_slide_cd - delta, 0.0)
 	if Input.is_action_just_pressed("crouch"):
 		var hv0 := Vector2(velocity.x, velocity.z).length()
@@ -520,6 +523,8 @@ func _physics_process(delta: float) -> void:
 		switch_to(0)
 	if Input.is_action_just_pressed("weapon_2"):
 		switch_to(1)
+	if Input.is_action_just_pressed("weapon_3"):
+		switch_to(2)   # knife
 	if Input.is_action_just_pressed("switch_weapon"):
 		switch_to((weapon_index + 1) % weapons.size())
 

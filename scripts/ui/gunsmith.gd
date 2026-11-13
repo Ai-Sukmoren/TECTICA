@@ -91,6 +91,7 @@ func _build_rows() -> void:
 		if a != "stock":
 			_rows.append({"t": "att", "s": "secondary", "a": a})
 	_rows.append({"t": "charm", "s": "secondary"})
+	_rows.append({"t": "knife", "s": "knife"})
 	_rows.append({"t": "reset"})
 	_rows.append({"t": "back"})
 
@@ -112,6 +113,8 @@ func _change(i: int, dir: int) -> void:
 			Loadout.cycle_attachment(r.s, r.a, dir)
 		"charm":
 			Loadout.cycle_charm(r.s, dir)
+		"knife":
+			Loadout.cycle_knife(dir)
 		_:
 			return
 	Sfx.play(hud, "switch", Vector3.ZERO, -12.0, 0.0)
@@ -189,9 +192,9 @@ func _process(delta: float) -> void:
 		w.apply_skin(sk)
 		w.apply_charm(String(e.get("charm", "")))
 		_pivot.add_child(w)
-		var pistol := w.is_pistol()
+		var pistol := w.is_pistol() or w.is_melee()
 		w.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
-		var dist := 0.75 if pistol else (1.75 if e.id == "awp" else 1.4)
+		var dist := (0.55 if w.is_melee() else 0.75) if pistol else (1.75 if e.id == "awp" else 1.4)
 		_cam.position = Vector3(0, 0.12, dist)
 		_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
 	if not _manual_rotation and not _dragging_preview:
@@ -236,6 +239,11 @@ func draw(c: Control, vp: Vector2) -> void:
 				value = String(Data.ATTACHMENTS[r.a][e2.att[r.a]].name)
 				if opts.size() <= 1:
 					value += "   (FIXED)"
+			"knife":
+				label = "KNIFE"
+				value = "%s   MELEE  ·  KEY 3" % Data.WEAPONS[Loadout.knife].name
+				head = true
+				y += 10.0
 			"charm":
 				indent = 22.0
 				label = "WEAPON CHARM"

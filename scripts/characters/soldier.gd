@@ -294,7 +294,10 @@ func try_fire(target: Vector3) -> bool:
 	if not w.ready_to_fire():
 		return false
 	var result := w.fire(self, get_fire_origin(), target, get_spread())
-	rig.add_recoil(float(w.stats.recoil) * (float(w.stats.recoil_crouch) if crouching else 1.0))
+	if w.is_melee():
+		rig.play_slash(60.0 / float(w.stats.rpm))
+	else:
+		rig.add_recoil(float(w.stats.recoil) * (float(w.stats.recoil_crouch) if crouching else 1.0))
 	fired.emit(self, w, result)
 	if Net.active and Net.sync:
 		Net.sync.send_event(self, "shot", [result.ends])
@@ -307,7 +310,10 @@ func net_shot(ends: Array) -> void:
 		return
 	var w := current_weapon()
 	w.fire_fx(ends)
-	rig.add_recoil(float(w.stats.recoil) * (float(w.stats.recoil_crouch) if crouching else 1.0))
+	if w.is_melee():
+		rig.play_slash(60.0 / float(w.stats.rpm))
+	else:
+		rig.add_recoil(float(w.stats.recoil) * (float(w.stats.recoil_crouch) if crouching else 1.0))
 
 
 func start_reload() -> void:

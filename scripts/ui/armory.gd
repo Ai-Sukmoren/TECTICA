@@ -130,7 +130,7 @@ func _say(text: String, bad: bool = false) -> void:
 	msg_t = 3.0
 	if bad:
 		shake = 0.45
-		Sfx.play(hud, "dry", Vector3.ZERO, -6.0, 0.0)
+		Sfx.play_ui(hud, "dry", -6.0)
 
 
 func _buy() -> void:
@@ -150,7 +150,8 @@ func _buy() -> void:
 	for i in cards.size():
 		flip_t.append(0.0)
 		burst_t.append(0.0)
-	Sfx.play(hud, "pin", Vector3.ZERO, -4.0, 0.0)
+	Sfx.play_ui(hud, "pack_tear", -3.0)
+	Sfx.play_ui(hud, "pack_riser", -6.0)
 
 
 func _flip_next() -> void:
@@ -159,7 +160,8 @@ func _flip_next() -> void:
 	focus_card = flipped
 	burst_t[flipped] = 1.0
 	var r := int(cards[flipped].rarity)
-	Sfx.play(hud, ["switch", "mag_in", "hitmarker", "kill", "kill"][r], Vector3.ZERO, [-8.0, -6.0, -4.0, -2.0, 2.0][r], 0.0)
+	Sfx.play_ui(hud, "card_flip", -4.0, 0.08)
+	Sfx.play_ui(hud, "reveal_%d" % clampi(r, 0, 5), [-9.0, -7.0, -5.0, -3.0, -1.0, 1.0][clampi(r, 0, 5)])
 	flipped += 1
 
 
@@ -177,9 +179,9 @@ func _outfit_action() -> void:
 		if why != "":
 			_say(why + "  ·  %s COSTS CR %s" % [String(o.name), _thousands(int(o.price))], true)
 			return
-		Sfx.play(hud, "kill", Vector3.ZERO, -2.0, 0.0)
+		Sfx.play_ui(hud, "reveal_3", -3.0)
 	Collection.wear_outfit(id)
-	Sfx.play(hud, "mag_in", Vector3.ZERO, -4.0, 0.0)
+	Sfx.play_ui(hud, "mag_in", -4.0)
 	_say("NOW WEARING  ·  %s  (applies on the next deploy)" % String(o.name))
 
 
@@ -190,7 +192,7 @@ func _equip_tile() -> void:
 		_say("LOCKED  ·  PULL IT FROM A SUPPLY PACK", true)
 		return
 	Collection.equip(w, f)
-	Sfx.play(hud, "mag_in", Vector3.ZERO, -4.0, 0.0)
+	Sfx.play_ui(hud, "mag_in", -4.0)
 	_say("EQUIPPED  ·  %s  %s" % [Skins.weapon_name(w), Skins.finish_name(f).to_upper() if f != "" else "FACTORY"])
 
 
@@ -262,8 +264,10 @@ func handle(event: InputEvent) -> bool:
 		var n_out := Outfits.ids().size()
 		if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward") or event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
 			outfit_i = posmod(outfit_i - 1, n_out)
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back") or event.is_action_pressed("ui_right") or event.is_action_pressed("move_right"):
 			outfit_i = posmod(outfit_i + 1, n_out)
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
 			_outfit_action()
 		elif event is InputEventMouseMotion:
@@ -279,8 +283,10 @@ func handle(event: InputEvent) -> bool:
 	if tab == 0:
 		if event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
 			pack_i = posmod(pack_i - 1, Skins.PACKS.size())
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_right") or event.is_action_pressed("move_right"):
 			pack_i = posmod(pack_i + 1, Skins.PACKS.size())
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
 			_buy()
 		elif event is InputEventMouseMotion:
@@ -299,12 +305,16 @@ func handle(event: InputEvent) -> bool:
 			mouse_button = event.button_index
 		if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward") or mouse_button == MOUSE_BUTTON_WHEEL_UP:
 			coll_weapon = posmod(coll_weapon - 1, Skins.weapon_ids().size())
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back") or mouse_button == MOUSE_BUTTON_WHEEL_DOWN:
 			coll_weapon = posmod(coll_weapon + 1, Skins.weapon_ids().size())
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_left") or event.is_action_pressed("move_left"):
 			coll_tile = posmod(coll_tile - 1, n_tiles)
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_right") or event.is_action_pressed("move_right"):
 			coll_tile = posmod(coll_tile + 1, n_tiles)
+			Sfx.play_ui(hud, "ui_tick", -14.0)
 		elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
 			_equip_tile()
 		elif event is InputEventMouseMotion:
@@ -336,7 +346,7 @@ func _sticker_input(event: InputEvent) -> void:
 	elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_T:
 		Collection.set_sticker(_coll_weapon_id(), Sticker.clamp_cfg(_stk))
 		sticker_edit = false
-		Sfx.play(hud, "mag_in", Vector3.ZERO, -4.0, 0.0)
+		Sfx.play_ui(hud, "mag_in", -4.0)
 		_say("STICKER SAVED  ·  " + Skins.weapon_name(_coll_weapon_id()))
 	elif k in [KEY_A, KEY_LEFT]:
 		_stk.u = float(_stk.u) + (-step if right_view else step)
@@ -377,7 +387,7 @@ func _process(delta: float) -> void:
 	shake = maxf(shake - delta, 0.0)
 	if phase == "opening" and t >= OPEN_TIME:
 		phase = "reveal"
-		Sfx.play(hud, "swipe", Vector3.ZERO, 0.0, 0.0)
+		Sfx.play_ui(hud, "pack_burst", -2.0)
 	for i in flip_t.size():
 		if i < flipped:
 			flip_t[i] = minf(float(flip_t[i]) + delta * FLIP_SPEED, 1.0)

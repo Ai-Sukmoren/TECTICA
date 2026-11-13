@@ -50,6 +50,24 @@ static func play_foley(ctx: Node, sound: String, pos: Vector3, volume_db: float 
 	p.finished.connect(p.queue_free)
 
 
+## Menu / UI sound: not positional, so it is heard wherever the camera is.
+static func play_ui(ctx: Node, sound: String, volume_db: float = 0.0, pitch_var: float = 0.0) -> void:
+	if ctx == null or not ctx.is_inside_tree():
+		return
+	var stream := _stream_for(sound)
+	if stream == null:
+		return
+	var p := AudioStreamPlayer.new()
+	p.stream = stream
+	p.volume_db = volume_db
+	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
+	p.bus = &"SFX"
+	p.process_mode = Node.PROCESS_MODE_ALWAYS   # menus run while the game is paused
+	ctx.get_tree().root.add_child(p)
+	p.play()
+	p.finished.connect(p.queue_free)
+
+
 static func _stream_for(sound: String) -> AudioStreamWAV:
 	if sound == "footstep":
 		return _footstep_variant()
@@ -105,6 +123,22 @@ static func _stream_for(sound: String) -> AudioStreamWAV:
 			s = _groan()
 		"swipe":
 			s = _swipe()
+		"knife_swing":
+			s = _knife_swing()
+		"knife_hit":
+			s = _knife_hit()
+		"ui_tick":
+			s = _ui_tick()
+		"pack_tear":
+			s = _pack_tear()
+		"pack_riser":
+			s = _pack_riser()
+		"pack_burst":
+			s = _pack_burst()
+		"card_flip":
+			s = _card_flip()
+		"reveal_0", "reveal_1", "reveal_2", "reveal_3", "reveal_4", "reveal_5":
+			s = _reveal(int(sound.substr(7)))
 		"break_wood":
 			s = _break(0.55, 0.22, 140.0, 9.0)
 		"break_sand":
@@ -241,6 +275,157 @@ static func _swipe() -> AudioStreamWAV:
 		var t := float(i) / RATE
 		lp += ((randf() * 2.0 - 1.0) - lp) * (0.05 + 0.4 * t / 0.28)
 		out[i] = lp * sin(PI * t / 0.28) * 1.6
+	return _to_stream(out)
+
+
+# ---------------------------------------------------------------- knives
+
+## A thin, fast whoosh: band-passed air rising then falling, plus a faint
+## metallic ring off the blade.
+static func _knife_swing() -> AudioStreamWAV:
+	var d := 0.24
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	var hp := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var u := t / d
+		var w := randf() * 2.0 - 1.0
+		lp += (w - lp) * (0.12 + 0.55 * sin(PI * u))
+		hp = lp - hp * 0.6
+		var env := pow(sin(PI * clampf(u * 1.25, 0.0, 1.0)), 1.6)
+		out[i] = (hp * 0.9 + sin(TAU * 3100.0 * t) * 0.04 * exp(-t * 18.0)) * env
+	return _to_stream(out)
+
+
+## Blade into a body: a wet, dull thud with a short tearing tail.
+static func _knife_hit() -> AudioStreamWAV:
+	var d := 0.22
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		lp += ((randf() * 2.0 - 1.0) - lp) * 0.18
+		var thud := sin(TAU * (95.0 + 60.0 * exp(-t * 40.0)) * t) * exp(-t * 26.0)
+		out[i] = (thud * 0.9 + lp * 1.4 * exp(-t * 14.0)) * 0.55
+	return _to_stream(out)
+
+
+# ---------------------------------------------------------------- supply packs
+
+static func _ui_tick() -> AudioStreamWAV:
+	var n := int(0.05 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var t := float(i) / RATE
+		out[i] = sin(TAU * 2200.0 * t) * exp(-t * 120.0) * 0.45
+	return _to_stream(out)
+
+
+## Foil wrapper torn open: crackly bursts of high noise, getting louder.
+static func _pack_tear() -> AudioStreamWAV:
+	var d := 0.55
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var hp := 0.0
+	var prev := 0.0
+	var grain := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var w := randf() * 2.0 - 1.0
+		hp = w - prev
+		prev = w
+		if randf() < 0.004:
+			grain = 1.0
+		grain *= 0.993
+		var env := smoothstep(0.0, 0.05, t) * (0.4 + 0.6 * t / d) * (1.0 - smoothstep(d - 0.06, d, t))
+		out[i] = hp * (0.25 + grain * 0.75) * env * 0.45
+	return _to_stream(out)
+
+
+## Tension while the pack opens: a rising tone with a swelling noise wash.
+static func _pack_riser() -> AudioStreamWAV:
+	var d := 1.35
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var u := t / d
+		ph += TAU * (180.0 + 520.0 * u * u) / RATE
+		lp += ((randf() * 2.0 - 1.0) - lp) * (0.02 + 0.3 * u)
+		var env := u * u * (1.0 - smoothstep(0.96, 1.0, u))
+		out[i] = (sin(ph) * 0.25 + sin(ph * 1.5) * 0.12 + lp * 0.5) * env
+	return _to_stream(out)
+
+
+## The pack bursts open: a soft boom plus a sparkle.
+static func _pack_burst() -> AudioStreamWAV:
+	var d := 0.9
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		lp += ((randf() * 2.0 - 1.0) - lp) * 0.08
+		var boom := sin(TAU * (60.0 + 80.0 * exp(-t * 18.0)) * t) * exp(-t * 7.0)
+		var sparkle := 0.0
+		for k in 3:
+			sparkle += sin(TAU * (2093.0 * (1.0 + k * 0.5)) * t) * exp(-t * (6.0 + k * 3.0))
+		out[i] = boom * 0.7 + lp * exp(-t * 9.0) * 0.9 + sparkle * 0.08
+	return _to_stream(out)
+
+
+## A card snapped over: short swish into a papery click.
+static func _card_flip() -> AudioStreamWAV:
+	var d := 0.16
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		lp += ((randf() * 2.0 - 1.0) - lp) * 0.35
+		var swish := lp * sin(PI * clampf(t / 0.1, 0.0, 1.0)) * 0.5
+		var click := (randf() * 2.0 - 1.0) * exp(-maxf(t - 0.1, 0.0) * 300.0) * (1.0 if t > 0.1 else 0.0)
+		out[i] = swish + click * 0.6
+	return _to_stream(out)
+
+
+## Rarity sting: more notes, higher and longer as the rarity goes up.
+## 0 common (one soft note) .. 5 mythic (a full arpeggio over a low swell).
+static func _reveal(r: int) -> AudioStreamWAV:
+	var scale := [523.25, 659.25, 783.99, 1046.5, 1318.5, 1568.0]
+	var notes := clampi(r + 1, 1, 6)
+	var d := 0.45 + r * 0.22
+	var n := int(d * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var step := 0.075
+	for i in n:
+		var t := float(i) / RATE
+		var v := 0.0
+		for k in notes:
+			var t0 := k * step
+			if t < t0:
+				continue
+			var tk := t - t0
+			var f: float = scale[k] * (0.5 if r == 0 else 1.0)
+			v += (sin(TAU * f * tk) + 0.3 * sin(TAU * f * 2.0 * tk)) * exp(-tk * (7.0 - r * 0.8)) * 0.22
+		if r >= 3:   # warm swell under epic and up
+			v += sin(TAU * 130.81 * t) * sin(PI * clampf(t / d, 0.0, 1.0)) * 0.12 * (r - 2)
+		if r == 5:   # mythic shimmer
+			v += sin(TAU * 2637.0 * t + sin(TAU * 7.0 * t) * 2.0) * exp(-t * 2.5) * 0.06
+		out[i] = v
 	return _to_stream(out)
 
 

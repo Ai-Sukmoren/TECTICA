@@ -10,6 +10,8 @@ static func setup() -> void:
 	Input.use_accumulated_input = false
 	if not InputMap.has_action("inspect"):
 		_act("inspect", [KEY_I])
+	if not InputMap.has_action("weapon_3"):
+		_act("weapon_3", [KEY_3])
 	if InputMap.has_action("flashlight"):
 		return
 	_act("move_forward", [KEY_W, KEY_UP], [], [[JOY_AXIS_LEFT_Y, -1.0]])

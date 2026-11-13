@@ -194,6 +194,44 @@ const WEAPONS := {
 				"magazine": ["standard", "extended", "drum"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
+	# ---- knives (melee slot). Starting values: damage per slash, swings per minute,
+	# reach in metres, damage multiplier for a hit from behind.
+	"knife_combat": {
+		"name": "COMBAT KNIFE", "category": "KNIFE", "kind": "melee", "model": "knife_combat", "inspect": "combat",
+		"mag": 1, "reserve": 0, "rpm": 75, "auto": true, "pellets": 1,
+		"damage": 65.0, "range": 2.10, "falloff_start": 99.0, "backstab": 3.0,
+		"spread_hip": 0.0, "spread_aim": 0.0, "spread_move": 0.0,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 1.0,
+		"recoil": 0.0, "reload": 1.0, "reload_empty": 1.0,
+		"suppressed": true, "noise_radius": 3.0, "shake": 0.05, "sound": "knife_swing", "volume": -3.0,
+		"mobility": 1.28, "ads_speed": 1.0,
+		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
+	"karambit": {
+		"name": "KARAMBIT", "category": "KNIFE", "kind": "melee", "model": "karambit", "inspect": "karambit",
+		"mag": 1, "reserve": 0, "rpm": 105, "auto": true, "pellets": 1,
+		"damage": 48.0, "range": 1.90, "falloff_start": 99.0, "backstab": 3.5,
+		"spread_hip": 0.0, "spread_aim": 0.0, "spread_move": 0.0,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 1.0,
+		"recoil": 0.0, "reload": 1.0, "reload_empty": 1.0,
+		"suppressed": true, "noise_radius": 3.0, "shake": 0.05, "sound": "knife_swing", "volume": -4.0,
+		"mobility": 1.28, "ads_speed": 1.0,
+		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
+	"butterfly": {
+		"name": "BUTTERFLY KNIFE", "category": "KNIFE", "kind": "melee", "model": "butterfly", "inspect": "butterfly",
+		"mag": 1, "reserve": 0, "rpm": 90, "auto": true, "pellets": 1,
+		"damage": 56.0, "range": 2.00, "falloff_start": 99.0, "backstab": 3.2,
+		"spread_hip": 0.0, "spread_aim": 0.0, "spread_move": 0.0,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 1.0,
+		"recoil": 0.0, "reload": 1.0, "reload_empty": 1.0,
+		"suppressed": true, "noise_radius": 3.0, "shake": 0.05, "sound": "knife_swing", "volume": -3.5,
+		"mobility": 1.28, "ads_speed": 1.0,
+		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
 	# hostile militia weapon (balanced for AI)
 	"akm": {
 		"name": "AKM", "category": "ASSAULT RIFLE", "kind": "rifle", "model": "akm",
@@ -211,6 +249,7 @@ const WEAPONS := {
 
 const PRIMARIES := ["m4a1", "ak47", "as_val", "mp7", "mgp7", "awp", "m870", "m249"]
 const SECONDARIES := ["mk23", "g18", "zc57"]
+const KNIVES := ["knife_combat", "karambit", "butterfly"]
 
 const CLASSES := [
 	{"name": "ASSAULT", "desc": "Balanced rifleman for any range.",

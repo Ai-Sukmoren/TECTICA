@@ -261,11 +261,75 @@ func _build_torch() -> void:
 func _place_torch() -> void:
 	if _torch == null or weapons.is_empty():
 		return
-	# right side of the handguard (rifles) or under the slide (pistols)
-	if current_weapon().is_melee():
+	# right side of the handguard (long guns) or under the frame (pistols),
+	# measured on the gun's own mesh so it sits on every model
+	var w := current_weapon()
+	if w.is_melee():
 		_torch.position = Vector3(0.0, -0.035, 0.03)   # knives: a small light by the grip
-	else:
-		_torch.position = Vector3(0.0, -0.05, -0.17) if current_weapon().is_pistol() else Vector3(0.034, 0.005, -0.4)
+		if flashlight:
+			flashlight.position = Vector3(0, -0.02, -1.05)
+		return
+	if not w.has_meta("torch_mount"):
+		w.set_meta("torch_mount", _torch_mount(w))
+	var mount: Vector3 = w.get_meta("torch_mount")
+	_torch.position = mount
+	_torch.scale = Vector3.ONE * (PISTOL_LIGHT if w.is_pistol() else 1.0)
+	if flashlight:
+		# the beam starts just ahead of the muzzle, in line with the lens
+		var mz: float = (w.global_transform.affine_inverse() * w.muzzle.global_position).z if w.muzzle else mount.z - 0.3
+		flashlight.position = Vector3(mount.x, mount.y, minf(mz, mount.z - 0.081) - 0.12)
+
+
+## Pistol lights are compact: the housing is drawn at this scale.
+const PISTOL_LIGHT := 0.72
+
+
+## Where the light housing goes on this gun, in weapon space: hugging the
+## right side of the handguard just ahead of the support hand (lens behind
+## the muzzle), or tucked under a pistol's frame ahead of the trigger guard.
+func _torch_mount(w: Weapon) -> Vector3:
+	const R := 0.017      # housing radius
+	const HALF := 0.055   # half the housing length; the lens is 0.081 ahead of its centre
+	var inv := w.global_transform.affine_inverse()
+	var muz: Vector3 = inv * w.muzzle.global_position if w.muzzle else Vector3(0, 0.03, -0.5)
+	var verts := PackedVector3Array()
+	for n in w.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or not mi.is_visible_in_tree():
+			continue
+		var xf := inv * mi.global_transform
+		for v in mi.mesh.get_faces():
+			verts.append(xf * v)
+	if w.is_pistol():
+		# compact light: lens just behind the muzzle, body clear of the trigger guard
+		var cz := muz.z + (0.081 + 0.008) * PISTOL_LIGHT
+		var lo := INF
+		for v in verts:
+			# the dust cover: underside of the frame's front few centimetres
+			if v.z > muz.z and v.z < muz.z + 0.05 and absf(v.x) < 0.03 and v.y < muz.y:
+				lo = minf(lo, v.y)
+		if lo == INF:
+			return Vector3(0.0, -0.05, -0.17)
+		return Vector3(0.0, lo - R * PISTOL_LIGHT - 0.001, cz)
+	var sup: Vector3 = inv * w.support.global_position if w.support else muz * 0.6
+	# ahead of the support hand, but the lens stays behind the muzzle
+	var cz2 := maxf(sup.z - 0.1, muz.z + 0.081 + 0.03)
+	var top := muz.y + 0.035      # skip optics / rails above the bore
+	var bottom := muz.y - 0.07    # and magazines / bipods / grips below
+	var right := -INF
+	for v in verts:
+		if absf(v.z - cz2) < HALF and v.y < top and v.y > bottom:
+			right = maxf(right, v.x)
+	if right == -INF:
+		return Vector3(0.034, 0.005, -0.4)
+	var ys := 0.0
+	var count := 0
+	for v in verts:
+		if absf(v.z - cz2) < HALF and v.y < top and v.y > bottom and v.x > right - 0.006:
+			ys += v.y
+			count += 1
+	var y := ys / count if count > 0 else muz.y - 0.01
+	return Vector3(right + R + 0.001, y, cz2)
 
 
 func _update_torch_lens() -> void:

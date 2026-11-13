@@ -1036,12 +1036,62 @@ static func _optic(r: Node3D, b: Dictionary, kind: String) -> Dictionary:
 		return {"y": float(b.iron_y), "rear_z": float(b.iron_rear_z), "relief": float(b.get("iron_relief", 0.16))}
 	var fz: float = b.iron_front_z
 	var rr: float = b.iron_rear_z
+	var line := ry + 0.026   # sight line (unchanged: ADS lines up on it)
+	# each sight stands on whatever is really under it (receiver, rail, handguard,
+	# barrel or suppressor), so nothing floats and nothing sinks in
+	var rear_floor := _top_at(r, rr, line)
+	var front_floor := _top_at(r, fz, line)
+	# rear: base block down to the receiver, two protective ears
+	var rb_top := ry + 0.006
+	var rb_h := maxf(rb_top - rear_floor, 0.006)
+	_part(r, WG.machined(Vector3(0.022, rb_h, 0.014)), _black, Vector3(0, rb_top - rb_h * 0.5, rr))
 	for sx in [-1, 1]:
-		_part(r, WG.machined(Vector3(0.006, 0.026, 0.012)), _black, Vector3(sx * 0.008, ry + 0.013, rr))
-	_part(r, WG.machined(Vector3(0.022, 0.006, 0.012)), _black, Vector3(0, ry + 0.003, rr))
-	_part(r, WG.machined(Vector3(0.004, 0.032, 0.006)), _black, Vector3(0, ry + 0.012, fz))
-	_part(r, WG.machined(Vector3(0.022, 0.012, 0.02)), _black, Vector3(0, ry - 0.0, fz))
-	return {"y": ry + 0.026, "rear_z": rr, "relief": 0.15}
+		_part(r, WG.machined(Vector3(0.006, line - rb_top + 0.004, 0.012)), _black, Vector3(sx * 0.008, (line + rb_top) * 0.5 + 0.002, rr))
+	# front: a sight base clamped on the barrel / rail, tower and post to the line
+	var base_top := maxf(front_floor + 0.012, line - 0.026)
+	var base_h := base_top - front_floor
+	_part(r, WG.machined(Vector3(0.022, base_h, 0.02)), _black, Vector3(0, front_floor + base_h * 0.5, fz))
+	_part(r, WG.machined(Vector3(0.004, line - base_top + 0.004, 0.006)), _black, Vector3(0, (line + base_top) * 0.5 + 0.002, fz))
+	for sx in [-1, 1]:
+		_part(r, WG.machined(Vector3(0.003, line - base_top, 0.012)), _black, Vector3(sx * 0.0095, (line + base_top) * 0.5, fz))
+	return {"y": line, "rear_z": rr, "front_z": fz, "relief": 0.15}
+
+
+## Height of the gun's top surface at `z` along the centreline (what a sight
+## mounted there would sit on), from the parts built so far; below `limit`.
+static func _top_at(r: Node3D, z: float, limit: float) -> float:
+	var best := -INF
+	for n in r.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or not mi.visible:
+			continue
+		var xf := Transform3D.IDENTITY
+		var p: Node = mi
+		while p != null and p != r:
+			xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		var faces := mi.mesh.get_faces()
+		for i in range(0, faces.size(), 3):
+			var a := xf * faces[i]
+			var c := xf * faces[i + 1]
+			var d := xf * faces[i + 2]
+			# triangles that straddle the slice near the centreline
+			var zmin := minf(a.z, minf(c.z, d.z))
+			var zmax := maxf(a.z, maxf(c.z, d.z))
+			if zmin > z + 0.006 or zmax < z - 0.006:
+				continue
+			for v in [a, c, d]:
+				if absf(v.x) < 0.012 and v.y < limit:
+					best = maxf(best, v.y)
+			# big faces (box tops) may have no vertex near the slice: use the plane
+			var nrm := (c - a).cross(d - a)
+			if nrm.length() > 0.0 and absf(nrm.normalized().y) > 0.9:
+				var xmin := minf(a.x, minf(c.x, d.x))
+				var xmax := maxf(a.x, maxf(c.x, d.x))
+				var y := (a.y + c.y + d.y) / 3.0
+				if xmin <= 0.0 and xmax >= 0.0 and zmin <= z and zmax >= z and y < limit:
+					best = maxf(best, y)
+	return best if best > -INF else limit - 0.04
 
 
 static func _dot(r: Node3D, pos: Vector3, col: Color) -> void:

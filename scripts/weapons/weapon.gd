@@ -70,6 +70,7 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	bolt = parts.bolt
 	laser = parts.laser
 	var sight: Dictionary = parts.sight
+	set_meta("iron_info", sight)   # sight line / rear / front positions, for fit checks
 	var relief: float = sight.relief
 	if is_pistol():
 		relief = maxf(relief, 0.36)

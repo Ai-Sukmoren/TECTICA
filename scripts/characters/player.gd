@@ -121,21 +121,7 @@ func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: S
 	decel = 60.0
 	_pad_dir = Vector3(-sin(yaw), 0, -cos(yaw))
 	add_to_group("player")
-	# weapon-mounted flashlight (T / Back)
-	flashlight = SpotLight3D.new()
-	flashlight.position = Vector3(0, -0.02, -1.05)
-	flashlight.spot_range = 30.0
-	flashlight.spot_angle = 22.0
-	flashlight.spot_attenuation = 0.8
-	flashlight.light_energy = 5.0
-	flashlight.light_color = Color(1.0, 0.95, 0.85)
-	flashlight.light_volumetric_fog_energy = 0.6
-	flashlight.shadow_enabled = true
-	flashlight.visible = false
-	rig.weapon_anchor.add_child(flashlight)
-	_build_torch()
-	_build_chem_lights()
-	rig.one_hand_sprint = true  # sprint with the gun in the right hand only
+	_build_rig_extras()
 	if remote and tag != "":
 		name_tag = Label3D.new()
 		name_tag.text = tag
@@ -147,6 +133,46 @@ func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: S
 		name_tag.position = Vector3(0, 2.15, 0)
 		name_tag.font = preload("res://scripts/ui/retro.gd").bold()
 		add_child(name_tag)
+
+
+## Wear a different outfit right now (the title-screen operator follows the
+## armory live). Rebuilds the body; weapons and lights carry over.
+func set_outfit(id: String) -> void:
+	if id == outfit or rig == null:
+		return
+	outfit = id
+	rebuild_rig(Palettes.outfit(id))
+	use_character_model(Color.WHITE)
+	_build_rig_extras()
+
+
+## Show a new set of weapons without deploying (title screen preview).
+func preview_loadout(specs: Array) -> void:
+	var held := weapon_index
+	set_loadout(specs)
+	if held > 0 and held < weapons.size():
+		weapon_index = held
+		_equip_current()
+
+
+## Lights and kit that hang on the rig: weapon light, torch, chem sticks.
+func _build_rig_extras() -> void:
+	# weapon-mounted flashlight (T / Back)
+	flashlight = SpotLight3D.new()
+	flashlight.position = Vector3(0, -0.02, -1.05)
+	flashlight.spot_range = 30.0
+	flashlight.spot_angle = 22.0
+	flashlight.spot_attenuation = 0.8
+	flashlight.light_energy = 5.0
+	flashlight.light_color = Color(1.0, 0.95, 0.85)
+	flashlight.light_volumetric_fog_energy = 0.6
+	flashlight.shadow_enabled = true
+	flashlight.visible = false
+	flashlight.visible = flashlight_on
+	rig.weapon_anchor.add_child(flashlight)
+	_build_torch()
+	_build_chem_lights()
+	rig.one_hand_sprint = true  # sprint with the gun in the right hand only
 
 
 ## Teammates' tags show through walls; opponents' only in plain sight.

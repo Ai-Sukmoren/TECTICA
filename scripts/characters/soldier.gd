@@ -104,6 +104,34 @@ func setup_soldier(palette: Dictionary, weapon_ids: Array, layer: int, mask: int
 		_equip_current()
 
 
+## Swap the body for one in a new palette (outfit change on the title screen):
+## the weapons move over to the new rig, the old one is freed.
+func rebuild_rig(palette: Dictionary) -> void:
+	var old := rig
+	var pm := old.process_mode
+	var yaw := aim_yaw
+	var fp: bool = old.fp_mode
+	for w in weapons:
+		if is_instance_valid(w) and w.get_parent() != null:
+			w.get_parent().remove_child(w)
+	remove_child(old)
+	old.queue_free()
+	rig = SoldierRig.new()
+	rig.name = "Rig"
+	add_child(rig)
+	rig.build(palette)
+	rig.process_mode = pm
+	helmet_on = rig.helmet_node != null
+	rig.throw_release.connect(_on_throw_release)
+	rig.footstep.connect(_on_footstep)
+	rig.aim_yaw = yaw
+	rig.snap_yaw(yaw)
+	if not weapons.is_empty():
+		_equip_current()
+	rig.set_first_person(fp)
+	_flash_meshes.clear()
+
+
 ## Skinned SWAT model (Quaternius Ultimate Modular Characters, CC0) drawn over
 ## the procedural rig. Its built-in pistol mesh is hidden: guns come from the rig.
 const CHARACTER_MODEL := "res://assets/thirdparty/quaternius_modular_characters/Swat.gltf"

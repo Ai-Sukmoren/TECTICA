@@ -19,6 +19,11 @@ var _base_yaw := 0.0
 var _idle_t := 0.0
 ## Everyone else standing in the world (guards, infected): [rig, base yaw, phase].
 var _extras: Array = []
+## The operator follows the armory / loadout / gunsmith live: what it wears and
+## carries is re-checked a few times a second and rebuilt when it changes.
+var _main: Node
+var _look_sig := ""
+var _look_t := 0.0
 
 
 func setup(main: Node) -> void:
@@ -27,8 +32,11 @@ func setup(main: Node) -> void:
 	fov = 52.0
 	var p: Vector3 = main.player.global_position
 	var yaw: float = main.player.aim_yaw
+	_main = main
 	_rig = main.player.rig
 	_base_yaw = yaw
+	_shown_specs = main.player.own_specs()
+	_look_sig = ""   # first tick syncs anything the title screen changed already
 	if _rig != null:
 		_rig.process_mode = Node.PROCESS_MODE_ALWAYS
 	for e in main.enemies:
@@ -78,9 +86,49 @@ func release() -> void:
 	_extras.clear()
 
 
+## What the operator would deploy with: weapons (attachments, skins,
+## stickers, charms) and outfit.
+func _deploy_specs() -> Array:
+	var d = _main.get("director")
+	if d != null and d.get("shop") != null:
+		return d.shop.specs()
+	return preload("res://scripts/core/loadout.gd").weapon_list()
+
+
+func _signature() -> String:
+	if _main == null or not is_instance_valid(_main.player):
+		return ""
+	return var_to_str(_deploy_specs()) + "|" + preload("res://scripts/skins/collection.gd").outfit
+
+
+func _refresh_look() -> void:
+	var sig := _signature()
+	if sig == _look_sig or sig == "":
+		return
+	_look_sig = sig
+	var p = _main.player
+	var specs := _deploy_specs()
+	if var_to_str(specs) != var_to_str(_shown_specs):
+		_shown_specs = specs
+		p.preview_loadout(specs)
+	var fit: String = preload("res://scripts/skins/collection.gd").outfit
+	if fit != String(p.outfit):
+		p.set_outfit(fit)
+	_rig = p.rig
+	_rig.process_mode = Node.PROCESS_MODE_ALWAYS
+	_rig.aim_yaw = _base_yaw
+
+
+var _shown_specs: Array = []
+
+
 func _process(delta: float) -> void:
 	t += delta
 	_idle_t += delta
+	_look_t -= delta
+	if _look_t <= 0.0:
+		_look_t = 0.25
+		_refresh_look()
 	if is_instance_valid(_rig):
 		# an unhurried scan left and right, with a second slower drift on top
 		_rig.aim_yaw = _base_yaw + sin(_idle_t * 0.45) * 0.42 + sin(_idle_t * 0.17 + 1.3) * 0.2

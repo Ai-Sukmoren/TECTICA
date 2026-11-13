@@ -301,9 +301,9 @@ static func _m4(r: Node3D) -> Dictionary:
 		"mag_at": _marker(r, "MagAt", Vector3(0, 0.0, -0.11), Vector3(0.12, 0, 0)),
 		"mag_style": "stanag",
 		"hg_w": 0.0338,
-		"stock_at": _marker(r, "StockAt", Vector3(0, 0.07, 0.07)),
+		"stock_at": _marker(r, "StockAt", Vector3(0, 0.07, 0.05)),
 		"stock_style": "polymer",
-		"rail_y": 0.118, "rail_z": -0.08, "iron_front_z": -0.44, "iron_rear_z": 0.04,
+		"rail_y": 0.115, "rail_z": -0.08, "iron_front_z": -0.44, "iron_rear_z": 0.04,
 	}
 
 
@@ -333,7 +333,7 @@ static func _ak(r: Node3D) -> Dictionary:
 		"mag_style": "ak",
 		"stock_at": _marker(r, "StockAt", Vector3(0, 0.05, 0.07), Vector3(-0.1, 0, 0)),
 		"stock_style": "wood",
-		"rail_y": 0.108, "rail_z": -0.06, "iron_builtin": true, "iron_y": 0.105, "iron_rear_z": -0.2, "iron_relief": 0.3,
+		"rail_y": 0.11, "rail_z": -0.06, "iron_builtin": true, "iron_y": 0.105, "iron_rear_z": -0.2, "iron_relief": 0.3,
 	}
 
 
@@ -352,13 +352,13 @@ static func _val(r: Node3D) -> Dictionary:
 		"support": _marker(r, "Support", Vector3(-0.005, 0.02, -0.29), Vector3(0, 0, -0.5)),
 		"charge": _marker(r, "Charge", Vector3(0.04, 0.07, -0.12)),
 		"eject": _marker(r, "Eject", Vector3(0.03, 0.07, -0.06)),
-		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.062, -0.66)),
+		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.062, -0.655)),
 		"under_at": _marker(r, "UnderAt", Vector3(0, 0.01, -0.28)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, 0.0, -0.125), Vector3(0.22, 0, 0)),
 		"mag_style": "stanag",
 		"stock_at": _marker(r, "StockAt", Vector3(0, 0.06, 0.08)),
 		"stock_style": "skeletal",
-		"rail_y": 0.123, "rail_z": -0.06, "iron_front_z": -0.3, "iron_rear_z": 0.02,
+		"rail_y": 0.12, "rail_z": -0.06, "iron_front_z": -0.3, "iron_rear_z": 0.02,
 	}
 
 
@@ -378,9 +378,9 @@ static func _mp7(r: Node3D) -> Dictionary:
 		"under_at": _marker(r, "UnderAt", Vector3(0, 0.022, -0.18)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, -0.03, 0.005), Vector3(-0.2, 0, 0)),
 		"mag_style": "smg",
-		"stock_at": _marker(r, "StockAt", Vector3(0, 0.06, 0.05)),
+		"stock_at": _marker(r, "StockAt", Vector3(0, 0.06, 0.044)),
 		"stock_style": "rods",
-		"rail_y": 0.11, "rail_z": -0.07, "iron_front_z": -0.17, "iron_rear_z": 0.02,
+		"rail_y": 0.107, "rail_z": -0.07, "iron_front_z": -0.17, "iron_rear_z": 0.02,
 	}
 
 
@@ -402,12 +402,12 @@ static func _awp(r: Node3D) -> Dictionary:
 		"eject": _marker(r, "Eject", Vector3(0.03, 0.08, -0.06)),
 		"bolt": bolt,
 		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.07, -0.8)),
-		"under_at": _marker(r, "UnderAt", Vector3(0, -0.015, -0.36)),
+		"under_at": _marker(r, "UnderAt", Vector3(0, -0.007, -0.36)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, -0.01, -0.12)),
 		"mag_style": "sniper",
-		"stock_at": _marker(r, "StockAt", Vector3(0, 0.05, 0.06)),
+		"stock_at": _marker(r, "StockAt", Vector3(0, 0.05, 0.05)),
 		"stock_style": "chassis",
-		"rail_y": 0.112, "rail_z": -0.07, "iron_front_z": -0.72, "iron_rear_z": -0.02,
+		"rail_y": 0.109, "rail_z": -0.07, "iron_front_z": -0.72, "iron_rear_z": -0.02,
 	}
 
 
@@ -432,9 +432,9 @@ static func _m870(r: Node3D) -> Dictionary:
 		"under_at": _marker(pump, "UnderAt", Vector3(0, -0.022, 0.0)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, 0.02, -0.06)),
 		"mag_style": "shell",
-		"stock_at": _marker(r, "StockAt", Vector3(0, 0.05, 0.06), Vector3(-0.12, 0, 0)),
+		"stock_at": _marker(r, "StockAt", Vector3(0, 0.05, 0.043), Vector3(-0.12, 0, 0)),
 		"stock_style": "polymer",
-		"rail_y": 0.106, "rail_z": -0.05, "iron_front_z": -0.63, "iron_rear_z": 0.0,
+		"rail_y": 0.103, "rail_z": -0.05, "iron_front_z": -0.63, "iron_rear_z": 0.0,
 	}
 
 
@@ -452,13 +452,13 @@ static func _m249(r: Node3D) -> Dictionary:
 		"support": _marker(r, "Support", Vector3(-0.005, 0.02, -0.29), Vector3(0, 0, -0.5)),
 		"charge": _marker(r, "Charge", Vector3(0.04, 0.08, -0.12)),
 		"eject": _marker(r, "Eject", Vector3(0.04, 0.06, -0.06)),
-		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.07, -0.67)),
+		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.07, -0.665)),
 		"under_at": _marker(r, "UnderAt", Vector3(0, 0.014, -0.3)),
 		"mag_at": _marker(r, "MagAt", Vector3(-0.07, 0.0, -0.06)),
 		"mag_style": "box",
 		"stock_at": _marker(r, "StockAt", Vector3(0, 0.06, 0.1)),
 		"stock_style": "lmg",
-		"rail_y": 0.136, "rail_z": -0.05, "iron_front_z": -0.55, "iron_rear_z": 0.04,
+		"rail_y": 0.133, "rail_z": -0.05, "iron_front_z": -0.55, "iron_rear_z": 0.04,
 	}
 
 
@@ -485,7 +485,7 @@ static func _pistol(r: Node3D, frame: Material, auto: bool) -> Dictionary:
 		"mag_style": "pistol",
 		"stock_at": r,
 		"stock_style": "",
-		"rail_y": 0.077, "rail_z": -0.05, "iron_builtin": true, "iron_y": 0.089, "iron_rear_z": 0.01, "mini": true,
+		"rail_y": 0.0805, "rail_z": -0.05, "iron_builtin": true, "iron_y": 0.089, "iron_rear_z": 0.01, "mini": true,
 	}
 
 
@@ -575,8 +575,23 @@ static func _glb_mag(at: Node3D, held: Array, kind: String) -> Node3D:
 	if kind == "extended":
 		mag.scale = Vector3(1.0, 1.4, 1.0)
 	elif kind == "fast":
-		var bottom: float = (mi.transform * mi.mesh.get_aabb()).position.y
-		_part(mag, WG.machined(Vector3(0.012, 0.035, 0.012)), M.solid(Color(0.9, 0.4, 0.1), 0.6), Vector3(0, bottom - 0.015, 0.0))
+		# pull tab under the middle of the magazine's floor plate (these mags
+		# angle forward, so the floor is not under the mag well)
+		var low := INF
+		var pts: Array = []
+		for s in mi.mesh.get_surface_count():
+			for v in (mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				var p: Vector3 = mi.transform * v
+				pts.append(p)
+				low = minf(low, p.y)
+		var c := Vector3.ZERO
+		var n := 0
+		for p in pts:
+			if p.y < low + 0.004:
+				c += p
+				n += 1
+		c = c / maxi(n, 1)
+		_part(mag, WG.machined(Vector3(0.012, 0.035, 0.012)), M.solid(Color(0.9, 0.4, 0.1), 0.6), Vector3(c.x, low - 0.015, c.z))
 	return mag
 
 
@@ -604,7 +619,7 @@ static func _mgp7(r: Node3D) -> Dictionary:
 		"charge": _marker(r, "Charge", Vector3(-0.02, 0.14, -0.23)),
 		"eject": _marker(r, "Eject", Vector3(0.02, 0.13, -0.14)),
 		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.108, -0.41)),
-		"under_at": _marker(r, "UnderAt", Vector3(0, 0.06, -0.27)),
+		"under_at": _marker(r, "UnderAt", Vector3(0, 0.073, -0.27)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, 0.06, -0.17)),
 		"mag_style": "smg",
 		"stock_at": r,
@@ -635,7 +650,7 @@ static func _zc57(r: Node3D) -> Dictionary:
 		"mag_style": "pistol",
 		"stock_at": r,
 		"stock_style": "",
-		"rail_y": 0.07, "rail_z": -0.05, "mini": true,
+		"rail_y": 0.0755, "rail_z": -0.05, "mini": true,
 		"iron_builtin": true, "iron_y": 0.082, "iron_rear_z": 0.005,
 	}
 

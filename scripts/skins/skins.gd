@@ -62,8 +62,8 @@ const FINISHES := {
 	# --- mythic, admin exclusive: never in packs
 	"ruby": {"name": "Mythic Ruby", "r": 5, "p": P.RUBY, "s": 9.0, "m": 0.6, "ro": 0.03, "e": 1.6, "a": 1.0, "admin": true, "sticker": "patch_02",
 			"c": [Color(0.3, 0.0, 0.02), Color(0.78, 0.0, 0.05), Color(1.0, 0.22, 0.3)]},
-	"carbon_mythic": {"name": "Mythic Carbon", "r": Rarity.MYTHIC, "p": P.CARBON_X, "s": 9.0, "m": 0.4, "ro": 0.16, "e": 1.5, "a": 1.0, "admin": true,
-			"c": [Color(0.022, 0.023, 0.027), Color(0.17, 0.18, 0.21), Color(1.0, 0.1, 0.18)]},
+	"carbon_mythic": {"name": "Mythic Carbon", "r": Rarity.MYTHIC, "p": P.CARBON_X, "s": 9.0, "m": 0.4, "ro": 0.16, "a": 1.0, "admin": true,
+			"c": [Color(0.022, 0.023, 0.027), Color(0.17, 0.18, 0.21)]},
 	"mythicskin": {"name": "mythicskin", "r": Rarity.MYTHIC, "p": P.TEXTURE, "s": 6.0, "m": 0.1, "ro": 0.4, "admin": true,
 			"c": [Color(1.0, 1.0, 1.0)], "texture": preload("res://assets/skins/mythicskin.png")},
 }
@@ -322,7 +322,7 @@ void fragment() {
 			col = texture(finish_texture, p + vec2(0.5)).rgb;
 			break;
 		}
-		case 17: {  // mythic carbon: 2x2 twill under deep lacquer, a light sweep and red hairlines
+		case 17: {  // mythic carbon: 2x2 twill under deep lacquer with a slow light sweep
 			vec2 v = p * 6.0;
 			vec2 cell = floor(v);
 			vec2 f = fract(v);
@@ -338,15 +338,10 @@ void fragment() {
 			col = mix(c0, c1, tow * fil * sheen);
 			// slow diagonal light sweep across the lacquer
 			float sweep = smoothstep(0.92, 1.0, sin((uv.x + uv.y) * 3.0 - t * 1.2));
-			col += c1 * sweep * 0.9;
-			// thin glowing hairlines between plates
-			float line = smoothstep(0.485, 0.496, abs(fract(uv.x * 3.0 + 0.13) - 0.5));   // only at the cell edge
-			float pulse = 0.6 + 0.4 * sin(t * 2.0 + uv.y * 4.0);
-			col = mix(col, c2 * 0.4, line);
+			col += c1 * sweep * 0.6 + c1 * fres * 0.3;
 			m = metal * (0.6 + 0.4 * tow);
 			r = mix(rough + 0.1, rough, tow);
 			cc = 1.0;
-			e = c2 * line * pulse * emit + c1 * fres * 0.25 * emit;
 			break;
 		}
 	}

@@ -263,7 +263,7 @@ func build(p: Dictionary) -> void:
 	# radio pouch + antenna, IFAK
 	_mesh(chest, ML.rbox(Vector3(0.07, 0.15, 0.08)), gear, Vector3(-0.205, 0.0, 0.08))
 	_mesh(chest, ML.cylinder(0.005, 0.005, 0.36, 6), detail, Vector3(-0.215, 0.24, 0.1), Vector3(0.15, 0, 0.12))
-	_mesh(chest, ML.rbox(Vector3(0.07, 0.11, 0.08)), M.solid(Color(0.45, 0.08, 0.06), 0.8), Vector3(0.205, -0.02, 0.07))
+	_mesh(chest, ML.rbox(Vector3(0.07, 0.11, 0.08)), p.get("ifak", M.solid(Color(0.45, 0.08, 0.06), 0.8)), Vector3(0.205, -0.02, 0.07))
 	# assault backpack with bedroll and side pouches
 	_mesh(chest, ML.rbox(Vector3(0.31, 0.38, 0.17)), gear, Vector3(0, 0.1, 0.25))
 	_mesh(chest, ML.rbox(Vector3(0.24, 0.16, 0.04)), vest, Vector3(0, 0.03, 0.345))

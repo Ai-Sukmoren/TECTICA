@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="TECTICA"
-config/version="1.23.0-beta"
+config/version="1.24.0-beta"
 config/icon="res://assets/icon.png"
 config/description="TECTICA - top-down / first-person tactical shooter."
 boot_splash/bg_color=Color(0, 0, 0, 1)

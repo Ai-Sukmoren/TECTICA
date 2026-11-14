@@ -100,11 +100,13 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 			b = _zc57(root)
 		"rolling":
 			b = _rolling(root)
+		"sawed":
+			b = _sawed(root)
 		_:
 			b = _pistol(root, _poly, false)
 
 	var parts := {"root": root, "grip": b.grip, "support": b.support, "charge": b.charge, "eject": b.eject,
-			"pump": b.get("pump"), "bolt": b.get("bolt"), "roll": b.get("roll"), "hammer": b.get("hammer"), "laser": null}
+			"pump": b.get("pump"), "bolt": b.get("bolt"), "roll": b.get("roll"), "hammer": b.get("hammer"), "twirl": b.get("twirl"), "laser": null}
 	# magazine
 	var mag_at: Node3D = b.mag_at
 	if b.has("glb_mag"):
@@ -569,6 +571,57 @@ static func _rolling(r: Node3D) -> Dictionary:
 		"stock_at": r,
 		"stock_style": "",
 		"rail_y": bore_y + 0.014, "rail_z": -0.05, "iron_builtin": true, "iron_y": bore_y + 0.023, "iron_rear_z": -0.022, "mini": true,
+	}
+
+
+## Sawed-off side-by-side: two short barrels, exposed hammers, a cut-down
+## walnut grip. "Twirl" marks the trigger guard, the axis the gun spins around
+## after a shot (SoldierRig).
+static func _sawed(r: Node3D) -> Dictionary:
+	var walnut := M.wood("gun_walnut", Color(0.3, 0.17, 0.085))
+	var brass := M.solid(Color(0.72, 0.55, 0.22), 0.3, 0.9)
+	var bore_y := 0.062
+	# barrels, the rib between them, muzzle rings and bores
+	for sx in [-1, 1]:
+		_part(r, ML.cylinder(0.0108, 0.0112, 0.2, 16), _black, Vector3(sx * 0.0112, bore_y, -0.13), X90)
+		_part(r, ML.cylinder(0.012, 0.012, 0.006, 16), _worn, Vector3(sx * 0.0112, bore_y, -0.228), X90)
+		_part(r, ML.cylinder(0.0085, 0.0085, 0.003, 14), M.solid(Color(0.01, 0.01, 0.01), 0.9), Vector3(sx * 0.0112, bore_y, -0.2305), X90)
+	_part(r, WG.machined(Vector3(0.008, 0.005, 0.2)), _black, Vector3(0, bore_y + 0.0095, -0.13))
+	_part(r, WG.machined(Vector3(0.008, 0.005, 0.19)), _black, Vector3(0, bore_y - 0.0095, -0.125))
+	_part(r, ML.sphere(0.0028, false, 8), brass, Vector3(0, bore_y + 0.0135, -0.222))
+	# break-action receiver with side locks and the top lever
+	_part(r, WG.machined(Vector3(0.05, 0.04, 0.062)), _worn, Vector3(0, 0.05, 0.002))
+	_part(r, WG.machined(Vector3(0.046, 0.016, 0.03)), _worn, Vector3(0, 0.032, -0.035))
+	_part(r, WG.machined(Vector3(0.006, 0.004, 0.03)), _black, Vector3(0, 0.072, 0.012), Vector3(0, 0.35, 0))
+	for sx in [-1, 1]:
+		_part(r, WG.machined(Vector3(0.003, 0.026, 0.05)), _black, Vector3(sx * 0.0262, 0.048, 0.006))
+		# rabbit-ear hammers
+		_part(r, WG.machined(Vector3(0.007, 0.026, 0.008)), _black, Vector3(sx * 0.016, 0.08, 0.028), Vector3(0.5, 0, 0))
+		_part(r, WG.machined(Vector3(0.008, 0.005, 0.014)), _black, Vector3(sx * 0.016, 0.092, 0.038), Vector3(-0.2, 0, 0))
+	# walnut fore-end and the cut-down grip
+	_part(r, WG.machined(Vector3(0.044, 0.018, 0.085)), walnut, Vector3(0, 0.043, -0.095))
+	_part(r, WG.machined(Vector3(0.036, 0.105, 0.042)), walnut, Vector3(0, -0.018, 0.036), Vector3(-0.5, 0, 0))
+	_part(r, ML.sphere(0.024, false, 14), walnut, Vector3(0, -0.06, 0.06))
+	_part(r, WG.machined(Vector3(0.04, 0.03, 0.03)), walnut, Vector3(0, 0.03, 0.036))
+	# two triggers inside a steel guard
+	for k in 2:
+		_part(r, WG.machined(Vector3(0.004, 0.018, 0.005)), _black, Vector3(-0.005 + k * 0.01, 0.01, -0.012 + k * 0.014), Vector3(0.35, 0, 0))
+	_part(r, WG.machined(Vector3(0.012, 0.004, 0.058)), _black, Vector3(0, -0.006, -0.004))
+	_part(r, WG.machined(Vector3(0.012, 0.026, 0.004)), _black, Vector3(0, 0.007, -0.033))
+	return {
+		"pistol": true, "plain": true,
+		"twirl": _marker(r, "Twirl", Vector3(0, 0.006, -0.002)),
+		"grip": _marker(r, "Grip", Vector3(0, -0.012, 0.026), Vector3(-0.35, 0, 0)),
+		"support": _marker(r, "Support", Vector3(0, 0.03, -0.095), Vector3(0, 0, -0.6)),
+		"charge": _marker(r, "Charge", Vector3(0, 0.09, 0.03)),
+		"eject": _marker(r, "Eject", Vector3(0.0, 0.085, 0.0)),
+		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, bore_y, -0.232)),
+		"under_at": _marker(r, "UnderAt", Vector3(0, 0.034, -0.095)),
+		"mag_at": _marker(r, "MagAt", Vector3(0, -0.035, 0.02), Vector3(-0.3, 0, 0)),
+		"mag_style": "none",
+		"stock_at": r,
+		"stock_style": "",
+		"rail_y": bore_y + 0.012, "rail_z": -0.05, "iron_builtin": true, "iron_y": bore_y + 0.0155, "iron_rear_z": 0.0, "mini": true,
 	}
 
 

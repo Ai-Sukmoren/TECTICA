@@ -21,6 +21,12 @@ func _initialize() -> void:
 	check(parts.bolt == null and parts.pump == null, "no bolt or pump on a rolling block")
 	var m4: Dictionary = Model.build("m4", Data.WEAPONS["m4a1"].defaults)
 	check(m4.roll == null, "other guns have no rolling block")
+	var db: Dictionary = Data.WEAPONS["db2"]
+	check(int(db.mag) == 2 and db.cycle == "twirl", "db2 holds two shells and twirls after a shot")
+	check("db2" in Data.SECONDARIES, "db2 can be picked as a secondary")
+	var sawed: Dictionary = Model.build("sawed", db.defaults)
+	check(sawed.twirl is Node3D and sawed.roll == null, "sawed-off has a twirl pivot and no rolling block")
+	sawed.root.free()
 	parts.root.free()
 	m4.root.free()
 	print("ROLLING: failures=%d" % failures)

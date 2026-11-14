@@ -44,6 +44,8 @@ var bolt: Node3D
 ## Rolling-block action: breech block and hammer pivots (null on other guns).
 var roll: Node3D
 var hammer: Node3D
+## Trigger-guard pivot of a gun that is spun around the finger after a shot.
+var twirl: Node3D
 var laser: Node3D
 var _beam: MeshInstance3D
 var _beam_dot: MeshInstance3D
@@ -73,6 +75,7 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	bolt = parts.bolt
 	roll = parts.get("roll")
 	hammer = parts.get("hammer")
+	twirl = parts.get("twirl")
 	laser = parts.laser
 	var sight: Dictionary = parts.sight
 	set_meta("iron_info", sight)   # sight line / rear / front positions, for fit checks

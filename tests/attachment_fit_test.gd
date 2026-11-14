@@ -38,6 +38,7 @@ func _b(model: String, r: Node3D) -> Dictionary:
 		"mgp7": return Model._mgp7(r)
 		"zc57": return Model._zc57(r)
 		"rolling": return Model._rolling(r)
+		"sawed": return Model._sawed(r)
 	return Model._pistol(r, Model._poly, false)
 
 ## Collision for every non-attachment mesh of the gun under `root`.

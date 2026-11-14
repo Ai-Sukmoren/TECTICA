@@ -112,6 +112,7 @@ var slide_target := 0.0
 var slide_amt := 0.0
 var ads_speed := 1.0
 var cycle_t := -1.0
+var _twirl := 0.0   # current spin angle of a twirled gun (radians)
 var _cycle_dur := 0.6
 var _cycle_cased := false
 var _pump_base := Vector3.ZERO
@@ -1362,6 +1363,18 @@ func _update_weapon_pose(delta: float) -> void:
 	if cycle_t >= 0.0 and weapon.bolt != null:
 		var cw := sin(PI * cycle_t)
 		xf = xf * Transform3D(Basis.from_euler(Vector3(0.05 * cw, 0.1 * cw, 0.35 * cw)), Vector3.ZERO)
+	_twirl = 0.0
+	if cycle_t >= 0.0 and weapon.twirl != null:
+		# gun twirl: one full backward spin around the trigger finger (muzzle
+		# rises, goes over toward the shooter and comes up level from below), hand
+		# lifted a little so the spin clears the forearm
+		var tu := smoothstep(0.06, 0.9, cycle_t)
+		_twirl = TAU * tu
+		var pv: Vector3 = (weapon.global_transform.affine_inverse() * weapon.twirl.global_transform).origin
+		var spin := Basis(Vector3.RIGHT, _twirl)
+		var lift := sin(PI * tu)
+		xf = xf * Transform3D(Basis.from_euler(Vector3(0, 0, 0.18 * lift)), Vector3(0, 0.04 * lift, 0.03 * lift)) \
+				* Transform3D(spin, pv - spin * pv)
 	if cycle_t >= 0.0 and weapon.roll != null:
 		# rolling block: the muzzle tips up and the gun cants in so the open
 		# breech faces the shooter while the thumb works hammer and block
@@ -1488,6 +1501,13 @@ func _update_arms(delta: float) -> void:
 	if fp_mode:
 		cb = fp_eye.basis
 	var r_xf: Transform3D = weapon.grip.global_transform
+	if _twirl != 0.0 and weapon.twirl != null:
+		# the hand does not go round with the gun: it stays where the grip would
+		# be without the spin, finger through the guard
+		var axis: Vector3 = weapon.global_transform.basis.x.normalized()
+		var un := Basis(axis, -_twirl)
+		var pvw: Vector3 = weapon.twirl.global_position
+		r_xf = Transform3D(un * r_xf.basis, pvw + un * (r_xf.origin - pvw))
 	if cycle_t >= 0.0 and weapon.bolt != null:
 		var bw := smoothstep(0.0, 0.25, cycle_t) * (1.0 - smoothstep(0.75, 1.0, cycle_t))
 		r_xf.origin = r_xf.origin.lerp(weapon.charge.global_position, bw)
@@ -1515,6 +1535,8 @@ func _update_arms(delta: float) -> void:
 	var free_want := 0.0
 	if _one_hand_run() and reload_t < 0.0 and throw_t < 0.0 and vault_t < 0.0:
 		free_want = sprint_amt * (1.0 - aim_amt) * (1.0 - slide_amt)
+	if cycle_t >= 0.0 and weapon.twirl != null:
+		free_want = 1.0   # the support hand lets go while the gun spins
 	var kwa := _kick_w()
 	if kwa > 0.0 or weapon.is_melee():
 		free_want = 1.0   # kicking, or a knife in one hand: the left arm is free
@@ -1575,7 +1597,7 @@ func _update_cycle(delta: float) -> void:
 			cycle_t = 0.0
 			_cycle_dur = clampf(60.0 / float(weapon.stats.rpm) * 0.7, 0.35, 1.0)
 			_cycle_cased = false
-			Sfx.play(self, "bolt", weapon.global_position, -4.0)
+			Sfx.play(self, "knife_swing" if weapon.twirl != null else "bolt", weapon.global_position, -4.0)
 	if cycle_t < 0.0:
 		return
 	cycle_t += delta / _cycle_dur
@@ -1592,7 +1614,8 @@ func _update_cycle(delta: float) -> void:
 		weapon.roll.rotation.x = 1.25 * (smoothstep(0.3, 0.5, ct) - smoothstep(0.72, 0.92, ct))
 	if not _cycle_cased and cycle_t > 0.5:
 		_cycle_cased = true
-		FX.casing(self, weapon.eject.global_position, weapon.global_transform.basis.x, false)
+		if weapon.twirl == null:   # a break-action keeps its shells until the reload
+			FX.casing(self, weapon.eject.global_position, weapon.global_transform.basis.x, false)
 	if cycle_t >= 1.0:
 		cycle_t = -1.0
 		if weapon.bolt != null:

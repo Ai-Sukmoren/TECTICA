@@ -38,6 +38,13 @@ An all-black carbon-weave combat suit and the Mythic Carbon gun skin.
 
 ## ▶ Promo video
 
+### Gameplay trailer (v1.24)
+
+[![Watch the TECTICA gameplay trailer](docs/screenshots/gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.24.2-beta/TECTICA_gameplay_trailer.mp4)
+
+*Real play on Pinewood Valley and Dead End: night vision, the supply shop, boss waves, the DB-2 Twirler and the Juggernaut (MP4, 47 s).*
+
+### First promo
 [![Watch the TECTICA promo video](docs/screenshots/promo-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.16.0-beta/TECTICA-promo.mp4)
 
 *Click the image to watch the promo (MP4, 36 s).*

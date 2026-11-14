@@ -877,12 +877,15 @@ func _cell(x: float, z: float, size: float) -> Vector2i:
 
 func _build_forest() -> void:
 	var pine_crown := Nature.pine_crown_mesh()
-	var broad_crown := Nature.broad_crown_mesh()
+	# broadleaf crowns: a dark inner mass wrapped in sprays of real leaf shapes
+	var broad_core := Nature.canopy_material(Color(0.14, 0.23, 0.07), 0.04, Vector3(0, 0.72, 0), 0.65, 2.4, 0.0, 0.1)
+	var broad_leaf := Nature.leaf_material(Color(0.2, 0.33, 0.08), 0.04)
+	var broad_shadow := Nature.canopy_material(Color(0.2, 0.35, 0.08), 0.04, Vector3(0, 0.72, 0), 0.65, 2.4, 0.42, 0.1)
+	var broad_crowns := [Nature.leafy_crown_mesh(4, broad_core, broad_leaf), Nature.leafy_crown_mesh(5, broad_core, broad_leaf)]
 	_burn_rng(4)   # the old crown mesh drew 4 values; keeps the forest layout unchanged
 	var trunk := Nature.trunk_mesh()
 	var pine_mat := Nature.canopy_material(Color(0.1, 0.21, 0.1), 0.025, Vector3(0, 0.5, 0), 0.45, 3.0, 0.47, 0.19)
-	var broad_mat := Nature.canopy_material(Color(0.2, 0.35, 0.08), 0.04, Vector3(0, 0.72, 0), 0.65, 2.4, 0.42, 0.1)
-	var bush_mat := Nature.canopy_material(Color(0.17, 0.31, 0.08), 0.06, Vector3(0, 0.3, 0), 0.6, 3.2, 0.4, 0.16)
+	var bush_mat := Nature.canopy_material(Color(0.09, 0.16, 0.045), 0.06, Vector3(0, 0.3, 0), 0.6, 3.2, 0.0, 0.16)
 	bush_mat.set_shader_parameter("fade_min_h", 100.0)
 	# chunked instance lists
 	var chunks := {}   # Vector2i -> {pine_t, pine_c, broad_t, broad_c, bush, shapes}
@@ -945,7 +948,11 @@ func _build_forest() -> void:
 		var ch: Dictionary = chunks[ck]
 		_multimesh(trunk, _mat_bark, ch.pine_t + ch.broad_t, true)
 		_multimesh(pine_crown, pine_mat, ch.pine_c, true)
-		_multimesh(broad_crown, broad_mat, ch.broad_c, true)
+		for v in 2:
+			var part: Array = []
+			for i in range(v, ch.broad_c.size(), 2):
+				part.append(ch.broad_c[i])
+			_leafy_mm(broad_crowns[v], part, broad_shadow, 0.0)
 		var body := _body(Vector3.ZERO)
 		for s in ch.shapes:
 			var cs := CollisionShape3D.new()
@@ -976,6 +983,18 @@ static func _mm_resource(mesh: Mesh, items: Array) -> MultiMesh:
 		mm.set_instance_transform(i, items[i][0])
 		mm.set_instance_color(i, items[i][1])
 	return mm
+
+
+## Leafy crown / bush set (see Nature._leafy): core and leaf sprays are drawn,
+## the stand-in (or the core, if `shadow_mat` is null) casts the shadow.
+func _leafy_mm(set: Dictionary, items: Array, shadow_mat: Material, vis_end: float) -> void:
+	if items.is_empty():
+		return
+	_multimesh(set.core, null, items, shadow_mat == null, vis_end)
+	_multimesh(set.leaf, null, items, false, vis_end)
+	if shadow_mat != null:
+		var sh := _multimesh(set.shadow, shadow_mat, items, true, vis_end)
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
 func _mm_node(mm: MultiMesh, mat: Material, shadows: bool, vis_end: float = 0.0) -> MultiMeshInstance3D:
@@ -1033,7 +1052,9 @@ func _build_rocks_and_logs() -> void:
 
 
 func _build_bushes(mat: Material) -> void:
-	var meshes := [Nature.bush_mesh(9), Nature.bush_mesh(10), Nature.bush_mesh(11)]
+	var leaf := Nature.leaf_material(Color(0.17, 0.3, 0.08), 0.06)
+	leaf.set_shader_parameter("fade_min_h", 100.0)
+	var meshes := [Nature.leafy_bush_mesh(9, mat, leaf), Nature.leafy_bush_mesh(10, mat, leaf), Nature.leafy_bush_mesh(11, mat, leaf)]
 	_burn_rng(48)
 	var lists := [{}, {}, {}]
 	for i in 900:
@@ -1054,7 +1075,7 @@ func _build_bushes(mat: Material) -> void:
 		_bush_grid[gk].append(Vector3(p.x, p.y, s * 0.75))
 	for k in 3:
 		for ck in lists[k]:
-			_multimesh(meshes[k], mat, lists[k][ck], true, 90.0)
+			_leafy_mm(meshes[k], lists[k][ck], null, 90.0)
 
 
 ## The meshes and grass now use their own RNGs. Draw the global values the

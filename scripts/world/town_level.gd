@@ -415,41 +415,138 @@ func _car(p: Vector3, rot: float, paint_col: Color, burning: bool = false) -> vo
 	var trim := M.matte("car_trim", Color(0.05, 0.05, 0.055), 0.6)
 	var chrome := M.solid(Color(0.6, 0.62, 0.64), 0.25, 0.9)
 	var tire := M.matte("tire", Color(0.05, 0.05, 0.05), 0.92)
-	var glass: Material = M.solid(Color(0.12, 0.11, 0.1), 0.9) if burning else _mat_glass_dark
-	# body: sills, bonnet, cabin, boot (rounded boxes read as pressed panels)
-	_mesh(b, ML.rbox(Vector3(1.85, 0.5, 4.2)), paint, Vector3(0, 0.6, 0))
-	_mesh(b, ML.rbox(Vector3(1.8, 0.26, 1.35)), paint, Vector3(0, 0.95, -1.4), Vector3(0.06, 0, 0))
-	_mesh(b, ML.rbox(Vector3(1.62, 0.56, 2.05)), paint, Vector3(0, 1.2, 0.22))
-	_mesh(b, ML.rbox(Vector3(1.8, 0.28, 1.0)), paint, Vector3(0, 0.95, 1.7))
-	# glazing: windscreen, rear window, side glass
-	_mesh(b, ML.box(Vector3(1.5, 0.46, 0.05)), glass, Vector3(0, 1.22, -0.84), Vector3(-0.5, 0, 0))
-	_mesh(b, ML.box(Vector3(1.5, 0.42, 0.05)), glass, Vector3(0, 1.22, 1.28), Vector3(0.42, 0, 0))
-	_mesh(b, ML.box(Vector3(1.66, 0.34, 1.5)), glass, Vector3(0, 1.26, 0.2))
-	var lamp: Material = M.emissive("headlamp_dead", Color(0.3, 0.3, 0.28), 0.0) if burning else M.emissive("headlamp", Color(0.9, 0.9, 0.8), 0.15)
+	var glass: Material = M.solid(Color(0.12, 0.11, 0.1), 0.9) if burning else M.car_glass()
+	var cm := _car_meshes()
+	_mesh(b, cm.body, paint, Vector3.ZERO)
+	_mesh(b, cm.cabin, glass, Vector3.ZERO)
+	_mesh(b, cm.roof, paint, Vector3.ZERO)
+	# pillars over the glass: A, B, C each side
 	for sx in [-1.0, 1.0]:
-		_mesh(b, ML.box(Vector3(0.04, 0.5, 0.012)), trim, Vector3(sx * 0.93, 0.62, -0.25))   # door seams
-		_mesh(b, ML.box(Vector3(0.04, 0.5, 0.012)), trim, Vector3(sx * 0.93, 0.62, 0.85))
-		_mesh(b, ML.rbox(Vector3(0.1, 0.08, 0.16)), trim, Vector3(sx * 0.98, 1.12, -0.7))      # mirrors
-		_mesh(b, ML.box(Vector3(0.36, 0.14, 0.04)), lamp, Vector3(sx * 0.62, 0.82, -2.12))
-		_mesh(b, ML.box(Vector3(0.4, 0.12, 0.04)), M.emissive("tail", Color(0.6, 0.05, 0.03), 0.6), Vector3(sx * 0.6, 0.82, 2.12))
-	# bumpers + grille
-	for sz in [-2.15, 2.15]:
-		_mesh(b, ML.rbox(Vector3(1.9, 0.2, 0.14)), trim, Vector3(0, 0.46, sz))
-	_mesh(b, ML.box(Vector3(0.7, 0.16, 0.03)), trim, Vector3(0, 0.82, -2.12))
-	# wheels with alloy rims
+		_strut(b, Vector3(sx * 0.84, 0.95, -0.93), Vector3(sx * 0.66, 1.4, -0.36), 0.055, paint)
+		_strut(b, Vector3(sx * 0.875, 0.95, 0.28), Vector3(sx * 0.675, 1.4, 0.28), 0.06, trim)
+		_strut(b, Vector3(sx * 0.85, 0.96, 1.48), Vector3(sx * 0.665, 1.4, 0.92), 0.09, paint)
+	var lamp: Material = M.emissive("headlamp_dead", Color(0.3, 0.3, 0.28), 0.0) if burning else M.emissive("headlamp", Color(0.9, 0.9, 0.8), 0.15)
+	var alloy := M.solid(Color(0.42, 0.43, 0.45), 0.38, 0.85)
+	var arch := M.matte("car_arch", Color(0.012, 0.012, 0.012), 1.0)
+	for sx in [-1.0, 1.0]:
+		_mesh(b, ML.box(Vector3(0.012, 0.52, 0.012)), trim, Vector3(sx * 0.941, 0.64, -0.3))   # door seams
+		_mesh(b, ML.box(Vector3(0.012, 0.52, 0.012)), trim, Vector3(sx * 0.941, 0.64, 0.28))
+		_mesh(b, ML.box(Vector3(0.012, 0.52, 0.012)), trim, Vector3(sx * 0.941, 0.64, 0.95))
+		_mesh(b, ML.box(Vector3(0.014, 0.02, 0.1)), chrome, Vector3(sx * 0.945, 0.84, -0.1))   # door handles
+		_mesh(b, ML.box(Vector3(0.014, 0.02, 0.1)), chrome, Vector3(sx * 0.945, 0.84, 0.5))
+		_mesh(b, ML.rbox(Vector3(0.14, 0.09, 0.07)), paint, Vector3(sx * 0.98, 1.02, -0.78))     # mirrors
+		_mesh(b, ML.rbox(Vector3(0.4, 0.13, 0.08)), lamp, Vector3(sx * 0.6, 0.7, -2.07))
+		_mesh(b, ML.rbox(Vector3(0.42, 0.11, 0.08)), M.emissive("tail", Color(0.6, 0.05, 0.03), 0.6), Vector3(sx * 0.6, 0.76, 2.07))
+	# bumpers, grille, number plates
+	for sz in [-2.1, 2.1]:
+		_mesh(b, ML.rbox(Vector3(1.84, 0.2, 0.16)), trim, Vector3(0, 0.45, sz))
+		_mesh(b, ML.box(Vector3(0.44, 0.11, 0.012)), M.solid(Color(0.75, 0.74, 0.68), 0.5), Vector3(0, 0.46, sz + signf(sz) * 0.082))
+	_mesh(b, ML.rbox(Vector3(0.74, 0.12, 0.06)), trim, Vector3(0, 0.7, -2.09))
+	# wheels: tyre, alloy rim, hub, and the dark arch they sit in
 	for sz in [-1.35, 1.35]:
-		for sx in [-0.86, 0.86]:
-			_mesh(b, ML.cylinder(0.34, 0.34, 0.24, 18), tire, Vector3(sx, 0.34, sz), Vector3(0, 0, PI * 0.5))
-			_mesh(b, ML.cylinder(0.2, 0.2, 0.26, 12), chrome, Vector3(sx, 0.34, sz), Vector3(0, 0, PI * 0.5))
+		for sx in [-0.865, 0.865]:
+			_mesh(b, ML.cylinder(0.33, 0.33, 0.22, 22), tire, Vector3(sx, 0.33, sz), Vector3(0, 0, PI * 0.5))
+			_mesh(b, ML.cylinder(0.215, 0.215, 0.215, 16), trim, Vector3(sx, 0.33, sz), Vector3(0, 0, PI * 0.5))
+			for k in 3:   # six-spoke alloy
+				_mesh(b, ML.box(Vector3(0.225, 0.41, 0.05)), alloy, Vector3(sx, 0.33, sz), Vector3(k * PI / 3.0 + sz, 0, 0))
+			_mesh(b, ML.cylinder(0.06, 0.06, 0.235, 10), alloy, Vector3(sx, 0.33, sz), Vector3(0, 0, PI * 0.5))
+			_mesh(b, ML.cylinder(0.41, 0.41, 0.012, 24), arch, Vector3(signf(sx) * 0.943, 0.34, sz), Vector3(0, 0, PI * 0.5))
 	_add_cover(p, Vector3(1.9, 1.45, 4.3), rot, b)
 	b.finalize()
 	if burning:
 		_fire(p + Vector3(0, 1.2, 0))
 
 
+var _car_mesh_cache := {}
+
+## Saloon body as smooth lofted skins (built once): the lower body from nose
+## to tail, the glasshouse, and the roof panel.
+func _car_meshes() -> Dictionary:
+	if not _car_mesh_cache.is_empty():
+		return _car_mesh_cache
+	# station: z, underside y, top y, half width
+	var st := [[-2.14, 0.42, 0.6, 0.7], [-2.08, 0.32, 0.74, 0.86], [-1.9, 0.27, 0.84, 0.92], [-1.4, 0.26, 0.9, 0.94],
+			[-0.9, 0.26, 0.95, 0.94], [0.0, 0.26, 0.96, 0.94], [1.3, 0.26, 0.97, 0.94], [1.8, 0.27, 0.94, 0.93],
+			[2.02, 0.3, 0.9, 0.9], [2.1, 0.34, 0.8, 0.84], [2.14, 0.42, 0.66, 0.7]]
+	var rings: Array = []
+	for s in st:
+		var z: float = s[0]
+		var yb: float = s[1]
+		var yt: float = s[2]
+		var w: float = s[3]
+		var ys := yt - minf(0.15, (yt - yb) * 0.4)
+		rings.append([Vector3(-w * 0.9, yb, z), Vector3(-w, yb + 0.07, z), Vector3(-w, ys, z), Vector3(-w * 0.975, yt - 0.045, z),
+				Vector3(-w * 0.88, yt - 0.008, z), Vector3(-w * 0.45, yt + 0.018, z), Vector3(0, yt + 0.025, z), Vector3(w * 0.45, yt + 0.018, z),
+				Vector3(w * 0.88, yt - 0.008, z), Vector3(w * 0.975, yt - 0.045, z), Vector3(w, ys, z), Vector3(w, yb + 0.07, z), Vector3(w * 0.9, yb, z)])
+	_car_mesh_cache.body = _loft(rings)
+	# glasshouse: z, top y, half width at the belt, half width at the roof
+	var gh := [[-0.97, 0.99, 0.86, 0.84], [-0.36, 1.4, 0.875, 0.66], [0.28, 1.42, 0.88, 0.68], [0.92, 1.4, 0.875, 0.67], [1.52, 1.0, 0.86, 0.84]]
+	rings = []
+	var roof: Array = []
+	for s in gh:
+		var z: float = s[0]
+		var yt: float = s[1]
+		var wb: float = s[2]
+		var wt: float = s[3]
+		rings.append([Vector3(-wb, 0.93, z), Vector3(-wt, yt - 0.04, z), Vector3(-wt * 0.86, yt, z), Vector3(0, yt + 0.022, z),
+				Vector3(wt * 0.86, yt, z), Vector3(wt, yt - 0.04, z), Vector3(wb, 0.93, z)])
+		if yt > 1.3:
+			var e: float = 0.04 if absf(z - 0.28) > 0.1 else 0.0
+			var zz := z + signf(z - 0.28) * e
+			roof.append([Vector3(-wt - 0.012, yt - 0.06, zz), Vector3(-wt * 0.86, yt + 0.01, zz), Vector3(0, yt + 0.033, zz), Vector3(wt * 0.86, yt + 0.01, zz),
+					Vector3(wt + 0.012, yt - 0.06, zz), Vector3(wt * 0.8, yt - 0.03, zz), Vector3(0, yt - 0.01, zz), Vector3(-wt * 0.8, yt - 0.03, zz)])
+	_car_mesh_cache.cabin = _loft(rings)
+	_car_mesh_cache.roof = _loft(roof)
+	return _car_mesh_cache
+
+
+## Skins a row of closed rings (equal point counts) with smooth normals and capped ends.
+func _loft(rings: Array) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n: int = rings[0].size()
+	for r in rings:
+		for p in r:
+			st.add_vertex(p)
+	for i in rings.size() - 1:
+		for k in n:
+			var a := i * n + k
+			var c := i * n + (k + 1) % n
+			st.add_index(a)
+			st.add_index(c)
+			st.add_index(a + n)
+			st.add_index(c)
+			st.add_index(c + n)
+			st.add_index(a + n)
+	var base := rings.size() * n
+	for e in 2:
+		var ring: Array = rings[0 if e == 0 else rings.size() - 1]
+		var cen := Vector3.ZERO
+		for p in ring:
+			cen += p
+		st.add_vertex(cen / n)
+		var off := 0 if e == 0 else (rings.size() - 1) * n
+		for k in n:
+			var a := off + k
+			var c := off + (k + 1) % n
+			if e == 0:
+				st.add_index(base); st.add_index(c); st.add_index(a)
+			else:
+				st.add_index(base + 1); st.add_index(a); st.add_index(c)
+	st.generate_normals()
+	return st.commit()
+
+
+## Thin bar from `a` to `c` (pillars, rails).
+func _strut(parent: Node3D, a: Vector3, c: Vector3, thick: float, mat: Material) -> MeshInstance3D:
+	var mi := _mesh(parent, ML.box(Vector3(thick, thick * 0.6, a.distance_to(c))), mat, (a + c) * 0.5)
+	mi.basis = Basis.looking_at(c - a, Vector3.RIGHT if absf((c - a).normalized().y) > 0.95 else Vector3.UP)
+	return mi
+
+
 func _police_car(p: Vector3, rot: float) -> void:
 	_car(p, rot, Color(0.08, 0.09, 0.12))
-	var bar := _mesh(self, ML.box(Vector3(1.0, 0.12, 0.25)), M.solid(Color(0.1, 0.1, 0.1)), p + Vector3(0, 1.55, 0))
+	var bar := _mesh(self, ML.box(Vector3(1.0, 0.12, 0.25)), M.solid(Color(0.1, 0.1, 0.1)), p + Vector3(0, 1.5, 0.28))
 	bar.rotation.y = rot
 	for side in [-1.0, 1.0]:
 		var l := OmniLight3D.new()

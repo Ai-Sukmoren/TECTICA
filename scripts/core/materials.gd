@@ -378,20 +378,37 @@ static func leather(key: String, color: Color) -> StandardMaterial3D:
 static func car_paint(key: String, color: Color) -> StandardMaterial3D:
 	if _cache.has(key):
 		return _cache[key]
+	# automotive paint: an even base coat with faint road film, metallic flake
+	# underneath and a hard, glossy clear coat on top
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = noise_texture([color.darkened(0.3), color, color.lightened(0.06), color.darkened(0.12)],
-			[0.0, 0.3, 0.62, 1.0], 0.05, absi(hash(key)) % 9999)
-	m.metallic = 0.5
-	m.roughness = 0.38
-	m.roughness_texture = noise_texture([Color(0.55, 0.55, 0.55), Color.WHITE], [0.0, 1.0], 0.09, 41 + absi(hash(key)) % 97)
+	m.albedo_texture = noise_texture([color.darkened(0.1), color, color.lightened(0.03), color.darkened(0.05)],
+			[0.0, 0.35, 0.65, 1.0], 0.03, absi(hash(key)) % 9999)
+	m.metallic = 0.35
+	m.roughness = 0.42
+	m.roughness_texture = noise_texture([Color(0.72, 0.72, 0.72), Color.WHITE], [0.0, 1.0], 0.06, 41 + absi(hash(key)) % 97)
 	m.clearcoat_enabled = true
-	m.clearcoat = 0.55
-	m.clearcoat_roughness = 0.15
+	m.clearcoat = 1.0
+	m.clearcoat_roughness = 0.07
 	m.uv1_triplanar = true
 	m.uv1_world_triplanar = true
 	m.uv1_scale = Vector3.ONE * 0.5
-	_add_normal(m, 0.05, 1.5, 0.2)
 	_cache[key] = m
+	return m
+
+
+## Tinted safety glass: near-black body, mirror-sharp reflections of the sky.
+static func car_glass() -> StandardMaterial3D:
+	if _cache.has("car_glass"):
+		return _cache["car_glass"]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.02, 0.026, 0.03)
+	m.roughness = 0.04
+	m.metallic = 0.0
+	m.metallic_specular = 0.9
+	m.clearcoat_enabled = true
+	m.clearcoat = 0.6
+	m.clearcoat_roughness = 0.02
+	_cache["car_glass"] = m
 	return m
 
 

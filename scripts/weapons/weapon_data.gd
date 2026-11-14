@@ -194,6 +194,20 @@ const WEAPONS := {
 				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
 		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
+	# compact rolling-block pistol: one heavy round at a time; the breech block
+	# rolls open after every shot to throw the case and take the next cartridge
+	"rb45": {
+		"name": "RB-45 ROLLER", "category": "PISTOL", "kind": "pistol", "model": "rolling",
+		"mag": 6, "reserve": 36, "rpm": 62, "auto": false, "pellets": 1,
+		"damage": 96.0, "range": 75.0, "falloff_start": 32.0,
+		"spread_hip": 2.6, "spread_aim": 0.3, "spread_move": 2.0,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
+		"recoil": 2.5, "reload": 2.2, "reload_empty": 2.5,
+		"suppressed": false, "noise_radius": 40.0, "shake": 0.28, "sound": "shot_sniper", "volume": -2.0,
+		"mobility": 1.04, "ads_speed": 1.2, "cycle": "roll",
+		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
 	"g18": {
 		"name": "GLOCK 18", "category": "PISTOL", "kind": "pistol", "model": "g18",
 		"mag": 17, "reserve": 102, "rpm": 1100, "auto": true, "pellets": 1,
@@ -261,7 +275,7 @@ const WEAPONS := {
 }
 
 const PRIMARIES := ["m4a1", "ak47", "as_val", "mp7", "mgp7", "awp", "m870", "m249"]
-const SECONDARIES := ["mk23", "g18", "zc57"]
+const SECONDARIES := ["mk23", "g18", "zc57", "rb45"]
 const KNIVES := ["knife_combat", "karambit", "butterfly"]
 
 const CLASSES := [

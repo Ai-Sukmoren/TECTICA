@@ -98,11 +98,13 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 			b = _mgp7(root)
 		"zc57":
 			b = _zc57(root)
+		"rolling":
+			b = _rolling(root)
 		_:
 			b = _pistol(root, _poly, false)
 
 	var parts := {"root": root, "grip": b.grip, "support": b.support, "charge": b.charge, "eject": b.eject,
-			"pump": b.get("pump"), "bolt": b.get("bolt"), "laser": null}
+			"pump": b.get("pump"), "bolt": b.get("bolt"), "roll": b.get("roll"), "hammer": b.get("hammer"), "laser": null}
 	# magazine
 	var mag_at: Node3D = b.mag_at
 	if b.has("glb_mag"):
@@ -127,7 +129,7 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 		parts.laser = ub.laser
 	# optic
 	parts.sight = _optic(root, b, String(att.get("optic", "iron")))
-	if not b.get("glb", false):
+	if not b.get("glb", false) and not b.get("plain", false):
 		_details(root, b)
 	_signature_details(root, model, b)
 	return parts
@@ -501,6 +503,72 @@ static func _pistol(r: Node3D, frame: Material, auto: bool) -> Dictionary:
 		"stock_at": r,
 		"stock_style": "",
 		"rail_y": 0.0805, "rail_z": -0.05, "iron_builtin": true, "iron_y": 0.089, "iron_rear_z": 0.01, "mini": true,
+	}
+
+
+## Compact rolling-block pistol. The breech block ("Roll") and the hammer
+## ("Hammer") each turn on their own cross pin below the bore; the rig rolls
+## them after every shot (SoldierRig._update_cycle).
+const ROLL_HAMMER_COCKED := 0.75
+
+static func _rolling(r: Node3D) -> Dictionary:
+	var walnut := M.wood("gun_walnut", Color(0.3, 0.17, 0.085))
+	var brass := M.solid(Color(0.72, 0.55, 0.22), 0.3, 0.9)
+	var bore_y := 0.064
+	# receiver: two side plates around the action, floor, top strap in front
+	for sx in [-1, 1]:
+		_part(r, WG.machined(Vector3(0.006, 0.046, 0.074)), _worn, Vector3(sx * 0.0135, 0.043, 0.014))
+		for pz in [0.012, 0.04]:   # the two big cross pins
+			_part(r, ML.cylinder(0.0052, 0.0052, 0.003, 14), _black, Vector3(sx * 0.0172, 0.04, pz), Z90)
+	_part(r, WG.machined(Vector3(0.027, 0.012, 0.076)), _worn, Vector3(0, 0.024, 0.014))
+	_part(r, WG.machined(Vector3(0.032, 0.03, 0.03)), _worn, Vector3(0, bore_y - 0.006, -0.02))   # barrel ring
+	# barrel: short, heavy, octagonal, with a crowned muzzle
+	_part(r, ML.cylinder(0.0118, 0.0128, 0.2, 8), _black, Vector3(0, bore_y, -0.132), X90)
+	_part(r, ML.cylinder(0.0128, 0.0128, 0.008, 16), _black, Vector3(0, bore_y, -0.228), X90)
+	_part(r, ML.cylinder(0.0062, 0.0062, 0.003, 12), M.solid(Color(0.01, 0.01, 0.01), 0.9), Vector3(0, bore_y, -0.2325), X90)
+	# walnut fore-end with a steel band and tip
+	_part(r, WG.machined(Vector3(0.027, 0.02, 0.1)), walnut, Vector3(0, 0.046, -0.085))
+	_part(r, WG.machined(Vector3(0.03, 0.03, 0.008)), _black, Vector3(0, 0.054, -0.1))
+	_part(r, WG.machined(Vector3(0.027, 0.02, 0.008)), _worn, Vector3(0, 0.046, -0.139))
+	# bird's-head grip: two walnut scales raked back, rounded butt, steel cap
+	_part(r, WG.machined(Vector3(0.029, 0.1, 0.04)), walnut, Vector3(0, -0.02, 0.03), Vector3(-0.42, 0, 0))
+	_part(r, ML.sphere(0.021, false, 14), walnut, Vector3(0, -0.062, 0.05))
+	_part(r, ML.cylinder(0.012, 0.012, 0.004, 14), brass, Vector3(0, -0.081, 0.057), Vector3(-0.42, 0, 0))
+	# trigger and guard
+	_part(r, WG.machined(Vector3(0.005, 0.02, 0.006)), _black, Vector3(0, 0.008, -0.004), Vector3(0.35, 0, 0))
+	_part(r, WG.machined(Vector3(0.012, 0.004, 0.05)), brass, Vector3(0, -0.006, -0.006))
+	_part(r, WG.machined(Vector3(0.012, 0.024, 0.004)), brass, Vector3(0, 0.006, -0.031))
+	# breech block: rolls back around its pin to open the chamber
+	var roll := _marker(r, "Roll", Vector3(0, 0.04, 0.012))
+	_part(roll, ML.cylinder(0.0125, 0.0125, 0.02, 18), _black, Vector3.ZERO, Z90)
+	_part(roll, WG.machined(Vector3(0.02, 0.036, 0.021)), _black, Vector3(0, 0.02, 0.0))
+	_part(roll, WG.machined(Vector3(0.012, 0.007, 0.016)), _worn, Vector3(0.011, 0.04, 0.012), Vector3(-0.3, 0, 0))   # thumb piece
+	_part(roll, ML.cylinder(0.0022, 0.0022, 0.004, 8), _worn, Vector3(0, bore_y - 0.04, -0.0105), X90)              # firing pin
+	# hammer: its own pin behind the block, long spur
+	var hammer := _marker(r, "Hammer", Vector3(0, 0.04, 0.04))
+	hammer.rotation.x = ROLL_HAMMER_COCKED
+	_part(hammer, ML.cylinder(0.011, 0.011, 0.012, 16), _worn, Vector3.ZERO, Z90)
+	_part(hammer, WG.machined(Vector3(0.011, 0.04, 0.012)), _worn, Vector3(0, 0.022, -0.004))
+	_part(hammer, WG.machined(Vector3(0.012, 0.006, 0.02)), _worn, Vector3(0, 0.043, 0.008), Vector3(-0.35, 0, 0))
+	# sights: brass blade up front, notched leaf on the barrel ring
+	_part(r, WG.machined(Vector3(0.003, 0.012, 0.012)), brass, Vector3(0, bore_y + 0.017, -0.215))
+	_part(r, WG.machined(Vector3(0.012, 0.004, 0.012)), _black, Vector3(0, bore_y + 0.0135, -0.215))
+	for sx in [-1, 1]:
+		_part(r, WG.machined(Vector3(0.006, 0.012, 0.005)), _black, Vector3(sx * 0.0065, bore_y + 0.017, -0.022))
+	_part(r, WG.machined(Vector3(0.019, 0.006, 0.01)), _black, Vector3(0, bore_y + 0.011, -0.022))
+	return {
+		"pistol": true, "plain": true, "roll": roll, "hammer": hammer,
+		"grip": _marker(r, "Grip", Vector3(0, -0.012, 0.022), Vector3(-0.3, 0, 0)),
+		"support": _marker(r, "Support", Vector3(-0.03, -0.025, 0.012), Vector3(-0.25, 0, -0.6)),
+		"charge": _marker(r, "Charge", Vector3(0.004, 0.092, 0.03)),
+		"eject": _marker(r, "Eject", Vector3(0.0, 0.085, 0.0)),
+		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, bore_y, -0.234)),
+		"under_at": _marker(r, "UnderAt", Vector3(0, 0.036, -0.09)),
+		"mag_at": _marker(r, "MagAt", Vector3(0, -0.035, 0.02), Vector3(-0.3, 0, 0)),
+		"mag_style": "none",
+		"stock_at": r,
+		"stock_style": "",
+		"rail_y": bore_y + 0.014, "rail_z": -0.05, "iron_builtin": true, "iron_y": bore_y + 0.023, "iron_rear_z": -0.022, "mini": true,
 	}
 
 

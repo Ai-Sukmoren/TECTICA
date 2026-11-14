@@ -19,6 +19,7 @@ const ML = preload("res://scripts/core/mesh_lib.gd")
 const FX = preload("res://scripts/fx/fx.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const Layers = preload("res://scripts/core/layers.gd")
+const ROLL_HAMMER_COCKED := 0.75   # matches WeaponModel.ROLL_HAMMER_COCKED
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const ModelSkin = preload("res://scripts/characters/model_skin.gd")
 
@@ -1361,6 +1362,11 @@ func _update_weapon_pose(delta: float) -> void:
 	if cycle_t >= 0.0 and weapon.bolt != null:
 		var cw := sin(PI * cycle_t)
 		xf = xf * Transform3D(Basis.from_euler(Vector3(0.05 * cw, 0.1 * cw, 0.35 * cw)), Vector3.ZERO)
+	if cycle_t >= 0.0 and weapon.roll != null:
+		# rolling block: the muzzle tips up and the gun cants in so the open
+		# breech faces the shooter while the thumb works hammer and block
+		var rw := smoothstep(0.0, 0.25, cycle_t) * (1.0 - smoothstep(0.8, 1.0, cycle_t)) * (1.0 - aim_amt * 0.6)
+		xf = xf * Transform3D(Basis.from_euler(Vector3(0.22 * rw, 0.0, 0.3 * rw)), Vector3(0, 0.03 * rw, (0.15 if fp_mode else 0.04) * rw))
 
 	# idle sway + gait bob on the gun
 	var m := move_blend * (1.0 - slide_amt)
@@ -1490,6 +1496,11 @@ func _update_arms(delta: float) -> void:
 	var l_xf: Transform3D = weapon.support.global_transform
 	var l_pos := l_xf.origin
 	var l_basis := l_xf.basis
+	if cycle_t >= 0.0 and weapon.roll != null:
+		# the support hand comes up over the action: thumb on the hammer, then the block
+		var tw := smoothstep(0.0, 0.2, cycle_t) * (1.0 - smoothstep(0.82, 1.0, cycle_t))
+		var wb: Basis = weapon.global_transform.basis.orthonormalized()
+		l_pos = l_pos.lerp(weapon.charge.global_position + wb * Vector3(-0.07, -0.045, 0.03), tw)
 	if reload_t >= 0.0:
 		_update_reload_events()
 		if reload_t >= 0.0:
@@ -1573,6 +1584,12 @@ func _update_cycle(delta: float) -> void:
 		weapon.bolt.position = Vector3(0, 0, 0.075 * w)
 	if weapon.pump != null:
 		weapon.pump.position = _pump_base + Vector3(0, 0, 0.09 * w)
+	if weapon.roll != null:
+		# hammer falls at the shot, is thumbed back to full cock, then the block
+		# rolls open (case out, round in) and is rolled shut again
+		var ct := minf(cycle_t, 1.0)
+		weapon.hammer.rotation.x = ROLL_HAMMER_COCKED * smoothstep(0.05, 0.3, ct)
+		weapon.roll.rotation.x = 1.25 * (smoothstep(0.3, 0.5, ct) - smoothstep(0.72, 0.92, ct))
 	if not _cycle_cased and cycle_t > 0.5:
 		_cycle_cased = true
 		FX.casing(self, weapon.eject.global_position, weapon.global_transform.basis.x, false)
@@ -1582,6 +1599,9 @@ func _update_cycle(delta: float) -> void:
 			weapon.bolt.position = Vector3.ZERO
 		if weapon.pump != null:
 			weapon.pump.position = _pump_base
+		if weapon.roll != null:
+			weapon.roll.rotation.x = 0.0
+			weapon.hammer.rotation.x = ROLL_HAMMER_COCKED
 
 
 func _update_zombie_arms() -> void:

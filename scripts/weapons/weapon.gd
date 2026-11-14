@@ -41,6 +41,9 @@ var charge: Node3D
 var eject: Node3D
 var pump: Node3D
 var bolt: Node3D
+## Rolling-block action: breech block and hammer pivots (null on other guns).
+var roll: Node3D
+var hammer: Node3D
 var laser: Node3D
 var _beam: MeshInstance3D
 var _beam_dot: MeshInstance3D
@@ -68,6 +71,8 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	eject = parts.eject
 	pump = parts.pump
 	bolt = parts.bolt
+	roll = parts.get("roll")
+	hammer = parts.get("hammer")
 	laser = parts.laser
 	var sight: Dictionary = parts.sight
 	set_meta("iron_info", sight)   # sight line / rear / front positions, for fit checks

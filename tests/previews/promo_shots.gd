@@ -66,13 +66,33 @@ func run() -> void:
 	cam = Camera3D.new()
 	cam.fov = 58
 	root.add_child(cam)
-	var only_td: bool = OS.get_cmdline_user_args().size() > 1
+	var extra: String = OS.get_cmdline_user_args()[1] if OS.get_cmdline_user_args().size() > 1 else ""
+	var only_td := extra == "td"
 	if map == "forest":
 		await fly("leaf", 14.0, Vector3(-2, 2.6, 18), Vector3(4, 3.4, 23), Vector3(30, 8, 45), Vector3(30, 9, 45), 300)
 		await fly("pine", 14.0, Vector3(-6, 2.2, 12), Vector3(-10, 3.2, 16), Vector3(-30, 8, 30), Vector3(-30, 10, 30), 300)
 		await fly("dusk", 18.6, Vector3(0, 3.5, 2), Vector3(5, 4.5, -3), Vector3(20, 6, -30), Vector3(24, 7, -30), 270)
 	elif only_td:
 		pass
+	elif extra != "":
+		# first person with one gun (weapon id in `extra`): four shots
+		main.tod.set("hour", 13.0)
+		p.global_position = Vector3(2.0, 0.05, 30)
+		p.aim_yaw = 0.0
+		p.set_loadout([[extra, {}], ["knife_combat", {}]])
+		p.set_first_person(true)
+		p.fp_pitch = -0.02
+		await frames(70)
+		var g0 := fc
+		for s in 2:
+			Input.action_press("fire")
+			await frames(2)
+			Input.action_release("fire")
+			await frames(64)
+		print("SHOT gun %d %d" % [g0, fc])
+		Settings.mark_clean_exit()
+		quit(0)
+		return
 	else:
 		await fly("car", 14.0, Vector3(-19, 1.5, 32.5), Vector3(-23.5, 1.2, 31.2), Vector3(-24.5, 0.7, 36.4), Vector3(-24.5, 0.8, 36.4), 300)
 		await fly("room", 14.0, Vector3(-15.6, 1.6, -19.6), Vector3(-17, 1.6, -18.2), Vector3(-22, 1.1, -19), Vector3(-22, 1.2, -18.5), 240)

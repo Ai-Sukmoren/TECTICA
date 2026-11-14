@@ -70,8 +70,8 @@ func fire_forward(n: int, gap: float) -> void:
 
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
-	var forest := scene in ["campaign", "daycycle", "move"]
-	Main.saved_mode = "ch1" if scene == "campaign" else "zombie"
+	var forest := scene in ["campaign", "campaign2", "daycycle", "move"]
+	Main.saved_mode = "ch1" if scene in ["campaign", "campaign2"] else "zombie"
 	Main.saved_map = "forest" if forest else "town"
 	Main.quick_restart = scene != "menu"
 	Main.saved_first_person = scene not in ["zombie_td"]
@@ -96,7 +96,7 @@ func run() -> void:
 	p.health = 100000.0
 	if main.director != null:
 		main.director.timer = 9999.0
-	main.hud.visible = scene in ["zombie_td", "shop"]
+	main.hud.visible = scene in ["zombie_td", "shop", "corner", "street", "campaign2"]
 	var lvl = main.level
 	var rig = get_nodes_in_group("camera_rig")[0]
 	match scene:
@@ -121,8 +121,16 @@ func run() -> void:
 			mark("switch")
 			Input.action_press("move_forward")
 			await wait(1.6)
+			var z0: float = p.global_position.z
 			await tap("toggle_view")
-			await wait(2.6)
+			# top-down: keep walking up the road (aim follows the stick, not the mouse)
+			p.using_pad = true
+			rig.yaw = 0.0
+			for f in 170:
+				p.set("_pad_dir", Vector3.FORWARD)
+				await process_frame
+			print("TD_MOVED %.2f" % (z0 - p.global_position.z))
+			p.using_pad = false
 			await tap("toggle_view")
 			await wait(1.6)
 			Input.action_release("move_forward")
@@ -134,7 +142,32 @@ func run() -> void:
 			main.director.timer = 0.5
 			await wait(5.0)
 			mark("zombie_td")
-			await fight("zombies", 60 * 8, 6, 24.0)
+			# fight on the move: back away from the pack, strafing, gun on the nearest
+			p.using_pad = true
+			var p0: Vector3 = p.global_position
+			for f in 60 * 8:
+				var z := nearest("zombies", p.global_position)
+				for act in ["move_forward", "move_back", "move_left", "move_right"]:
+					Input.action_release(act)
+				if z != null:
+					var d: Vector3 = z.global_position - p.global_position
+					p.set("_pad_dir", Vector3(d.x, 0, d.z).normalized())
+							# a fighting retreat down the road, weaving a little
+					Input.action_press("move_back")
+					if (f / 50) % 3 == 0:
+						Input.action_press("move_left")
+					elif (f / 50) % 3 == 2:
+						Input.action_press("move_right")
+					if d.length() < 24.0 and f % 6 == 0:
+						p.current_weapon().cooldown = 0.0
+						if p.current_weapon().ammo <= 0:
+							p.current_weapon().ammo = int(p.current_weapon().stats.mag)
+						p.try_fire(z.global_position + Vector3(0, 1.15, 0))
+				p.health = 100000.0
+				await process_frame
+			for act in ["move_forward", "move_back", "move_left", "move_right"]:
+				Input.action_release(act)
+			print("TD_MOVED %.2f" % p0.distance_to(p.global_position))
 		"zombie_fp":
 			main.tod.set("hour", 18.4)
 			p.global_position = Vector3(0.5, 0.05, 1.0)
@@ -285,6 +318,143 @@ func run() -> void:
 				Input.parse_input_event(dn)
 				await wait(0.7)
 			await wait(1.0)
+		"corner":
+			# hold the corner of a house, lean out, shoot, get back in
+			main.tod.set("hour", 16.6)
+			lvl.zombie_spawns = [Vector3(-12.5, 0, -40), Vector3(-11, 0, -36), Vector3(-13, 0, -33), Vector3(-10.5, 0, -44)]
+			p.set_loadout([["m4a1", {"optic": "reddot", "underbarrel": "vgrip"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_first_person(true)
+			p.global_position = Vector3(-14.45, 0.05, -12.75)
+			p.aim_yaw = 0.0
+			p.fp_pitch = 0.0
+			main.director.timer = 0.5
+			await wait(3.0)
+			mark("corner")
+			for rep_i in 3:
+				await wait(0.5)
+				Input.action_press("peek_right")
+				await wait(0.3)
+				Input.action_press("aim")
+				await wait(0.35)
+				for f in 80:
+					var z := nearest("zombies", p.global_position)
+					if z != null:
+						var d: Vector3 = z.global_position - (p.global_position + Vector3(0.6, 0, 0))
+						p.aim_yaw = lerp_angle(p.aim_yaw, atan2(-d.x, -d.z), 0.2)
+						if f % 6 == 0 and f > 8 and f % 30 < 20:
+							p.current_weapon().cooldown = 0.0
+							p.try_fire(z.global_position + Vector3(0, 1.25, 0))
+					p.health = 100000.0
+					await process_frame
+				Input.action_release("aim")
+				Input.action_release("peek_right")
+				p.aim_yaw = lerp_angle(p.aim_yaw, 0.0, 0.6)
+				await wait(0.35)
+				if rep_i == 0:
+					await tap("reload")
+					await wait(1.6)
+			mark("corner_end")
+		"street":
+			# advance up the road, sights up, bursts into the wave ahead
+			main.tod.set("hour", 17.2)
+			lvl.zombie_spawns = [Vector3(1, 0, 6), Vector3(-2, 0, 2), Vector3(3, 0, 0), Vector3(0, 0, -4), Vector3(-3, 0, 9)]
+			p.set_loadout([["m4a1", {"optic": "holo", "underbarrel": "vgrip"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_first_person(true)
+			p.global_position = Vector3(1.5, 0.05, 40)
+			p.aim_yaw = 0.0
+			p.fp_pitch = 0.0
+			main.director.timer = 0.5
+			await wait(3.2)
+			mark("street")
+			Input.action_press("move_forward")
+			for f in 60 * 9:
+				var z := nearest("zombies", p.global_position)
+				var ads := z != null and z.global_position.distance_to(p.global_position) < 26.0
+				if ads:
+					Input.action_press("aim")
+					if f % 90 > 60:
+						Input.action_release("move_forward")
+					else:
+						Input.action_press("move_forward")
+					var d: Vector3 = z.global_position - p.global_position
+					p.aim_yaw = lerp_angle(p.aim_yaw, atan2(-d.x, -d.z), 0.18)
+					if f % 7 == 0 and f % 40 < 26 and p.rig.aim_amt > 0.7:
+						p.current_weapon().cooldown = 0.0
+						if p.current_weapon().ammo <= 0:
+							p.current_weapon().ammo = int(p.current_weapon().stats.mag)
+						p.try_fire(z.global_position + Vector3(0, 1.3, 0))
+				else:
+					Input.action_release("aim")
+				p.health = 100000.0
+				await process_frame
+			Input.action_release("aim")
+			Input.action_release("move_forward")
+		"fpmove":
+			main.tod.set("hour", 14.5)
+			p.set_first_person(true)
+			p.global_position = Vector3(1.8, 0.05, 44)
+			p.aim_yaw = 0.0
+			p.fp_pitch = 0.02
+			lvl.crate(Vector3(1.8, 0, 24.0), Vector3(1.8, 0.95, 0.9))
+			await wait(0.8)
+			mark("fpmove")
+			Input.action_press("move_forward")
+			Input.action_press("sprint")
+			await wait(1.1)
+			await tap("crouch")
+			await wait(1.1)
+			mark("fpvault")
+			for f in 130:
+				if f % 16 == 0:
+					Input.action_press("vault")
+				elif f % 16 == 2:
+					Input.action_release("vault")
+				await process_frame
+			mark("fpkick")
+			await tap("kick")
+			await wait(1.0)
+			Input.action_release("sprint")
+			Input.action_release("move_forward")
+			await wait(0.3)
+		"campaign2":
+			main.tod.set("hour", 9.5)
+			p.set_loadout([["m4a1", {"optic": "reddot"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_first_person(true)
+			await wait(0.5)
+			var e := nearest("enemies", p.global_position)
+			var space: PhysicsDirectSpaceState3D = main.get_world_3d().direct_space_state
+			if e != null:
+				# a spot 13 m out with a clear line to the enemy
+				for k in 16:
+					var a := TAU * k / 16.0
+					var at: Vector3 = e.global_position + Vector3(cos(a), 0, sin(a)) * 13.0
+					at.y = lvl.ground_y(at.x, at.z) + 0.05
+					var q := PhysicsRayQueryParameters3D.create(at + Vector3(0, 1.5, 0), e.global_position + Vector3(0, 1.3, 0), 1)
+					if space.intersect_ray(q).is_empty():
+						p.global_position = at
+						var d: Vector3 = e.global_position - at
+						p.aim_yaw = atan2(-d.x, -d.z)
+						break
+			await wait(0.4)
+			mark("campaign2")
+			Input.action_press("aim")
+			await fight("enemies", 60 * 7, 8, 45.0)
+			Input.action_release("aim")
+		"ak":
+			main.tod.set("hour", 14.5)
+			p.global_position = Vector3(2.0, 0.05, 30)
+			p.aim_yaw = 0.0
+			p.fp_pitch = -0.01
+			p.set_loadout([["ak47", {"optic": "reddot"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_first_person(true)
+			await wait(0.9)
+			mark("ak47")
+			await fire_forward(5, 0.1)
+			Input.action_press("aim")
+			await wait(0.5)
+			await fire_forward(8, 0.1)
+			await wait(0.4)
+			Input.action_release("aim")
 		"daycycle":
 			rig.override = true
 			var cam := Camera3D.new()

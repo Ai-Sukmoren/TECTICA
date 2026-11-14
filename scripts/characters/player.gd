@@ -463,6 +463,8 @@ func is_scoped() -> bool:
 func _update_scope_visibility() -> void:
 	var scoped := is_scoped()
 	current_weapon().visible = not scoped
+	if _torch != null:
+		_torch.visible = not scoped   # the weapon light rides on the gun: hide it with the gun
 	for s in rig.shoulders:
 		s.visible = not scoped
 

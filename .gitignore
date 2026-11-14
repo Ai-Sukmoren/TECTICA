@@ -12,3 +12,6 @@ build/
 assets/thirdparty/
 # sticker artwork is not ours to publish
 assets/stickers/
+# local Claude Code skills and their install lock
+.claude/
+skills-lock.json

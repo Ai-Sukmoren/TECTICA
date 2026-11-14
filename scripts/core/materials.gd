@@ -156,6 +156,7 @@ static func fabric(key: String, color: Color, scale: float = 6.0) -> StandardMat
 	m.uv1_scale = Vector3.ONE * scale
 	_add_normal(m, 0.18, 2.5, 0.6)
 	_scan(m, "fabric", 0.1, 1.0, 1.0, color)
+	m.set_meta("surface", "dirt")   # bullet impact family (see FX.impact)
 	_cache[key] = m
 	return m
 
@@ -188,6 +189,7 @@ static func wood(key: String, color: Color) -> StandardMaterial3D:
 	m.uv1_scale = Vector3(0.6, 3.0, 0.6)
 	_add_normal(m, 0.06, 5.0, 0.9)
 	_scan(m, "bark" if ("bark" in key or key == "log") else "planks", 0.9, 1.0, 1.0, color)
+	m.set_meta("surface", "wood")   # bullet impact family (see FX.impact)
 	_cache[key] = m
 	return m
 
@@ -213,6 +215,7 @@ static func painted_metal(key: String, color: Color) -> StandardMaterial3D:
 		m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 		m.roughness = 0.75
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	m.set_meta("surface", "metal")   # bullet impact family (see FX.impact)
 	_cache[key] = m
 	return m
 

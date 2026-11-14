@@ -204,7 +204,7 @@ func _slash(shooter: CharacterBody3D, origin: Vector3, target: Vector3) -> Dicti
 		var q2 := PhysicsRayQueryParameters3D.create(origin, origin + fwd * reach, Layers.WORLD, [shooter.get_rid()])
 		var wall := space.intersect_ray(q2)
 		if not wall.is_empty():
-			FX.impact(self, wall.position, wall.normal)
+			FX.impact(self, wall.position, wall.normal, FX.surface_of(wall.collider, wall.position, wall.normal))
 			Sfx.play(self, "helmet_ping", wall.position, -10.0, 0.2)
 	Sfx.play(self, String(stats.sound), origin, float(stats.volume), 0.12)
 	return result
@@ -338,9 +338,9 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 					result.hit = col
 					result.killed = result.killed or col.get("is_dead") == true
 			elif i % 2 == 0 or pellets == 1:
-				FX.impact(self, end, hit.normal)
+				FX.impact(self, end, hit.normal, FX.surface_of(col, end, hit.normal))
 			var flesh: bool = col != null and col.has_method("apply_damage") and col.get("is_dead") != null
-			shot_end = [end, hit.normal, 2 if flesh else 1]
+			shot_end = [end, hit.normal, 2 if flesh else int(FX.SURFACE_CODE.get(FX.surface_of(col, end, hit.normal), 1))]
 		result.ends.append(shot_end)
 		if i == 0:
 			result.position = end
@@ -378,9 +378,9 @@ func fire_fx(ends: Array) -> void:
 		if even:
 			FX.tracer(self, from, end, bool(stats.suppressed))
 		match int(e[2]):
-			1:
+			1, 3, 4, 5:
 				if even:
-					FX.impact(self, end, e[1])
+					FX.impact(self, end, e[1], FX.SURFACE_NAME[int(e[2])])
 			2:
 				FX.blood(self, end, (end - from).normalized())
 	FX.muzzle_flash(muzzle, float(stats.flash) * (0.45 if bool(stats.suppressed) else 1.0))

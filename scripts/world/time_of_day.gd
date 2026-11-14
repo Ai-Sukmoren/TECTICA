@@ -143,6 +143,10 @@ func _apply(delta: float) -> void:
 
 	# --- lamps
 	level.night = night
+	for rp in level.interior_probes:
+		if is_instance_valid(rp):
+			rp.ambient_color = amb
+			rp.ambient_color_energy = env.ambient_light_energy * 0.55
 	if level.get("skyline_mat") != null:
 		level.skyline_mat.set_shader_parameter("night", night)
 	var lamp_on := smoothstep(0.25, 0.6, night)

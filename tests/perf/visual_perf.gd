@@ -14,6 +14,8 @@ func frames(n: int) -> void:
 
 func run() -> void:
 	root.size = Vector2i(1600, 900)
+	var a := OS.get_cmdline_user_args()
+	var preset := int(a[0]) if a.size() > 0 else 2   # 0 SAFE, 1 LOW, 2 HIGH, 3 ULTRA
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
 	load("res://scripts/core/profile.gd").current = "lilin"
@@ -26,8 +28,8 @@ func run() -> void:
 		await frames(90)
 		var main = current_scene
 		for k in Settings.PRESET_VALUES:
-			Settings.v[k] = Settings.PRESET_VALUES[k][2]
-		Settings.v.preset = 2
+			Settings.v[k] = Settings.PRESET_VALUES[k][preset]
+		Settings.v.preset = preset
 		main.apply_graphics()
 		Engine.max_fps = 0
 		main.director.timer = 9999.0

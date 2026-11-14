@@ -462,7 +462,7 @@ static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, out: Vecto
 
 ## Pine crown, unit height (0..1): eight whorls of drooping, ragged branch
 ## skirts with a darker hollow underside. Vertex alpha carries occlusion.
-static func pine_crown_mesh(seed_value: int = 3) -> ArrayMesh:
+static func pine_crown_mesh(seed_value: int = 3, radial: float = 1.0) -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var st := SurfaceTool.new()
@@ -473,7 +473,7 @@ static func pine_crown_mesh(seed_value: int = 3) -> ArrayMesh:
 		var f := float(t) / float(tiers - 1)
 		var base_y := lerpf(0.17, 0.88, f)
 		var height := lerpf(0.2, 0.12, f)
-		var rad := lerpf(0.44, 0.06, pow(f, 0.85)) * rng.randf_range(0.86, 1.1)
+		var rad := lerpf(0.44, 0.06, pow(f, 0.85)) * rng.randf_range(0.86, 1.1) * radial
 		var apex := Vector3(rng.randf_range(-0.012, 0.012), base_y + height, rng.randf_range(-0.012, 0.012))
 		var under := Vector3(0, base_y + height * 0.4, 0)
 		var rot := rng.randf() * TAU
@@ -673,6 +673,8 @@ uniform vec3 base_color : source_color = vec3(0.2, 0.35, 0.12);
 uniform sampler2D leaf_tex : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform sampler2D noise : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float sway = 0.04;
+uniform float spec = 0.4;
+uniform float vary = 1.0;   // how far sprays drift toward yellow / deep green
 %s
 varying vec3 icol;
 varying float ao;
@@ -699,11 +701,11 @@ void fragment() {
 	if (!FRONT_FACING) NORMAL = -NORMAL;   // both sides shade with the crown's volume normal
 	float n = texture(noise, wpos.xz * 0.35 + vec2(wpos.y * 0.3)).r;
 	vec3 col = base_color * icol * (0.5 + 0.62 * lf.r) * (0.78 + 0.42 * n);
-	col = mix(col, col * vec3(1.22, 1.12, 0.6), smoothstep(0.62, 1.0, rnd.x) * 0.5);    // sun-yellowed sprays
-	col = mix(col, col * vec3(0.78, 0.95, 0.9), smoothstep(0.35, 0.0, rnd.x) * 0.45);   // deep green ones
+	col = mix(col, col * vec3(1.22, 1.12, 0.6), smoothstep(0.62, 1.0, rnd.x) * 0.5 * vary);    // sun-yellowed sprays
+	col = mix(col, col * vec3(0.78, 0.95, 0.9), smoothstep(0.35, 0.0, rnd.x) * 0.45 * vary);   // deep green ones
 	ALBEDO = col;
-	ROUGHNESS = 0.58;
-	SPECULAR = 0.4;
+	ROUGHNESS = mix(0.85, 0.58, spec / 0.4);
+	SPECULAR = spec;
 	BACKLIGHT = base_color * vec3(1.3, 1.5, 0.6) * 0.7;
 	AO = mix(0.28, 1.0, ao);
 	AO_LIGHT_AFFECT = 0.6;
@@ -757,13 +759,127 @@ static func leaf_texture() -> ImageTexture:
 	return _leaf_tex
 
 
-static func leaf_material(color: Color, sway: float = 0.04) -> ShaderMaterial:
+static var _needle_tex: ImageTexture
+
+
+static func _stroke(img: Image, a: Vector2, b: Vector2, half_w: float, tone: float) -> void:
+	var size := img.get_width()
+	var x0 := maxi(int((minf(a.x, b.x) - half_w * 2.0) * size), 0)
+	var x1 := mini(int((maxf(a.x, b.x) + half_w * 2.0) * size) + 1, size - 1)
+	var y0 := maxi(int((minf(a.y, b.y) - half_w * 2.0) * size), 0)
+	var y1 := mini(int((maxf(a.y, b.y) + half_w * 2.0) * size) + 1, size - 1)
+	var ab := b - a
+	var l2 := maxf(ab.length_squared(), 0.000001)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var q := Vector2((x + 0.5) / size, (y + 0.5) / size)
+			var t := clampf((q - a).dot(ab) / l2, 0.0, 1.0)
+			var d := q.distance_to(a + ab * t) / half_w
+			var al := clampf(1.0 - d * 0.5, 0.0, 1.0)
+			if al > img.get_pixel(x, y).a:
+				img.set_pixel(x, y, Color(tone, tone, tone, al))
+
+
+## A conifer bough on a card: stem (v = 0 at the trunk, 1 at the tip), side
+## twigs and rows of needles. Same channels as leaf_texture.
+static func needle_texture() -> ImageTexture:
+	if _needle_tex != null:
+		return _needle_tex
+	var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.6, 0.6, 0.6, 0.0))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var twigs: Array = [[Vector2(0.5, 0.0), Vector2(0.5, 0.97)]]
+	var k := 0
+	var t := 0.06
+	while t < 0.88:
+		var side := 1.0 if k % 2 == 0 else -1.0
+		var from := Vector2(0.5, t)
+		var ln := 0.44 * (1.0 - t * 0.8) * rng.randf_range(0.8, 1.1)
+		var dir := Vector2(side * 0.78, 0.62).rotated(rng.randf_range(-0.15, 0.15))
+		twigs.append([from, from + dir * ln])
+		k += 1
+		t += rng.randf_range(0.045, 0.07)
+	for tw in twigs:
+		var a: Vector2 = tw[0]
+		var b: Vector2 = tw[1]
+		var d := (b - a).normalized()
+		var ln := a.distance_to(b)
+		var u := 0.0
+		while u < ln:
+			var at := a + d * u
+			for sd in [-1.0, 1.0]:
+				var nd := d.rotated(sd * rng.randf_range(0.7, 1.1))
+				_stroke(img, at, at + nd * rng.randf_range(0.026, 0.04), 0.0042, rng.randf_range(0.55, 1.0))
+			u += 0.017
+		_stroke(img, a, b, 0.006, 0.35)
+	img.generate_mipmaps()
+	_needle_tex = ImageTexture.create_from_image(img)
+	return _needle_tex
+
+
+## Pine in three meshes (see _leafy): dark inner cone tiers, drooping boughs of
+## needles radiating from every whorl, and the full-size tiers as the shadow caster.
+static func pine_set(core_mat: Material, needle_mat: Material, seed_value: int = 3) -> Dictionary:
+	var core := pine_crown_mesh(seed_value, 0.7)
+	core.surface_set_material(0, core_mat)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value * 17 + 5
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tiers := 19
+	for ti in tiers:
+		var f := float(ti) / float(tiers - 1)
+		var base_y := lerpf(0.15, 0.9, f)
+		var rad := lerpf(0.46, 0.07, pow(f, 0.85))
+		var n := int(round(lerpf(12.0, 5.0, f)))
+		var rot := rng.randf() * TAU
+		var occ := lerpf(0.5, 1.0, f)
+		for i in n:
+			var a := rot + TAU * i / n + rng.randf_range(-0.2, 0.2)
+			var dir := Vector3(cos(a), 0, sin(a))
+			var ln := rad * rng.randf_range(0.9, 1.2)
+			var inner := Vector3(0, base_y + ln * rng.randf_range(0.3, 0.5), 0) + dir * 0.01
+			var tip := dir * ln + Vector3(0, base_y - ln * rng.randf_range(0.1, 0.3), 0)
+			var along := tip - inner
+			var side := along.cross(Vector3.UP).normalized().rotated(along.normalized(), rng.randf_range(-0.35, 0.35)) * ln * 0.42
+			var sn := (dir * 0.6 + Vector3.UP * 0.8).normalized()
+			var p := [inner - side, inner + side, tip + side, tip - side]
+			var uv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+			var rnd := Vector2(rng.randf(), rng.randf())
+			for q in [0, 1, 2, 0, 2, 3]:
+				st.set_normal(sn)
+				st.set_color(Color(1, 1, 1, occ * (0.55 if q < 2 and q != 2 else 1.0)))
+				st.set_uv(uv[q])
+				st.set_uv2(rnd)
+				st.add_vertex(p[q])
+	# the leader: three upright sprays at the very top
+	for i in 3:
+		var a := PI * i / 3.0
+		var side := Vector3(cos(a), 0, sin(a)) * 0.05
+		var lo := Vector3(0, 0.86, 0)
+		var hi := Vector3(0, 1.02, 0)
+		var p := [lo - side, lo + side, hi + side, hi - side]
+		var uv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+		for q in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(Vector3.UP)
+			st.set_color(Color(1, 1, 1, 1))
+			st.set_uv(uv[q])
+			st.set_uv2(Vector2(0.5, 0.3 * i))
+			st.add_vertex(p[q])
+	var leaf := st.commit()
+	leaf.surface_set_material(0, needle_mat)
+	return {"core": core, "leaf": leaf, "shadow": pine_crown_mesh(seed_value)}
+
+
+static func leaf_material(color: Color, sway: float = 0.04, tex: Texture2D = null, vary: float = 1.0) -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = LEAF_SHADER % FADE_FUNCS
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("base_color", color)
-	m.set_shader_parameter("leaf_tex", leaf_texture())
+	m.set_shader_parameter("vary", vary)
+	m.set_shader_parameter("leaf_tex", tex if tex != null else leaf_texture())
 	m.set_shader_parameter("noise", _noise(0.08, 31))
 	m.set_shader_parameter("sway", sway)
 	fade_materials.append(m)
@@ -1047,6 +1163,7 @@ static func _micro(m: ShaderMaterial, set_name: String, tile: float) -> void:
 static func plank_material(color: Color, board: float = 0.19) -> ShaderMaterial:
 	var m := _face_material(PLANK_SHADER, color, 61)
 	m.set_shader_parameter("board", board)
+	m.set_meta("surface", "wood")
 	_micro(m, "planks", 1.3)
 	return m
 
@@ -1060,6 +1177,7 @@ static func concrete_material(color: Color) -> ShaderMaterial:
 static func hesco_material(color: Color = Color(0.52, 0.47, 0.35)) -> ShaderMaterial:
 	var m := _face_material(HESCO_SHADER, color, 73)
 	_micro(m, "fabric", 0.35)
+	m.set_meta("surface", "dirt")
 	return m
 
 
@@ -1436,14 +1554,26 @@ void fragment() {
 		float win = step(0.25, f.x) * step(f.x, 0.8) * step(0.2, f.y) * step(f.y, 0.7) * step(1.2, uv.y);
 		float h = hash1(cell.x * 17.3 + cell.y * 5.9 + floor(wp.x * 0.07) * 3.3 + floor(wp.z * 0.07) * 2.1);
 		float lit = step(0.88 - night * 0.45, h) * win;
-		col = mix(col, vec3(0.03, 0.035, 0.05), win * 0.8);
-		emit = window_color * lit * (0.25 + 1.3 * night) * (0.6 + 0.4 * hash1(h * 50.0));
+		// concrete frame: a floor slab line under every storey, a pier between bays,
+		// weather streaks running down from the sills
+		float slab = 1.0 - smoothstep(0.0, 0.07, f.y) * smoothstep(0.0, 0.05, 1.0 - f.y);
+		float pier = 1.0 - smoothstep(0.0, 0.04, f.x) * smoothstep(0.0, 0.04, 1.0 - f.x);
+		col *= 1.0 + 0.22 * max(slab, pier * 0.6) * step(1.2, uv.y);
+		float streak = texture(noise, vec2(uv.x * 0.9, uv.y * 0.04)).r;
+		col *= 1.0 - smoothstep(0.5, 0.8, streak) * 0.28;
+		// curtains / blinds: some panes are pale, most are dark glass mirroring the sky
+		float blind = step(0.62, hash1(h * 91.0)) * 0.5;
+		col = mix(col, mix(vec3(0.03, 0.04, 0.055), vec3(0.3, 0.29, 0.26), blind), win);
+		emit = window_color * lit * (0.03 + 1.5 * night) * (0.6 + 0.4 * hash1(h * 50.0));
 		col *= mix(0.6, 1.0, smoothstep(0.0, 6.0, wp.y));
+		ROUGHNESS = mix(0.85, 0.08, win * (1.0 - blind * 2.0));
+		SPECULAR = mix(0.2, 0.7, win);
+	} else {
+		ROUGHNESS = 0.9;
+		SPECULAR = 0.2;
 	}
 	ALBEDO = col;
 	EMISSION = emit;
-	ROUGHNESS = 0.8;
-	SPECULAR = 0.2;
 }
 """
 
@@ -1457,6 +1587,7 @@ static func brick_material(color: Color, mortar: Color = Color(0.6, 0.58, 0.54))
 
 static func siding_material(color: Color) -> ShaderMaterial:
 	var m := _face_material(SIDING_SHADER, color, 79)
+	m.set_meta("surface", "wood")
 	_micro(m, "planks", 1.6)
 	return m
 
@@ -1468,7 +1599,7 @@ static func plaster_material(color: Color) -> ShaderMaterial:
 
 
 static func skyline_material() -> ShaderMaterial:
-	return _face_material(SKYLINE_SHADER, Color(0.1, 0.105, 0.115), 89)
+	return _face_material(SKYLINE_SHADER, Color(0.27, 0.265, 0.26), 89)
 
 
 ## lane: distance of the tyre tracks from the road axis (0 = none, e.g. parking lots).

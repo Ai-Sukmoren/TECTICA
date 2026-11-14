@@ -31,6 +31,15 @@ static func _mats() -> void:
 	_black.rim_enabled = true
 	_black.rim = 0.12
 	_black.rim_tint = 0.3
+	# gun finish, not weathered scenery steel: an even phosphate / anodised coat
+	# whose only variation is fine handling wear (no rust blotches), at a scale
+	# that reads on a part a few centimetres across
+	if M.pbr("metal_detail") != null:
+		_black.albedo_texture = M.pbr("metal_detail")
+		_black.albedo_color = Color(0.12, 0.135, 0.15) / 0.72
+		_black.uv1_scale = Vector3.ONE * 5.0
+		_black.roughness = 0.5
+		_black.normal_scale = 0.3
 	var poly := StandardMaterial3D.new()
 	poly.albedo_color = Color(0.085, 0.09, 0.098)
 	poly.roughness = 0.6
@@ -41,6 +50,12 @@ static func _mats() -> void:
 	poly.uv1_scale = Vector3.ONE * 26.0
 	poly.rim_enabled = true
 	poly.rim = 0.08
+	# moulded polymer: a pebbled grain with an uneven satin sheen
+	if M.pbr("fabric_rough") != null:
+		poly.roughness = 0.72
+		poly.roughness_texture = M.pbr("fabric_rough")
+		poly.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		poly.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_poly = poly
 	_worn = M.solid(Color(0.29, 0.31, 0.34), 0.27, 0.9)
 	var g := StandardMaterial3D.new()

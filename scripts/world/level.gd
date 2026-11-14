@@ -3,6 +3,7 @@ extends Node3D
 ## barracks and command post. All solid props live under a NavigationRegion3D
 ## that is baked at load. Low cover generates tactical cover points for the AI.
 
+const FX = preload("res://scripts/fx/fx.gd")
 const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
 const Layers = preload("res://scripts/core/layers.gd")
@@ -26,6 +27,8 @@ var zombie_spawns: Array = [
 	Vector3(13, 0, -12.6), Vector3(-13, 0, -12.6),
 ]
 var lights: Array = []
+## Indoor reflection / ambient probes; the time of day keeps their fill in step.
+var interior_probes: Array = []
 var _dust: Array = []
 var _cover_validated := false
 var _nav_dirty := false
@@ -51,6 +54,7 @@ func build() -> void:
 	_mat_sandbag = M.fabric("sandbag", Color(0.52, 0.47, 0.36), 4.0)
 	_mat_concrete = M.concrete("barrier", Color(0.55, 0.55, 0.53), 0.6)
 	_mat_metal = M.painted_metal("metal_grey", Color(0.3, 0.32, 0.33))
+	FX.ground_surface = "stone"
 
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Navigation"
@@ -118,6 +122,8 @@ func _mesh(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, rot: Vector3
 func solid_box(pos: Vector3, size: Vector3, mat: Material, rot_y: float = 0.0, low_cover: bool = false,
 		kind: String = "") -> StaticBody3D:
 	var b := _body(pos, rot_y, kind)
+	if mat != null and mat.has_meta("surface"):
+		b.set_meta("surface", mat.get_meta("surface"))
 	_box_shape(b, size, Vector3(0, size.y * 0.5, 0))
 	_mesh(b, ML.box(size), mat, Vector3(0, size.y * 0.5, 0))
 	if low_cover:
@@ -649,6 +655,25 @@ func _build_dust() -> void:
 
 
 ## Scales light shadows and ambient particles with the graphics preset.
+## A room: reflections come from the room itself (box-projected) instead of
+## the open sky, and the sky's ambient fill is cut down to what leaks indoors.
+func _interior_probe(center: Vector3, size: Vector3, rot: float = 0.0) -> void:
+	var rp := ReflectionProbe.new()
+	rp.position = center + Vector3(0, size.y * 0.5, 0)
+	rp.rotation.y = rot
+	rp.size = size
+	rp.interior = true
+	rp.box_projection = true
+	rp.update_mode = ReflectionProbe.UPDATE_ONCE
+	rp.ambient_mode = ReflectionProbe.AMBIENT_COLOR
+	rp.ambient_color = Color(0.55, 0.57, 0.6)
+	rp.ambient_color_energy = 0.36
+	rp.blend_distance = 0.4
+	rp.max_distance = maxf(size.x, size.z) * 1.5
+	add_child(rp)
+	interior_probes.append(rp)
+
+
 func apply_quality(q: int) -> void:
 	for entry in lights:
 		var l: OmniLight3D = entry.light

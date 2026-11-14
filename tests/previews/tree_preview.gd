@@ -31,7 +31,7 @@ func run() -> void:
 	main.hud.visible = false
 	main.director.timer = 9999.0
 	main.player.health = 100000.0
-	main.tod.set("hour", 14.0)
+	main.tod.set("hour", float(OS.get_environment("TOD_HOUR")) if OS.get_environment("TOD_HOUR") != "" else 14.0)
 	get_nodes_in_group("camera_rig")[0].override = true
 	var cam := Camera3D.new()
 	cam.fov = 60
@@ -46,6 +46,14 @@ func run() -> void:
 		cam.global_position = s[0]
 		cam.look_at(s[1])
 		for f in 40:
+			if OS.get_environment("IMPACTS") != "" and f == 31:
+				var FXc = load("res://scripts/fx/fx.gd")
+				var k := 0
+				for surf in ["stone", "metal", "wood", "dirt"]:
+					var at: Vector3 = s[1] + cam.global_transform.basis.x * (k - 1.5) * 0.9
+					at.y = 0.02
+					FXc.impact(main, at, Vector3.UP, surf)
+					k += 1
 			cam.make_current()
 			load("res://scripts/world/nature.gd").set_view(cam.global_position)
 			await process_frame

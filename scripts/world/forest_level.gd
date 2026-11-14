@@ -73,6 +73,7 @@ func build() -> void:
 	_mat_bark = M.wood("bark", Color(0.27, 0.2, 0.15))
 	_mat_rock = Nature.rock_material()
 	_mat_log = M.wood("log", Color(0.38, 0.28, 0.18))
+	FX.ground_surface = "dirt"
 	_mat_plank = Nature.plank_material(Color(0.5, 0.37, 0.24))
 	_mat_roof = Nature.roof_material(Color(0.27, 0.21, 0.17))
 	_mat_hesco = Nature.hesco_material()
@@ -404,6 +405,8 @@ func _build_lz(p: Vector3, flare: bool) -> void:
 
 func _wall(origin: Vector3, rot: float, local: Vector3, size: Vector3, mat: Material) -> StaticBody3D:
 	var b := _body(origin + Basis(Vector3.UP, rot) * local, rot)
+	if mat != null and mat.has_meta("surface"):
+		b.set_meta("surface", mat.get_meta("surface"))
 	_box_shape(b, size, Vector3(0, size.y * 0.5, 0))
 	_mesh(b, ML.box(size), mat, Vector3(0, size.y * 0.5, 0))
 	return b
@@ -446,6 +449,7 @@ func _cabin(center: Vector3, w: float, d: float, rot: float, door_w: float = 1.3
 	_floor_patch(center + Vector3(0, 0.01, 0), Vector2(w - 0.2, d - 0.2), _mat_plank).rotation.y = rot
 	_cabin_details(root, w, d, h, door_w, pitch, half_d)
 	_room_light(center + Vector3(0, 2.25, 0), rot, maxf(w, d), "interior")
+	_interior_probe(center, Vector3(w - 0.2, 4.0, d - 0.2), rot)
 
 
 ## Everything that turns the box into a cabin: log walls on the gable sides,
@@ -876,7 +880,10 @@ func _cell(x: float, z: float, size: float) -> Vector2i:
 
 
 func _build_forest() -> void:
-	var pine_crown := Nature.pine_crown_mesh()
+	var pine_core := Nature.canopy_material(Color(0.07, 0.135, 0.06), 0.025, Vector3(0, 0.5, 0), 0.45, 3.0, 0.0, 0.19)
+	var pine_needles := Nature.leaf_material(Color(0.1, 0.25, 0.08), 0.025, Nature.needle_texture(), 0.35)
+	pine_needles.set_shader_parameter("spec", 0.15)
+	var pine_set := Nature.pine_set(pine_core, pine_needles)
 	# broadleaf crowns: a dark inner mass wrapped in sprays of real leaf shapes
 	var broad_core := Nature.canopy_material(Color(0.14, 0.23, 0.07), 0.04, Vector3(0, 0.72, 0), 0.65, 2.4, 0.0, 0.1)
 	var broad_leaf := Nature.leaf_material(Color(0.2, 0.33, 0.08), 0.04)
@@ -947,13 +954,14 @@ func _build_forest() -> void:
 	for ck in chunks:
 		var ch: Dictionary = chunks[ck]
 		_multimesh(trunk, _mat_bark, ch.pine_t + ch.broad_t, true)
-		_multimesh(pine_crown, pine_mat, ch.pine_c, true)
+		_leafy_mm(pine_set, ch.pine_c, pine_mat, 0.0)
 		for v in 2:
 			var part: Array = []
 			for i in range(v, ch.broad_c.size(), 2):
 				part.append(ch.broad_c[i])
 			_leafy_mm(broad_crowns[v], part, broad_shadow, 0.0)
 		var body := _body(Vector3.ZERO)
+		body.set_meta("surface", "wood")   # tree trunks
 		for s in ch.shapes:
 			var cs := CollisionShape3D.new()
 			var cyl := CylinderShape3D.new()
@@ -987,14 +995,16 @@ static func _mm_resource(mesh: Mesh, items: Array) -> MultiMesh:
 
 ## Leafy crown / bush set (see Nature._leafy): core and leaf sprays are drawn,
 ## the stand-in (or the core, if `shadow_mat` is null) casts the shadow.
+## On the low presets the sprays are dropped and the stand-in is drawn instead
+## (see apply_quality): one solid crown per tree, a fraction of the triangles.
 func _leafy_mm(set: Dictionary, items: Array, shadow_mat: Material, vis_end: float) -> void:
 	if items.is_empty():
 		return
-	_multimesh(set.core, null, items, shadow_mat == null, vis_end)
-	_multimesh(set.leaf, null, items, false, vis_end)
-	if shadow_mat != null:
-		var sh := _multimesh(set.shadow, shadow_mat, items, true, vis_end)
-		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	_leaf_nodes.append(_multimesh(set.core, null, items, false, vis_end))
+	_leaf_nodes.append(_multimesh(set.leaf, null, items, false, vis_end))
+	var sh := _multimesh(set.shadow, shadow_mat, items, true, vis_end)
+	sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	_stand_ins.append(sh)
 
 
 func _mm_node(mm: MultiMesh, mat: Material, shadows: bool, vis_end: float = 0.0) -> MultiMeshInstance3D:
@@ -1053,6 +1063,8 @@ func _build_rocks_and_logs() -> void:
 
 func _build_bushes(mat: Material) -> void:
 	var leaf := Nature.leaf_material(Color(0.17, 0.3, 0.08), 0.06)
+	var stand_in := Nature.canopy_material(Color(0.17, 0.31, 0.08), 0.06, Vector3(0, 0.3, 0), 0.6, 3.2, 0.4, 0.16)
+	stand_in.set_shader_parameter("fade_min_h", 100.0)
 	leaf.set_shader_parameter("fade_min_h", 100.0)
 	var meshes := [Nature.leafy_bush_mesh(9, mat, leaf), Nature.leafy_bush_mesh(10, mat, leaf), Nature.leafy_bush_mesh(11, mat, leaf)]
 	_burn_rng(48)
@@ -1075,7 +1087,7 @@ func _build_bushes(mat: Material) -> void:
 		_bush_grid[gk].append(Vector3(p.x, p.y, s * 0.75))
 	for k in 3:
 		for ck in lists[k]:
-			_leafy_mm(meshes[k], lists[k][ck], null, 90.0)
+			_leafy_mm(meshes[k], lists[k][ck], stand_in, 90.0)
 
 
 ## The meshes and grass now use their own RNGs. Draw the global values the
@@ -1333,7 +1345,16 @@ func concealment(pos: Vector3) -> float:
 	return best
 
 
+var _leaf_nodes: Array = []
+var _stand_ins: Array = []
+
 func apply_quality(q: int) -> void:
+	for n in _leaf_nodes:
+		if is_instance_valid(n):
+			n.visible = q >= 1   # leaf / needle sprays on HIGH and ULTRA
+	for n in _stand_ins:
+		if is_instance_valid(n):
+			n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if q >= 1 else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	for n in _dense_nodes:
 		if is_instance_valid(n):
 			n.visible = q >= 1   # dense grass + flowers on HIGH / ULTRA shadows presets

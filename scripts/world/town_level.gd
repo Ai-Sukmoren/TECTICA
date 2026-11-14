@@ -66,6 +66,7 @@ func build() -> void:
 	_mat_glass_lit = M.emissive("window_lit", Color(1.0, 0.78, 0.45), 1.6)
 	_mat_glass_dark = M.solid(Color(0.06, 0.08, 0.1), 0.15, 0.4)
 	_mat_fence = M.wood("fence", Color(0.36, 0.3, 0.22))
+	FX.ground_surface = "stone"
 
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Navigation"
@@ -229,6 +230,11 @@ func _building(c: Vector3, w: float, d: float, h: float, mat: Material, doors: D
 				_mesh(b, ML.box(Vector3(1.34, 1.14, 0.05) if along_x else Vector3(0.05, 1.14, 1.34)), _mat_wall_trim, off - nrm * 0.03)
 				_mesh(b, ML.box(pane), _mat_glass_lit if glow else _mat_glass_dark, off).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				_mesh(b, ML.box(Vector3(1.42, 0.06, 0.14) if along_x else Vector3(0.14, 0.06, 1.42)), _mat_wall_trim, off + Vector3(0, -0.58, 0) + nrm * 0.04)
+				# the same window from indoors: frame, glass, sill
+				var inn := off - nrm * (t + 0.04)
+				_mesh(b, ML.box(Vector3(1.34, 1.14, 0.05) if along_x else Vector3(0.05, 1.14, 1.34)), _mat_wall_trim, inn + nrm * 0.03)
+				_mesh(b, ML.box(pane), _mat_glass_lit if glow else M.car_glass(), inn).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				_mesh(b, ML.box(Vector3(1.42, 0.05, 0.16) if along_x else Vector3(0.16, 0.05, 1.42)), _mat_wall_trim, inn + Vector3(0, -0.58, 0) - nrm * 0.05)
 		for g in gaps:
 			# lintel above the doorway
 			var gl: float = g[1] - g[0]
@@ -241,6 +247,7 @@ func _building(c: Vector3, w: float, d: float, h: float, mat: Material, doors: D
 	var roof := _mesh(self, ML.box(Vector3(w + 0.5, 0.2, d + 0.5)), _mat_roof, c + Vector3(0, h + 0.1, 0))
 	roof.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	_mesh(self, ML.box(Vector3(w + 0.7, 0.3, d + 0.7)), _mat_wall_trim, c + Vector3(0, h - 0.05, 0))
+	_interior_probe(c, Vector3(w - 0.1, h + 0.2, d - 0.1))
 	# interior light
 	var l3 := OmniLight3D.new()
 	l3.position = c + Vector3(0, h - 0.5, 0)
@@ -264,8 +271,10 @@ func _building(c: Vector3, w: float, d: float, h: float, mat: Material, doors: D
 		add_child(label)
 
 
-func _furniture(pos: Vector3, size: Vector3, color: Color, rot: float = 0.0, cover: bool = true) -> void:
-	solid_box(pos, size, M.solid(color, 0.8), rot, cover and size.y <= 1.25, "wood").finalize()
+func _furniture(pos: Vector3, size: Vector3, color: Color, rot: float = 0.0, cover: bool = true, cloth: bool = false) -> void:
+	var key := "furn_" + color.to_html(false)
+	var mat: Material = M.fabric(key, color, 5.0) if cloth else M.wood(key, color)
+	solid_box(pos, size, mat, rot, cover and size.y <= 1.25, "wood").finalize()
 
 
 func _fence(a: Vector3, b: Vector3) -> void:
@@ -315,9 +324,17 @@ func _build_gas_station() -> void:
 
 func _build_house(c: Vector3, w: float, d: float, doors: Dictionary) -> void:
 	_building(c, w, d, 3.2, _mat_siding, doors, "", 0.45)
-	_furniture(c + Vector3(-w * 0.25, 0, -d * 0.2), Vector3(2.2, 0.85, 0.9), Color(0.3, 0.22, 0.2))   # sofa
+	_furniture(c + Vector3(-w * 0.25, 0, -d * 0.2), Vector3(2.2, 0.85, 0.9), Color(0.3, 0.22, 0.2), 0.0, true, true)   # sofa
 	_furniture(c + Vector3(w * 0.22, 0, d * 0.1), Vector3(1.4, 0.78, 1.0), Color(0.42, 0.32, 0.22))   # table
-	_furniture(c + Vector3(w * 0.28, 0, -d * 0.28), Vector3(2.0, 0.6, 1.5), Color(0.5, 0.45, 0.42))   # bed
+	_furniture(c + Vector3(w * 0.28, 0, -d * 0.28), Vector3(2.0, 0.6, 1.5), Color(0.5, 0.45, 0.42), 0.0, true, true)   # bed
+	for pz in [-0.36, 0.36]:
+		_mesh(self, ML.rbox(Vector3(0.42, 0.12, 0.6)), M.fabric("pillow", Color(0.78, 0.76, 0.7), 5.0), c + Vector3(w * 0.28 - 0.7, 0.65, -d * 0.28 + pz))
+	# sofa back and arm rests (inside the cover box's footprint)
+	var sofa := c + Vector3(-w * 0.25, 0, -d * 0.2)
+	var sofa_mat := M.fabric("furn_" + Color(0.3, 0.22, 0.2).to_html(false), Color(0.3, 0.22, 0.2), 5.0)
+	_mesh(self, ML.rbox(Vector3(2.2, 0.32, 0.26)), sofa_mat, sofa + Vector3(0, 0.98, -0.32))
+	for sx in [-1.0, 1.0]:
+		_mesh(self, ML.rbox(Vector3(0.24, 0.2, 0.9)), sofa_mat, sofa + Vector3(sx * 0.98, 0.9, 0))
 
 
 func _build_houses() -> void:
@@ -358,7 +375,7 @@ func _build_diner() -> void:
 	for i in 3:
 		var bx := -6.0 + i * 3.0
 		_furniture(c + Vector3(bx, 0, -2.6), Vector3(1.6, 0.76, 0.9), Color(0.85, 0.82, 0.75))
-		_furniture(c + Vector3(bx, 0, -3.8), Vector3(1.6, 1.0, 0.5), Color(0.6, 0.12, 0.1))
+		_furniture(c + Vector3(bx, 0, -3.8), Vector3(1.6, 1.0, 0.5), Color(0.6, 0.12, 0.1), 0.0, true, true)
 	# parking lot
 	_floor_patch(Vector3(-24, 0.006, 36), Vector2(30, 12), _mat_asphalt)
 	for i in 7:

@@ -150,15 +150,70 @@ static func _particles(root: Node, pos: Vector3, normal: Vector3, amount: int, l
 	return p
 
 
-static func impact(ctx: Node, pos: Vector3, normal: Vector3) -> void:
+## What the open ground is made of on this map ("dirt" in the forest, "stone" on streets).
+static var ground_surface := "dirt"
+## Impact families and the codes they travel under in shot events (1 stays the default).
+const SURFACE_CODE := {"stone": 1, "metal": 3, "wood": 4, "dirt": 5}
+const SURFACE_NAME := {1: "stone", 3: "metal", 4: "wood", 5: "dirt"}
+
+
+## Impact family of whatever a bullet struck: destructible kind, a body tagged
+## by its material, the terrain, or masonry by default.
+static func surface_of(col: Object, pos: Vector3, normal: Vector3) -> String:
+	if col != null:
+		var k = col.get("kind")
+		if k is String:
+			match k:
+				"metal", "explosive":
+					return "metal"
+				"wood", "log", "rack":
+					return "wood"
+				"sand", "hesco":
+					return "dirt"
+				_:
+					return "stone"
+		if col.has_meta("surface"):
+			return String(col.get_meta("surface"))
+	if normal.y > 0.6 and absf(pos.y - Terrain.height(pos.x, pos.z)) < 0.3:
+		return ground_surface
+	return "stone"
+
+
+## Bullet strike, by what was hit: masonry bursts into grey dust and chips,
+## steel throws sparks and leaves a bright scar, timber splinters, earth
+## kicks up a brown plume and clods.
+static func impact(ctx: Node, pos: Vector3, normal: Vector3, surface: String = "stone") -> void:
 	var root := _root(ctx)
 	if root == null:
 		return
-	_particles(root, pos + normal * 0.02, normal, 9, 0.3, 2.5, 7.0, 40.0,
-			ML.box(Vector3(0.012, 0.012, 0.05)), _mat("spark"), Vector3(0, -12, 0))
-	_particles(root, pos + normal * 0.05, normal, 6, 0.7, 0.4, 1.6, 30.0,
-			ML.sphere(0.07, false, 6), _mat("dust"), Vector3(0, 0.3, 0), 0.6, 1.6)
-	_decal(root, pos, normal, 0.07, "hole", M.blot("hole", Color(0.03, 0.03, 0.03, 0.9)))
+	match surface:
+		"metal":
+			_particles(root, pos + normal * 0.02, normal, 16, 0.35, 3.5, 10.0, 50.0,
+					ML.box(Vector3(0.01, 0.01, 0.06)), _mat("spark"), Vector3(0, -12, 0))
+			_particles(root, pos + normal * 0.04, normal, 2, 0.4, 0.3, 0.9, 30.0,
+					ML.sphere(0.05, false, 6), _mat("dust"), Vector3(0, 0.3, 0), 0.5, 1.2)
+			_decal(root, pos, normal, 0.11, "scar", M.blot("metal_scar", Color(0.62, 0.63, 0.66, 0.85)))
+			_decal(root, pos + normal * 0.002, normal, 0.05, "hole", M.blot("hole", Color(0.03, 0.03, 0.03, 0.9)))
+		"wood":
+			chips(ctx, pos, normal, Color(0.62, 0.48, 0.3), 9, 0.016, 3, 0.55)
+			_decal(root, pos, normal, 0.1, "scar", M.blot("wood_scar", Color(0.66, 0.54, 0.36, 0.8)))
+			_decal(root, pos + normal * 0.002, normal, 0.045, "hole", M.blot("wood_hole", Color(0.07, 0.045, 0.025, 0.95)))
+		"dirt":
+			var up := (normal + Vector3.UP * 0.6).normalized()
+			chips(ctx, pos, up, Color(0.26, 0.2, 0.13), 9, 0.028, 0, 1.0)
+			var d := _particles(root, pos + normal * 0.06, up, 9, 1.1, 0.6, 2.4, 35.0,
+					ML.sphere(0.1, false, 6), _mat("dust"), Vector3(0, 0.2, 0), 0.7, 2.2)
+			d.color = Color(0.46, 0.38, 0.27, 0.6)
+			_decal(root, pos, normal, 0.12, "pock", M.blot("dirt_pock", Color(0.1, 0.075, 0.05, 0.6)))
+		_:
+			_particles(root, pos + normal * 0.02, normal, 3, 0.25, 2.5, 6.0, 40.0,
+					ML.box(Vector3(0.012, 0.012, 0.05)), _mat("spark"), Vector3(0, -12, 0))
+			chips(ctx, pos, normal, Color(0.5, 0.49, 0.46), 6, 0.02, 0, 1.0)
+			var g := _particles(root, pos + normal * 0.05, normal, 8, 0.9, 0.5, 2.2, 32.0,
+					ML.sphere(0.08, false, 6), _mat("dust"), Vector3(0, 0.3, 0), 0.6, 2.0)
+			g.color = Color(0.6, 0.59, 0.56, 0.6)
+			_decal(root, pos, normal, 0.13, "scar", M.blot("stone_scar", Color(0.66, 0.65, 0.62, 0.55)))
+			_decal(root, pos + normal * 0.002, normal, 0.06, "hole", M.blot("hole", Color(0.03, 0.03, 0.03, 0.9)))
 
 
 static func blood(ctx: Node, pos: Vector3, dir: Vector3) -> void:

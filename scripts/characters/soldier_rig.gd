@@ -147,7 +147,9 @@ var locomotion_state := "IDLE"
 var _prev_vel := Vector3.ZERO
 var _visual_velocity := Vector3.ZERO
 var _acc_smooth := Vector3.ZERO
-var _time := 0.0
+## Starts at a per-rig offset so a squad or a horde never breathes, sways and
+## glances in unison (instance id, not randf: the world RNG stays untouched).
+var _time := float(get_instance_id() % 997) * 0.37
 
 # springs
 var _recoil_pos := 0.0
@@ -1116,7 +1118,9 @@ func _update_body(delta: float) -> void:
 			* Basis.from_euler(Vector3(pitch * 0.5 + breath * steady, 0, roll * 0.5 - sin(phase) * 0.03 * m * steady)) \
 			* Basis(Vector3.UP, twist * 0.55 - gait_yaw)
 	chest.position.y = 0.22 + breath * 0.15
-	head.basis = Basis.from_euler(Vector3(-pitch * 0.7 - 0.12 * aim_amt + 0.04, 0, -roll * 0.6 + lean_amt * 0.3))
+	# the eyes lead a turn (the gun lags it) and wander a little when standing easy
+	var look := 0.0 if fp_mode else clampf(-_sway_yaw * 0.9, -0.3, 0.3) + (sin(_time * 0.43) + 0.5 * sin(_time * 1.07 + 1.3)) * 0.07 * (1.0 - m) * (1.0 - aim_amt)
+	head.basis = Basis.from_euler(Vector3(-pitch * 0.7 - 0.12 * aim_amt + 0.04, look, -roll * 0.6 + lean_amt * 0.3))
 	if zombie:
 		head.basis = Basis.from_euler(Vector3(-pitch * 0.4 + 0.1, sin(_time * 1.3) * 0.25, 0.3 * sin(_time * 0.9)))
 	if fp_mode:

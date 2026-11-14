@@ -113,6 +113,8 @@ var slide_amt := 0.0
 var ads_speed := 1.0
 var cycle_t := -1.0
 var _twirl := 0.0   # current spin angle of a twirled gun (radians)
+var _tw_a := false
+var _tw_b := false
 var _cycle_dur := 0.6
 var _cycle_cased := false
 var _pump_base := Vector3.ZERO
@@ -1365,16 +1367,27 @@ func _update_weapon_pose(delta: float) -> void:
 		xf = xf * Transform3D(Basis.from_euler(Vector3(0.05 * cw, 0.1 * cw, 0.35 * cw)), Vector3.ZERO)
 	_twirl = 0.0
 	if cycle_t >= 0.0 and weapon.twirl != null:
-		# gun twirl: one full backward spin around the trigger finger (muzzle
-		# rises, goes over toward the shooter and comes up level from below), hand
-		# lifted a little so the spin clears the forearm
-		var tu := smoothstep(0.06, 0.9, cycle_t)
-		_twirl = TAU * tu
+		# gun twirl. The recoil throws the muzzle up and the wrist lets it keep
+		# going: two backward turns around the trigger finger that start fast and
+		# slow into the catch, where the muzzle dips past level and springs back.
+		# The gun is carried up and turned side-on so the spin reads as a wheel.
+		var ct := clampf(cycle_t, 0.0, 1.0)
+		var su := clampf(ct / 0.8, 0.0, 1.0)
+		_twirl = TAU * 2.0 * (1.0 - pow(1.0 - su, 2.6))
+		var cv := clampf((ct - 0.8) / 0.2, 0.0, 1.0)
+		var settle := -0.2 * sin(PI * cv) * (1.0 - cv)
+		var show := pow(sin(PI * minf(ct / 0.86, 1.0)), 0.6)
+		var fpk := 1.0 if fp_mode else 0.4
 		var pv: Vector3 = (weapon.global_transform.affine_inverse() * weapon.twirl.global_transform).origin
 		var spin := Basis(Vector3.RIGHT, _twirl)
-		var lift := sin(PI * tu)
-		xf = xf * Transform3D(Basis.from_euler(Vector3(0, 0, 0.18 * lift)), Vector3(0, 0.04 * lift, 0.03 * lift)) \
-				* Transform3D(spin, pv - spin * pv)
+		xf = xf * Transform3D(Basis.from_euler(Vector3(settle, 0.85 * show * fpk, 0.25 * show)),
+				Vector3(-0.08 * show * fpk, 0.07 * show, 0.1 * show * fpk)) * Transform3D(spin, pv - spin * pv)
+		if not _tw_a and ct > 0.32:
+			_tw_a = true
+			Sfx.play(self, "knife_swing", weapon.global_position, -6.0, 0.15)
+		if not _tw_b and ct > 0.8:
+			_tw_b = true
+			Sfx.play(self, "bolt", weapon.global_position, -3.0)   # caught, hammers back
 	if cycle_t >= 0.0 and weapon.roll != null:
 		# rolling block: the muzzle tips up and the gun cants in so the open
 		# breech faces the shooter while the thumb works hammer and block
@@ -1595,8 +1608,10 @@ func _update_cycle(delta: float) -> void:
 		weapon.cycle_pending -= delta
 		if weapon.cycle_pending <= 0.0:
 			cycle_t = 0.0
-			_cycle_dur = clampf(60.0 / float(weapon.stats.rpm) * 0.7, 0.35, 1.0)
+			_cycle_dur = clampf(60.0 / float(weapon.stats.rpm) * (0.82 if weapon.twirl != null else 0.7), 0.35, 1.0)
 			_cycle_cased = false
+			_tw_a = false
+			_tw_b = false
 			Sfx.play(self, "knife_swing" if weapon.twirl != null else "bolt", weapon.global_position, -4.0)
 	if cycle_t < 0.0:
 		return

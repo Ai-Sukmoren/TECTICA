@@ -216,7 +216,7 @@ const WEAPONS := {
 		"damage": 15.0, "range": 22.0, "falloff_start": 6.0,
 		"spread_hip": 6.5, "spread_aim": 5.0, "spread_move": 1.5,
 		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
-		"recoil": 2.8, "reload": 2.0, "reload_empty": 2.3,
+		"recoil": 2.8, "reload": 1.15, "reload_empty": 1.3,
 		"suppressed": false, "noise_radius": 40.0, "shake": 0.3, "sound": "shot_shotgun", "volume": -1.0,
 		"mobility": 1.04, "ads_speed": 1.2, "cycle": "twirl",
 		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},

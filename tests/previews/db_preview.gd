@@ -54,7 +54,7 @@ func run() -> void:
 	for i in 90:
 		await process_frame
 		var ct: float = p.rig.cycle_t
-		for mark in [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]:
+		for mark in [0.08, 0.16, 0.24, 0.34, 0.46, 0.6, 0.8, 0.9]:
 			if last < mark and ct >= mark:
 				await shot(out, "roll_%d" % n)
 				n += 1

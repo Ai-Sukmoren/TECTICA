@@ -4,6 +4,7 @@ extends RefCounted
 ## other players in multiplayer. Prices are starting values, not tuned.
 
 const M = preload("res://scripts/core/materials.gd")
+const Profile = preload("res://scripts/core/profile.gd")
 
 const DEFAULT := "multicam"
 ## Same rarity colours / names as weapon skins (skins.gd).
@@ -58,6 +59,14 @@ const OUTFITS := {
 		"vest": Color(0.08, 0.085, 0.1), "gear": Color(0.06, 0.06, 0.07), "helmet": Color(0.1, 0.105, 0.12),
 		"face": Color(0.03, 0.03, 0.035), "gloves": Color(0.05, 0.05, 0.055), "boots": Color(0.06, 0.06, 0.065), "headgear": "helmet",
 		"goggles": true, "carbon": true},
+	# one player only: "owners" are that player's account names (any case);
+	# nobody else, admin included, sees or wears it
+	"kitty": {"name": "MYTHIC KITTY", "rarity": 4, "price": 0, "admin": true, "owners": ["turain"],
+		"desc": "Pastel pink camo, pearl plates and glowing pink and red bows.",
+		"camo": [Color(1.0, 0.66, 0.8), Color(0.99, 0.86, 0.92), Color(0.97, 0.45, 0.66), Color(1.0, 0.97, 0.98)],
+		"vest": Color(0.99, 0.94, 0.96), "gear": Color(1.0, 0.4, 0.68), "helmet": Color(1.0, 0.58, 0.76),
+		"face": Color(0.99, 0.9, 0.94), "gloves": Color(1.0, 0.78, 0.87), "boots": Color(0.95, 0.9, 0.93), "headgear": "helmet",
+		"goggles": true, "pearl": true, "glow": Color(1.0, 0.35, 0.7), "trim": Color(0.95, 0.05, 0.2)},
 }
 
 
@@ -65,8 +74,24 @@ static func is_admin(id: String) -> bool:
 	return bool(OUTFITS.get(id, {}).get("admin", false))
 
 
+## Outfits the signed-in account can see: reserved ones only for their owner.
 static func ids() -> Array:
-	return OUTFITS.keys()
+	return OUTFITS.keys().filter(func(id): return owner_of(id) == "" or is_mine(id))
+
+
+## Display name of the account an outfit is reserved for, or "".
+static func owner_of(id: String) -> String:
+	var o: Array = OUTFITS.get(id, {}).get("owners", [])
+	return String(o[0]).to_lower() if not o.is_empty() else ""
+
+
+static func is_mine(id: String) -> bool:
+	return Profile.current.strip_edges().to_lower() in OUTFITS.get(id, {}).get("owners", [])
+
+
+## "ADMIN ONLY" / "TURAIN EXCLUSIVE" style label for a locked outfit.
+static func exclusive_label(id: String, word: String) -> String:
+	return (owner_of(id).to_upper() if owner_of(id) != "" else "ADMIN") + " " + word
 
 
 static func exists(id: String) -> bool:
@@ -93,6 +118,9 @@ static func palette(id: String) -> Dictionary:
 		helmet = M.solid(o.helmet, 0.25, 0.9)
 	else:
 		helmet = M.matte("outfit_helmet_" + id, o.helmet, 0.72)
+	var pearl := bool(o.get("pearl", false))
+	if pearl:   # glossy lacquered plates with a pearly sheen
+		helmet = _pearl("outfit_pearl_helmet_" + id, o.helmet)
 	var carbon := bool(o.get("carbon", false))
 	if carbon:
 		helmet = M.carbon_fiber("outfit_carbon_plate", true, 22.0)
@@ -103,7 +131,7 @@ static func palette(id: String) -> Dictionary:
 		detail = M.carbon_fiber("outfit_carbon_plate", true, 22.0)
 	return {
 		"camo": M.carbon_fiber("outfit_carbon_suit", false, 28.0) if carbon else M.camo("outfit_camo_" + id, o.camo, 3.5),
-		"vest": M.carbon_fiber("outfit_carbon_plate", true, 22.0) if carbon else (M.solid(o.vest, 0.3, 0.9) if metal else M.fabric("outfit_vest_" + id, o.vest)),
+		"vest": M.carbon_fiber("outfit_carbon_plate", true, 22.0) if carbon else (_pearl("outfit_pearl_vest_" + id, o.vest) if pearl else (M.solid(o.vest, 0.3, 0.9) if metal else M.fabric("outfit_vest_" + id, o.vest))),
 		"gear": gear,
 		"helmet": helmet,
 		"detail": detail,
@@ -118,3 +146,24 @@ static func palette(id: String) -> Dictionary:
 		"goggles": bool(o.get("goggles", true)),
 		"nvg": bool(o.get("nvg", false)),
 	}
+
+
+static var _pearls: Dictionary = {}
+
+
+## Shiny lacquered plate: low roughness, a little metal, clear coat and a pink rim sheen.
+static func _pearl(key: String, color: Color) -> StandardMaterial3D:
+	if _pearls.has(key):
+		return _pearls[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.metallic = 0.45
+	m.roughness = 0.12
+	m.clearcoat_enabled = true
+	m.clearcoat = 1.0
+	m.clearcoat_roughness = 0.03
+	m.rim_enabled = true
+	m.rim = 0.6
+	m.rim_tint = 0.8
+	_pearls[key] = m
+	return m

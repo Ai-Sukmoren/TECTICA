@@ -5,6 +5,7 @@ extends RefCounted
 ## its polymer / wood furniture; optics glass, lenses and lasers are kept.
 
 const Data = preload("res://scripts/weapons/weapon_data.gd")
+const Profile = preload("res://scripts/core/profile.gd")
 
 ## MYTHIC is admin-only: it never drops from packs (pack odds cover the first five).
 enum Rarity { COMMON, UNCOMMON, RARE, EPIC, LEGENDARY, MYTHIC }
@@ -16,7 +17,7 @@ const RARITY_COLORS := [Color(0.72, 0.74, 0.77), Color(0.42, 0.86, 0.46), Color(
 const DUP_REFUND := [15, 30, 70, 180, 500, 0]
 
 ## pattern ids understood by FINISH_SHADER
-enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY, TEXTURE, CARBON_X }
+enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY, TEXTURE, CARBON_X, KITTY }
 
 ## id -> name, rarity, pattern, 4 colours, metallic, roughness, scale, emission, animated
 const FINISHES := {
@@ -66,6 +67,11 @@ const FINISHES := {
 			"c": [Color(0.022, 0.023, 0.027), Color(0.17, 0.18, 0.21)]},
 	"mythicskin": {"name": "mythicskin", "r": Rarity.MYTHIC, "p": P.TEXTURE, "s": 6.0, "m": 0.1, "ro": 0.4, "admin": true,
 			"c": [Color(1.0, 1.0, 1.0)], "texture": preload("res://assets/skins/mythicskin.png")},
+	# --- mythic, one player only: "owners" are that player's account names (any
+	# case). Nobody else, admin included, sees or uses it; the owner has it on every gun.
+	"kitty_mythic": {"name": "Mythic Kitty", "r": Rarity.MYTHIC, "p": P.KITTY, "s": 8.0, "m": 0.35, "ro": 0.1, "e": 1.4, "a": 1.0,
+			"admin": true, "owners": ["turain"],
+			"c": [Color(1.0, 0.6, 0.77), Color(1.0, 0.84, 0.91), Color(0.9, 0.03, 0.17), Color(0.99, 0.98, 0.99)]},
 }
 
 ## Sticker textures that finishes can carry (placement is per gun, see collection.gd).
@@ -91,9 +97,32 @@ static func is_admin_finish(finish: String) -> bool:
 	return FINISHES.has(finish) and bool(FINISHES[finish].get("admin", false))
 
 
-## Finishes shown in the collection; admin-only ones only when `with_admin`.
+## Display name of the account a finish is reserved for, or "" when it is not reserved.
+static func owner_of(finish: String) -> String:
+	var o: Array = FINISHES.get(finish, {}).get("owners", [])
+	return String(o[0]).to_lower() if not o.is_empty() else ""
+
+
+## True when `finish` is reserved for the signed-in account.
+static func is_mine(finish: String) -> bool:
+	var o: Array = FINISHES.get(finish, {}).get("owners", [])
+	return Profile.current.strip_edges().to_lower() in o
+
+
+## Armory tag for an exclusive finish.
+static func exclusive_tag(finish: String) -> String:
+	if owner_of(finish) != "":
+		return "  ·  " + owner_of(finish).to_upper() + " EXCLUSIVE"
+	return "  ·  ADMIN EXCLUSIVE" if is_admin_finish(finish) else ""
+
+
+## Finishes shown in the collection; admin-only ones only when `with_admin`,
+## and finishes reserved for one account only to that account.
 static func finish_ids(with_admin: bool = false) -> Array:
-	var ids: Array = FINISHES.keys().filter(func(f): return with_admin or not is_admin_finish(f))
+	var ids: Array = FINISHES.keys().filter(func(f):
+		if owner_of(f) != "":
+			return is_mine(f)
+		return with_admin or not is_admin_finish(f))
 	ids.sort_custom(func(a, b):
 		var ra := int(FINISHES[a].r)
 		var rb := int(FINISHES[b].r)
@@ -342,6 +371,42 @@ void fragment() {
 			m = metal * (0.6 + 0.4 * tow);
 			r = mix(rough + 0.1, rough, tow);
 			cc = 1.0;
+			break;
+		}
+		case 18: {  // mythic kitty: pearl pink, white polka dots, red bows, twinkling sparkles
+			vec2 g = p * 1.2;
+			vec2 cell = floor(g);
+			vec2 f = fract(g) - 0.5;
+			float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
+			// pearl base: two pinks drifting with an iridescent edge
+			col = mix(c0, c1, 0.5 + 0.5 * sin(p.x * 0.6 + p.y * 0.4 + fres * 4.0 + t * 0.4));
+			col = mix(col, vec3(1.0, 0.92, 0.97), fres * 0.35);
+			// polka dots on the cell corners
+			float pd = 1.0 - smoothstep(0.085, 0.105, length(fract(g + 0.5) - 0.5));
+			col = mix(col, c3, pd);
+			// a bow in about half the cells: two lobes that narrow to a round knot
+			float bow = 0.0;
+			float knot = 0.0;
+			if (hash(cell) < 0.55) {
+				vec2 b = f * vec2(1.0, 1.3);
+				float ax = abs(b.x);
+				float lobe = (1.0 - smoothstep(0.29, 0.32, ax)) * (1.0 - smoothstep(0.0, 0.02, abs(b.y) - (0.04 + ax * 0.62))) * smoothstep(0.03, 0.05, ax);
+				knot = 1.0 - smoothstep(0.065, 0.08, length(b));
+				bow = max(lobe, knot);
+				float fold = 0.8 + 0.2 * smoothstep(0.05, 0.3, ax);   // lobes catch more light at the tips
+				col = mix(col, mix(c2 * fold, c2 * 0.7, knot), bow);
+			}
+			// slow light sweep across the lacquer
+			float sweep = smoothstep(0.93, 1.0, sin((uv.x + uv.y) * 3.0 - t * 1.2));
+			col += vec3(1.0, 0.9, 0.95) * sweep * 0.35;
+			// sparkles: tiny points that twinkle in turn
+			vec2 sp = floor(g * 7.0);
+			float spark = step(0.94, hash(sp)) * (1.0 - smoothstep(0.0, 0.3, length(fract(g * 7.0) - 0.5)));
+			spark *= pow(max(sin(t * 2.5 + hash(sp + 2.0) * 40.0), 0.0), 6.0) * (1.0 - bow);
+			r = rough + bow * 0.08;
+			m = metal * (1.0 - bow * 0.5);
+			cc = 1.0;
+			e = vec3(1.0, 0.85, 0.95) * spark * emit * 2.5 + c0 * fres * emit * 0.25 + c2 * bow * emit * 0.12;
 			break;
 		}
 	}

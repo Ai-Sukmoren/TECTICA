@@ -65,6 +65,8 @@ static func save() -> void:
 static func has_outfit(id: String) -> bool:
 	if not Outfits.exists(id):
 		return false
+	if Outfits.owner_of(id) != "":
+		return Outfits.is_mine(id)   # reserved for one account
 	return id == Outfits.DEFAULT or Profile.is_admin() or outfits_owned.has(id)
 
 
@@ -107,6 +109,8 @@ static func has_skin(weapon: String, finish: String) -> bool:
 	ensure()
 	if finish == "":
 		return true
+	if Skins.owner_of(finish) != "":
+		return Skins.is_mine(finish)   # reserved for one account, every gun
 	if Profile.is_admin():
 		return Skins.FINISHES.has(finish)   # admin: everything unlocked
 	if Skins.is_admin_finish(finish):
@@ -116,6 +120,8 @@ static func has_skin(weapon: String, finish: String) -> bool:
 
 static func count(weapon: String, finish: String) -> int:
 	ensure()
+	if Skins.owner_of(finish) != "":
+		return 1 if Skins.is_mine(finish) else 0
 	var n := int(owned.get(Skins.key(weapon, finish), 0))
 	return maxi(n, 1) if Profile.is_admin() and Skins.FINISHES.has(finish) else n
 
@@ -137,6 +143,9 @@ static func total_owned() -> int:
 	for k in owned:
 		if int(owned[k]) > 0:
 			n += 1
+	for f in Skins.FINISHES:
+		if Skins.is_mine(f):
+			n += Skins.weapon_ids().size()
 	return n
 
 

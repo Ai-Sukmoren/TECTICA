@@ -72,6 +72,13 @@ var net_owner := 1
 ## Driven by network snapshots instead of input / AI.
 var puppet := false
 var display_name := ""
+## Overhead name (other operators, deathmatch bots); coloured by set_side().
+var name_tag: Label3D
+var _team_bands: Array[MeshInstance3D] = []
+var _side: Array = []   # last set_side() call: [friendly, bands]
+## Side colours as the local operator sees them: teammates blue, opponents red.
+const ALLY_COLOR := Color(0.35, 0.68, 1.0)
+const FOE_COLOR := Color(1.0, 0.32, 0.28)
 var last_attacker_name := ""
 var last_headshot := false
 ## Wearing a helmet: the first non-piercing headshot knocks it off instead of landing.
@@ -130,6 +137,9 @@ func rebuild_rig(palette: Dictionary) -> void:
 	rig.build(palette)
 	rig.process_mode = pm
 	helmet_on = rig.helmet_node != null
+	_team_bands.clear()   # they went with the old body
+	if not _side.is_empty():
+		set_side(_side[0], _side[1])
 	rig.throw_release.connect(_on_throw_release)
 	rig.footstep.connect(_on_footstep)
 	rig.aim_yaw = yaw
@@ -639,10 +649,53 @@ func knock_off_helmet(dir: Vector3) -> void:
 		Net.sync.send_event(self, "helmet", [dir])
 
 
+## Floating name above the head.
+func add_name_tag(text: String) -> void:
+	if name_tag == null:
+		name_tag = Label3D.new()
+		name_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		name_tag.fixed_size = true
+		name_tag.pixel_size = 0.0011
+		name_tag.font_size = 22
+		name_tag.outline_size = 6
+		name_tag.position = Vector3(0, 2.15, 0)
+		name_tag.font = preload("res://scripts/ui/retro.gd").bold()
+		add_child(name_tag)
+	name_tag.text = text
+
+
+## Shows whose side this fighter is on, from the local operator's view. The
+## name tag turns blue (teammate: shows through walls) or red (opponent: only
+## in plain sight); `bands` (team modes) also puts an armband of that colour
+## on each upper arm, so sides read on the body too.
+func set_side(friendly: bool, bands: bool) -> void:
+	_side = [friendly, bands]
+	var col := ALLY_COLOR if friendly else FOE_COLOR
+	if name_tag != null:
+		name_tag.modulate = col
+		name_tag.no_depth_test = friendly
+	for b in _team_bands:
+		if is_instance_valid(b):
+			b.queue_free()
+	_team_bands.clear()
+	if not bands or rig == null:
+		return
+	var mat := preload("res://scripts/core/materials.gd").emissive("team_band_%s" % ("ally" if friendly else "foe"), col, 0.8)
+	for sh in rig.shoulders:
+		var mi := MeshInstance3D.new()
+		mi.mesh = preload("res://scripts/core/mesh_lib.gd").cylinder(0.074, 0.071, 0.05, 14)
+		mi.material_override = mat
+		mi.position = Vector3(0, -0.085, 0)
+		(sh as Node3D).add_child(mi)
+		_team_bands.append(mi)
+
+
 func die(dir: Vector3) -> void:
 	if is_dead:
 		return
 	is_dead = true
+	if name_tag != null:
+		name_tag.visible = false
 	health = 0.0
 	reload_timer = 0.0
 	switch_timer = 0.0

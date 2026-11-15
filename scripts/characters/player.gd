@@ -87,7 +87,6 @@ const TORCH_GLB := "res://assets/thirdparty/low_poly_attachments/flashlight.glb"
 
 ## Set by the HUD while an in-game menu is open in multiplayer (the world keeps running).
 static var input_blocked := false
-var name_tag: Label3D
 var _net_flags := 0
 var _net_weapon := 0
 var _net_lean := 0.0
@@ -138,16 +137,7 @@ func setup_player(yaw: float = 0.0, loadout = null, remote: bool = false, tag: S
 	add_to_group("player")
 	_build_rig_extras()
 	if remote and tag != "":
-		name_tag = Label3D.new()
-		name_tag.text = tag
-		name_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		name_tag.fixed_size = true
-		name_tag.pixel_size = 0.0011
-		name_tag.font_size = 22
-		name_tag.outline_size = 6
-		name_tag.position = Vector3(0, 2.15, 0)
-		name_tag.font = preload("res://scripts/ui/retro.gd").bold()
-		add_child(name_tag)
+		add_name_tag(tag)
 
 
 ## Wear a different outfit right now (the title-screen operator follows the
@@ -188,14 +178,6 @@ func _build_rig_extras() -> void:
 	_build_torch()
 	_build_chem_lights()
 	rig.one_hand_sprint = true  # sprint with the gun in the right hand only
-
-
-## Teammates' tags show through walls; opponents' only in plain sight.
-func set_tag_style(friendly: bool) -> void:
-	if name_tag == null:
-		return
-	name_tag.modulate = Color(0.55, 1.0, 0.6) if friendly else Color(1.0, 0.45, 0.4)
-	name_tag.no_depth_test = friendly
 
 
 # ------------------------------------------------------------------ network

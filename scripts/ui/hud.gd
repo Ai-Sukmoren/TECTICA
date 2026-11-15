@@ -21,6 +21,9 @@ const Campaign = preload("res://scripts/modes/campaign.gd")
 const MODES := ["ch1", "ch2", "zombie"]
 const Net = preload("res://scripts/net/net.gd")
 const PlayerScript = preload("res://scripts/characters/player.gd")
+const SoldierScript = preload("res://scripts/characters/soldier.gd")
+const ALLY := SoldierScript.ALLY_COLOR
+const FOE := SoldierScript.FOE_COLOR
 
 const Retro = preload("res://scripts/ui/retro.gd")
 const ACCENT := Retro.ACCENT
@@ -81,6 +84,8 @@ var _mp_pvp_map := "forest"
 var _mp_tdm_bots := 0
 ## Bots in a solo team deathmatch (split evenly between both teams).
 var _solo_tdm_bots := 6
+## Bots in a solo free-for-all deathmatch.
+var _solo_ffa_bots := 5
 var _mp_port_text := ""
 var _mp_replace_join_text := true
 ## host online through Tailscale Funnel (WebSocket) instead of direct UDP
@@ -310,6 +315,7 @@ func _menu_entries() -> Array:
 		{"id": "mode", "sec": "PLAY", "label": "MISSION", "value": _mode_label(main.mode), "arrow": true},
 		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode in ["zombie", "pvp"] else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode in ["zombie", "pvp"]},
 		{"id": "tdm", "sec": "PLAY", "label": "TEAM DEATHMATCH", "value": "VS AI  ·  %d BOTS" % _solo_tdm_bots, "arrow": true},
+		{"id": "ffa", "sec": "PLAY", "label": "FREE FOR ALL", "value": "VS AI  ·  %d BOTS" % _solo_ffa_bots, "arrow": true},
 		{"id": "mp", "sec": "PLAY", "label": "MULTIPLAYER", "value": "CO-OP  /  PVP"},
 		{"id": "rooms", "sec": "PLAY", "label": "OPEN ROOMS", "value": "CLICK TO JOIN"},
 		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
@@ -376,6 +382,14 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 				return
 			if Net.host("pvp", Net.port, false) == OK:
 				main.net_enter_world("tdm%d@%s" % [_solo_tdm_bots, main.map_id])
+		"ffa":
+			# solo free for all: a local match where every bot fights everyone
+			if dir != 0:
+				last_menu_index = i
+				_solo_ffa_bots = clampi(_solo_ffa_bots + dir, 1, 8)
+				return
+			if Net.host("pvp", Net.port, false) == OK:
+				main.net_enter_world("ffa%d@%s" % [_solo_ffa_bots, main.map_id])
 		"map":
 			if main.mode in ["zombie", "pvp"]:
 				last_menu_index = i
@@ -606,6 +620,8 @@ func _update_spotting(delta: float) -> void:
 	for e in main.enemies:
 		if e.is_dead or e.global_position.distance_to(player.global_position) > 30.0:
 			continue
+		if main.mode == "pvp" and e.team == player.team:
+			continue   # a teammate bot: shown in blue, not as a contact
 		var q := PhysicsRayQueryParameters3D.create(eye, e.global_position + Vector3(0, e.chest_height(), 0), 1)
 		if space.intersect_ray(q).is_empty():
 			_spotted[e] = 2.0
@@ -750,16 +766,7 @@ func _draw_overlay(c: Control) -> void:
 	var total: int = main.enemies.size()
 	var dir_node = main.director
 	if main.mode == "pvp":
-		var mine: Array = main.pvp_scores.get(Net.my_id(), ["", 0, 0])
-		var lead: int = main._pvp_leader()
-		var lead_s := ""
-		if lead > 0 and main.pvp_scores.has(lead):
-			lead_s = "   ·   LEADER  %s  %d" % [main.pvp_scores[lead][0], int(main.pvp_scores[lead][1])]
-		if main.saved_tdm:
-			lead_s = "   ·   BLUE %d : %d RED   ·   YOU: %s" % [main.team_scores[0], main.team_scores[1], "BLUE" if player.team == 0 else "RED"]
-		var tl := maxf(main.pvp_time_left, 0.0)
-		_text(c, Vector2(0, 92), "DEATHMATCH  ·  FIRST TO %d   ·   YOU  %d / %d%s" % [main.PVP_KILL_LIMIT, int(mine[1]), int(mine[2]), lead_s], 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-		_text(c, Vector2(0, 110), "%d:%02d LEFT   ·   %s" % [int(tl) / 60, int(tl) % 60, main.tod.clock_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+		_draw_pvp_header(c, vp)
 	elif dir_node != null:
 		var line := "WAVE %d   ·   INFECTED %d   ·   %d PTS" % [dir_node.wave, dir_node.remaining(), dir_node.shop.points]
 		if not dir_node.active:
@@ -1174,11 +1181,12 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 
 func _pvp_briefing() -> Array:
 	return [
-		["TECTICA  //  DEATHMATCH", RED, 20],
+		["TECTICA  //  " + _pvp_title(), RED, 20],
 		["LOCATION   " + String(main.MAPS[main.map_id]), TEXT, 14],
-		["OBJECTIVE  FIRST TO %d KILLS  -  10 MINUTES" % main.PVP_KILL_LIMIT, TEXT, 14],
+		["OBJECTIVE  FIRST %s TO %d KILLS  -  10 MINUTES" % ["TEAM" if main.saved_tdm else "FIGHTER", main.PVP_KILL_LIMIT], TEXT, 14],
 		["INTEL      SHOTS SHOW YOU ON THEIR RADAR  -  BUSHES HIDE YOU", TEXT, 14],
-		["ROE        FREE FOR ALL", ACCENT, 14],
+		["ROE        BLUE TAGS AND ARMBANDS ARE YOUR TEAM  -  RED ARE THE ENEMY", ALLY, 14] if main.saved_tdm
+				else ["ROE        FREE FOR ALL  -  EVERYONE ELSE IS A TARGET", ACCENT, 14],
 	]
 
 
@@ -1356,6 +1364,16 @@ func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
 			p = center + (p - center).normalized() * (radius - 4.0)
 		var a: float = clampf(_spotted[e], 0.0, 1.0)
 		c.draw_circle(p, 4.0, Color(DANGER, a))
+	if main.mode == "pvp" and main.saved_tdm:
+		# teammates always show, in their side colour
+		for f in get_tree().get_nodes_in_group("player"):
+			if f == player or f.is_dead or f.team != player.team:
+				continue
+			var lf: Vector3 = inv * (f.global_position - ppos)
+			var pf := center + Vector2(lf.x, lf.z) * sc
+			if pf.distance_to(center) > radius - 4.0:
+				pf = center + (pf - center).normalized() * (radius - 4.0)
+			c.draw_circle(pf, 4.0, ALLY)
 	var fwd_yaw: float = player.aim_yaw - view_yaw
 	var tip := center + Vector2(0, -9).rotated(-fwd_yaw)
 	var l := center + Vector2(-5, 6).rotated(-fwd_yaw)
@@ -2397,14 +2415,7 @@ func _draw_squad(c: Control, vp: Vector2) -> void:
 				_text(c, Vector2(x + 150, jy), String(a.label), 10, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 				jy += 16.0
 	if main.mode == "pvp":
-		var ids: Array = main.pvp_scores.keys()
-		ids.sort_custom(func(a, b): return int(main.pvp_scores[a][1]) > int(main.pvp_scores[b][1]))
-		_text(c, Vector2(x, y), "SCOREBOARD   K / D", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-		for id in ids:
-			y += 18.0
-			var e: Array = main.pvp_scores[id]
-			var col := ACCENT if id == Net.my_id() else TEXT
-			_text(c, Vector2(x, y), "%-16s  %2d / %d" % [String(e[0]), int(e[1]), int(e[2])], 12, col)
+		_draw_pvp_scoreboard(c, Vector2(x, y))
 		return
 	if Net.is_server():
 		var inv_s := Net.invite_link(Net.lan_ip())
@@ -2427,23 +2438,137 @@ func _draw_squad(c: Control, vp: Vector2) -> void:
 
 
 func _draw_pvp_over(c: Control, vp: Vector2) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.55))
-	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.22), minf(vp.x * 0.34, 520.0), 0.9)
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
+	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.2), minf(vp.x * 0.3, 460.0), 0.9)
 	var w: int = main.pvp_winner
-	var head := "VICTORY" if w == Net.my_id() else ("%s WINS" % main.pvp_scores[w][0] if main.pvp_scores.has(w) else "MATCH OVER")
-
+	var head := "MATCH OVER"
+	var head_col := WARN
+	var sub := ""
+	var sub_col := TEXT
 	if main.saved_tdm:
-		head = "DRAW" if w < 0 else ("BLUE TEAM WINS" if w == 0 else "RED TEAM WINS")
-	_text(c, Vector2(0, vp.y * 0.42), head, 44, ACCENT if w == Net.my_id() else DANGER, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-	var ids: Array = main.pvp_scores.keys()
-	ids.sort_custom(func(a, b): return int(main.pvp_scores[a][1]) > int(main.pvp_scores[b][1]))
-	var y := vp.y * 0.42 + 44
-	for id in ids:
-		var e: Array = main.pvp_scores[id]
-		_text(c, Vector2(0, y), "%s     %d KILLS  /  %d DEATHS" % [String(e[0]), int(e[1]), int(e[2])], 16, ACCENT if id == Net.my_id() else TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-		y += 26
+		var mine: int = player.team
+		var ours: int = main.team_scores[mine]
+		var theirs: int = main.team_scores[1 - mine]
+		head = "DRAW" if w < 0 else ("YOUR TEAM WINS" if w == mine else "YOUR TEAM LOST")
+		head_col = WARN if w < 0 else (ACCENT if w == mine else DANGER)
+		sub = "%d  :  %d" % [ours, theirs]
+	else:
+		var rank: int = main.pvp_ranked().find(Net.my_id()) + 1
+		head = "VICTORY" if w == Net.my_id() else ("%s WINS" % main.pvp_scores[w][0] if main.pvp_scores.has(w) else "MATCH OVER")
+		head_col = ACCENT if w == Net.my_id() else DANGER
+		sub = "YOU FINISHED  #%d  OF  %d" % [rank, main.pvp_scores.size()]
+	var y := vp.y * 0.38
+	_text(c, Vector2(0, y), head, 44, head_col, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_text(c, Vector2(0, y + 34), sub, 18, sub_col, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	# results table: name, kills, deaths in fixed columns
+	var w2 := 420.0
+	var x := vp.x * 0.5 - w2 * 0.5
+	y += 70.0
+	var rows := _pvp_rows()
+	c.draw_rect(Rect2(x - 16, y - 18, w2 + 32, 26 + rows.size() * 24), Color(0, 0, 0, 0.5))
+	_text(c, Vector2(x, y), "PLAYER", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(x + w2 - 120, y), "KILLS", 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 60, true)
+	_text(c, Vector2(x + w2 - 60, y), "DEATHS", 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 60, true)
+	for r in rows:
+		y += 24.0
+		_score_row(c, x, y, w2, r, 15)
 	var prompt := "Enter  ·  REMATCH FOR EVERYONE   ·   Esc LEAVE" if Net.is_server() else "WAITING FOR THE HOST   ·   Esc LEAVE"
-	_text(c, Vector2(0, y + 20), prompt, 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_text(c, Vector2(0, y + 40), prompt, 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+
+
+func _pvp_title() -> String:
+	return "TEAM DEATHMATCH" if main.saved_tdm else "FREE FOR ALL"
+
+
+## Rows for the scoreboards: team deathmatch puts a heading over each side
+## (yours first); free for all is one ranked list.
+## Each row: {head, text, kills, deaths, col, me, dead}.
+func _pvp_rows() -> Array:
+	var bodies := {}
+	for e in main.enemies:
+		if is_instance_valid(e) and e.has_meta("tdm_bot"):
+			bodies[int(e.get_meta("tdm_bot"))] = e
+	for id in main.players:
+		bodies[int(id)] = main.players[id]
+	var ranked: Array = main.pvp_ranked()
+	var rows: Array = []
+	if main.saved_tdm:
+		var mine: int = player.team
+		for side in [mine, 1 - mine]:
+			var ally: bool = side == mine
+			rows.append({"head": true, "text": "YOUR TEAM" if ally else "ENEMY TEAM", "kills": main.team_scores[side], "deaths": -1, "col": ALLY if ally else FOE})
+			for id in ranked:
+				if int(main.team_assignments.get(id, -1)) == side:
+					rows.append(_row_for(id, bodies, ALLY if ally else FOE))
+	else:
+		var n := 0
+		for id in ranked:
+			n += 1
+			var r := _row_for(id, bodies, FOE)
+			r.text = "%d.  %s" % [n, r.text]
+			rows.append(r)
+	return rows
+
+
+func _row_for(id, bodies: Dictionary, side_col: Color) -> Dictionary:
+	var e: Array = main.pvp_scores[id]
+	var me: bool = int(id) == Net.my_id()
+	var body = bodies.get(int(id))
+	return {"head": false, "text": String(e[0]).left(16), "kills": int(e[1]), "deaths": int(e[2]),
+			"col": ACCENT if me else side_col, "me": me, "dead": body != null and is_instance_valid(body) and body.is_dead}
+
+
+## One scoreboard line at (x, y), `w` wide: side stripe, name, kills, deaths.
+func _score_row(c: Control, x: float, y: float, w: float, r: Dictionary, size: int) -> void:
+	if r.head:
+		_text(c, Vector2(x, y), String(r.text), size - 2, r.col, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		_text(c, Vector2(x + w - 120, y), str(r.kills), size - 2, r.col, HORIZONTAL_ALIGNMENT_RIGHT, 60, true)
+		c.draw_line(Vector2(x, y + 5), Vector2(x + w, y + 5), Color(r.col, 0.5), 1.0)
+		return
+	var col: Color = r.col
+	if r.dead:
+		col = Color(col, 0.45)
+	if r.me:
+		c.draw_rect(Rect2(x - 6, y - size + 1, w + 12, size + 5), Color(ACCENT, 0.12))
+	c.draw_rect(Rect2(x - 6, y - size + 3, 3, size), Color(r.col, 0.9))
+	_text(c, Vector2(x + 4, y), String(r.text) + ("   DOWN" if r.dead else ""), size, col, HORIZONTAL_ALIGNMENT_LEFT, -1, r.me)
+	_text(c, Vector2(x + w - 120, y), str(r.kills), size, col, HORIZONTAL_ALIGNMENT_RIGHT, 60, r.me)
+	_text(c, Vector2(x + w - 60, y), str(r.deaths), size, col, HORIZONTAL_ALIGNMENT_RIGHT, 60, r.me)
+
+
+## Live scoreboard panel (top-left).
+func _draw_pvp_scoreboard(c: Control, at: Vector2) -> void:
+	var rows := _pvp_rows()
+	var w := 236.0
+	var x := at.x + 10
+	var y := at.y
+	c.draw_rect(Rect2(at.x, y - 16, w + 20, 26 + rows.size() * 18), Color(0, 0, 0, 0.45))
+	_text(c, Vector2(x, y), "SCOREBOARD", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(x + w - 120, y), "K", 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 60, true)
+	_text(c, Vector2(x + w - 60, y), "D", 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 60, true)
+	for r in rows:
+		y += 18.0
+		_score_row(c, x, y, w, r, 12)
+
+
+## Top-centre match line: mode and kill limit, the score, time left.
+func _draw_pvp_header(c: Control, vp: Vector2) -> void:
+	var tl := maxf(main.pvp_time_left, 0.0)
+	_text(c, Vector2(0, 92), "%s  ·  FIRST TO %d" % [_pvp_title(), main.PVP_KILL_LIMIT], 13, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	var cx := vp.x * 0.5
+	if main.saved_tdm:
+		var mine: int = player.team
+		_text(c, Vector2(cx - 300, 118), "YOUR TEAM  %d" % main.team_scores[mine], 20, ALLY, HORIZONTAL_ALIGNMENT_RIGHT, 284, true)
+		_text(c, Vector2(cx - 16, 118), ":", 20, TEXT, HORIZONTAL_ALIGNMENT_CENTER, 32, true)
+		_text(c, Vector2(cx + 16, 118), "%d  ENEMY" % main.team_scores[1 - mine], 20, FOE, HORIZONTAL_ALIGNMENT_LEFT, 284, true)
+	else:
+		var mine_s: Array = main.pvp_scores.get(Net.my_id(), ["", 0, 0])
+		var ranked: Array = main.pvp_ranked()
+		var lead_s := ""
+		if not ranked.is_empty() and int(ranked[0]) != Net.my_id():
+			lead_s = "   ·   LEADER  %s  %d" % [main.pvp_scores[ranked[0]][0], int(main.pvp_scores[ranked[0]][1])]
+		_text(c, Vector2(0, 118), "YOU  %d KILLS   ·   #%d OF %d%s" % [int(mine_s[1]), ranked.find(Net.my_id()) + 1, ranked.size(), lead_s], 16, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_text(c, Vector2(0, 148), "%d:%02d LEFT   ·   %s" % [int(tl) / 60, int(tl) % 60, main.tod.clock_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
 
 # ================================================================ sign in

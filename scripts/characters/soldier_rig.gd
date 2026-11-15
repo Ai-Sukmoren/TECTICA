@@ -370,13 +370,11 @@ func _build_details(p: Dictionary) -> void:
 	var wrap: Material = p.get("wrap", M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0))
 	_mesh(chest, ML.cylinder(0.07, 0.092, 0.075, 14), wrap, Vector3(0, 0.305, 0.0))
 	_mesh(chest, ML.sphere(0.06, false, 10), wrap, Vector3(0.0, 0.285, -0.075), Vector3.ZERO, Vector3(1.5, 0.75, 0.7))
-	# arms: rounded elbow pads, glove cuffs, wrist GPS on the support arm
+	# arms: rounded elbow pads, glove cuffs
 	for i in 2:
 		_mesh(elbows[i], ML.sphere(0.052, false, 10), pads, Vector3(0, -0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
 		_mesh(elbows[i], ML.cylinder(0.06, 0.064, 0.055, 12), p.gloves, Vector3(0, -FOREARM + 0.035, 0))
 		_mesh(hands[i], ML.rbox(Vector3(0.076, 0.03, 0.06)), detail, Vector3(0, -0.02, -0.03))
-	_mesh(elbows[0], ML.rbox(Vector3(0.052, 0.04, 0.016)), M.solid(Color(0.05, 0.06, 0.06), 0.25, 0.4), Vector3(0, -0.2, -0.058))
-	_mesh(elbows[0], ML.rbox(Vector3(0.036, 0.026, 0.004)), M.emissive("wrist_gps", Color(0.2, 0.9, 0.5), 0.9), Vector3(0, -0.2, -0.068))
 	# legs: knee caps, pocket flaps, boot collars and toe caps
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0

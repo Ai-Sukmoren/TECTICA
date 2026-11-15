@@ -163,6 +163,7 @@ func _ready() -> void:
 	player.global_position = start[0]
 	player.setup_player(float(start[1]), null, false, Net.default_name())
 	player.team = _team_for(my_id)
+	_mark_side(player)
 	player.fired.connect(_on_fired)
 	player.damaged.connect(_on_player_damaged)
 	player.died.connect(_on_player_died)
@@ -181,7 +182,7 @@ func _ready() -> void:
 
 	var spawns: Array = level.enemy_spawns if is_campaign() else []
 	if mode == "pvp":
-		if saved_tdm and Net.is_server():
+		if saved_bots > 0 and Net.is_server():
 			call_deferred("_spawn_tdm_bots")
 	elif mode == "zombie":
 		director = WaveDirector.new()
@@ -276,6 +277,8 @@ func spawn_enemy(data: Dictionary, net_name: String = "", variant: int = -1):
 		e.set_meta("tdm_bot", bot_id)
 		e.add_to_group("player")
 		pvp_scores.get_or_add(bot_id, ["BOT %d" % (bot_id - 1000), 0, 0])
+		e.add_name_tag("BOT %d" % (bot_id - 1000))
+		_mark_side(e)
 	e.set_meta("group", String(data.get("group", "")))
 	e.fired.connect(_on_fired)
 	e.died.connect(_on_enemy_died)
@@ -815,7 +818,7 @@ func _net_reload(m: String) -> bool:
 		return false
 	if Net.is_server():
 		if Net.sync:
-			Net.sync.game_event("reload", [("tdm%d" % saved_bots if m == "pvp" and saved_tdm else m) + ("@" + saved_map if saved_map != "forest" else "")])
+			Net.sync.game_event("reload", [_token_for(m) + ("@" + saved_map if saved_map != "forest" else "")])
 		saved_mode = m
 		quick_restart = true
 		saved_first_person = player.first_person or start_first_person
@@ -826,7 +829,39 @@ func _net_reload(m: String) -> bool:
 
 ## Mode plus map as sent to clients: "zombie" or "zombie@town".
 func mode_token() -> String:
-	return ("tdm%d" % saved_bots if mode == "pvp" and saved_tdm else mode) + ("@" + map_id if map_id != "forest" else "")
+	return _token_for(mode) + ("@" + map_id if map_id != "forest" else "")
+
+
+## "tdm<bots>" (team deathmatch), "ffa<bots>" (free for all vs AI) or the plain mode.
+func _token_for(m: String) -> String:
+	if m == "pvp" and saved_tdm:
+		return "tdm%d" % saved_bots
+	if m == "pvp" and saved_bots > 0:
+		return "ffa%d" % saved_bots
+	return m
+
+
+## True in a deathmatch where every fighter is on their own (no teams).
+func is_ffa() -> bool:
+	return mode == "pvp" and not saved_tdm
+
+
+## Name-tag colour and team armbands on `f` as the local operator sees it:
+## teammates blue, opponents red (everyone in free for all), co-op squad blue.
+func _mark_side(f: Node) -> void:
+	if f == player:
+		player.set_side(true, false)   # no armband on yourself: it fills the first-person view
+	elif mode != "pvp":
+		f.set_side(true, false)
+	else:
+		f.set_side(saved_tdm and f.team == player.team, saved_tdm)
+
+
+func refresh_sides() -> void:
+	if player == null:
+		return
+	for f in get_tree().get_nodes_in_group("player"):
+		_mark_side(f)
 
 
 ## Switches the Zombie / Deathmatch map and reloads into it.
@@ -842,8 +877,9 @@ func net_enter_world(m: String) -> void:
 	var parts := m.split("@")
 	m = parts[0]
 	saved_tdm = m.begins_with("tdm")
-	saved_bots = clampi(int(m.substr(3)), 0, 8) if saved_tdm else 0
-	if saved_tdm:
+	var vs_bots := saved_tdm or m.begins_with("ffa")
+	saved_bots = clampi(int(m.substr(3)), 0, 8) if vs_bots else 0
+	if vs_bots:
 		m = "pvp"
 	saved_map = parts[1] if parts.size() > 1 and MAPS.has(parts[1]) else "forest"
 	saved_mode = m
@@ -900,7 +936,7 @@ func _make_operator(id: int, info: Dictionary, pos: Vector3, yaw: float, remote:
 func add_remote_player(id: int, info: Dictionary, pos: Vector3, yaw: float, dead: bool = false) -> Node:
 	remove_remote_player(id)
 	var p = _make_operator(id, info, pos, yaw, true)
-	p.set_tag_style(mode != "pvp" or (saved_tdm and p.team == player.team))
+	_mark_side(p)
 	p.died.connect(_on_remote_player_died)
 	players[id] = p
 	if Net.is_server():
@@ -1113,13 +1149,18 @@ func _pvp_on_death(victim: Node) -> void:
 func _pvp_leader() -> int:
 	if saved_tdm:
 		return -1 if team_scores[0] == team_scores[1] else (0 if team_scores[0] > team_scores[1] else 1)
-	var best := -1
-	var best_k := -1
-	for id in pvp_scores:
-		if int(pvp_scores[id][1]) > best_k:
-			best_k = int(pvp_scores[id][1])
-			best = id
-	return best
+	var ranked := pvp_ranked()
+	return -1 if ranked.is_empty() else int(ranked[0])
+
+
+## Score ids, best first: most kills, then fewest deaths.
+func pvp_ranked() -> Array:
+	var ids: Array = pvp_scores.keys()
+	ids.sort_custom(func(a, b):
+		var ea: Array = pvp_scores[a]
+		var eb: Array = pvp_scores[b]
+		return int(ea[1]) > int(eb[1]) or (int(ea[1]) == int(eb[1]) and int(ea[2]) < int(eb[2])))
+	return ids
 
 
 func _pvp_end(winner: int) -> void:
@@ -1211,6 +1252,7 @@ func net_apply_world(data: Dictionary) -> void:
 	if saved_tdm and data.has("team"):
 		team_assignments[Net.my_id()] = int(data.team)
 		player.team = int(data.team)
+		refresh_sides()
 	var sp: Array = data.get("spawn", [])
 	if sp.size() == 2:
 		player.global_position = sp[0]
@@ -1330,5 +1372,5 @@ func _spawn_tdm_bot(id: int) -> void:
 
 func _respawn_tdm_bot(id: int) -> void:
 	await get_tree().create_timer(PVP_RESPAWN).timeout
-	if not game_over and saved_tdm:
+	if not game_over and saved_bots > 0:
 		_spawn_tdm_bot(id)

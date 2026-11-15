@@ -34,6 +34,15 @@ func run() -> void:
 		if e.team == m.player.team:
 			mine += 1
 	check(mine == 3, "three bots on the operator's team, three against (%d)" % mine)
+	# sides read at a glance: teammates blue (through walls) with armbands, opponents red
+	var Soldier = preload("res://scripts/characters/soldier.gd")
+	var right := 0
+	for e in m.enemies:
+		var ally: bool = e.team == m.player.team
+		if e.name_tag != null and e.name_tag.modulate == (Soldier.ALLY_COLOR if ally else Soldier.FOE_COLOR) 				and e.name_tag.no_depth_test == ally and e._team_bands.size() == 2:
+			right += 1
+	check(right == 6, "every bot is marked with its side's tag colour and armbands (%d)" % right)
+	check(m.player._team_bands.is_empty(), "no armband on the operator (it would sit in the first-person view)")
 	var start := {}
 	for e in m.enemies:
 		start[e] = e.global_position

@@ -468,11 +468,17 @@ func _mesh(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3,
 ## The rig keeps animating invisibly and the model copies its pose; guns,
 ## the hand magazine and grenade stay on the rig's (invisible) hands.
 func use_model(path: String, tint: Color = Color.WHITE, hide_meshes: Array = []) -> bool:
+	var ps := load(path) as PackedScene
+	return ps != null and use_model_scene(ps, tint, hide_meshes)
+
+
+## As use_model(), from a scene already in memory.
+func use_model_scene(ps: PackedScene, tint: Color = Color.WHITE, hide_meshes: Array = []) -> bool:
 	var s := ModelSkin.new()
 	s.name = "ModelSkin"
 	s.process_priority = 50   # after this rig animates
 	add_child(s)
-	if not s.setup(self, path, tint, hide_meshes):
+	if not s.setup_scene(self, ps, tint, hide_meshes):
 		s.queue_free()
 		return false
 	model_skin = s
@@ -572,8 +578,8 @@ func _apply_model_visibility() -> void:
 			if (sh as Node).is_ancestor_of(mi):
 				on_arm = true
 				break
-		# first person keeps the rig's arms (they hold the gun up to the eye)
-		mi.visible = fp_mode and on_arm
+		# first person shows the model's own arms; a model without them keeps the rig's
+		mi.visible = fp_mode and on_arm and model_skin.fp_arms.is_empty()
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
@@ -615,7 +621,7 @@ func sever(bone: Node3D, dir: Vector3) -> void:
 	var first := true
 	for n in meshes:
 		var mi := n as MeshInstance3D
-		if not mi.visible or mi.mesh == null:
+		if (not mi.visible and model_skin == null) or mi.mesh == null:   # under a model skin the limb is hidden, not gone
 			continue
 		var copy := MeshInstance3D.new()
 		copy.mesh = mi.mesh

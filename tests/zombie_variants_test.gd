@@ -101,5 +101,24 @@ func run():
 	await physics_frame
 	await physics_frame
 	check(not crawler._clear_melee_path(), "Melee must not pass through walls")
+	# every Polyart zombie in the pack is driven: its own skeleton, all limbs found
+	# (later copies in the pack carry numbered bone names and stood frozen)
+	var ZS = load("res://scripts/characters/zombie_skin.gd")
+	if ZS.available("polyart"):
+		for v in 4:
+			var pz := Zombie.new()
+			pz.skin_id = "polyart"
+			scene.add_child(pz)
+			pz.init_zombie(target, "walker", 100.0, 2.0, 10.0, v)
+			var ms = pz.rig.model_skin
+			check(ms != null, "Polyart variant %d has no model skin" % v)
+			if ms != null:
+				var bound := false
+				for mi in ms.meshes:
+					if mi.skin != null and mi.get_node_or_null(mi.skeleton) == ms.skel:
+						bound = true
+				check(bound, "Polyart variant %d drives a skeleton its mesh is not bound to" % v)
+				check(ms._chains.size() == 4 and ms._root >= 0, "Polyart variant %d: limbs not all found (%d chains)" % [v, ms._chains.size()])
+			pz.queue_free()
 	print("VARIANTS + ANIMATION: failures=",failures)
 	quit(0 if failures == 0 else 1)

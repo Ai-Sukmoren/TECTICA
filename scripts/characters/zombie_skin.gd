@@ -196,9 +196,25 @@ func die(dir: Vector3) -> void:
 	tw.parallel().tween_property(self, "position:y", position.y + 0.15, 0.55)
 
 
+## One Polyart zombie as its own scene (for the rig-driven model skin).
+static func polyart_scene(variant: int) -> PackedScene:
+	if not ResourceLoader.exists(POLYART):
+		return null
+	_build_polyart_templates()
+	var templates: Array = _templates["polyart"]
+	return null if templates.is_empty() else templates[variant % templates.size()]
+
+
 ## One Polyart character on its own: the others and the display stand are removed.
 func _polyart_character(i: int) -> Node3D:
-	if not _templates.has("polyart"):
+	var ps := polyart_scene(i)
+	return null if ps == null else ps.instantiate() as Node3D
+
+
+static func _build_polyart_templates() -> void:
+	if _templates.has("polyart"):
+		return
+	if true:
 		var list: Array = []
 		var src := (load(POLYART) as PackedScene).instantiate() as Node3D
 		var meshes := src.find_children("lp*_zombie_*", "MeshInstance3D", true, false)
@@ -221,10 +237,6 @@ func _polyart_character(i: int) -> Node3D:
 			list.append(ps)
 		src.free()
 		_templates["polyart"] = list
-	var templates: Array = _templates["polyart"]
-	if templates.is_empty():
-		return null
-	return (templates[i % templates.size()] as PackedScene).instantiate() as Node3D
 
 
 ## Makes every node belong to `root` so PackedScene.pack keeps the whole tree.

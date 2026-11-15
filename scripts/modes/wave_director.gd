@@ -231,10 +231,10 @@ func apply_net_state(s: Array) -> void:
 	boss_frac = float(s[7]) if s.size() > 7 else -1.0
 
 
-## The animated model zombies wear on the current map: the Partygoer in the
-## Backrooms, the Polyart zombie pack everywhere else.
+## The model zombies wear: the Polyart zombie pack on every map. ("partygoer",
+## the Backrooms entity, is still supported by zombie_skin.gd.)
 func skin_for_map() -> String:
-	return "partygoer" if main.map_id == "backrooms" else "polyart"
+	return "polyart"
 
 
 ## A host-spawned zombie on a client.
@@ -280,8 +280,6 @@ func _spawn_one(force_kind: String = "") -> bool:
 	pos.y = maxf(Terrain.height(pos.x, pos.z), pos.y - 0.3) + 0.05
 
 	var kind := force_kind if force_kind != "" else Types.pick(wave, randf())
-	if main.map_id == "backrooms" and Types.is_creature(kind):
-		kind = "runner"   # only Partygoers walk the Backrooms
 	var stats := Types.stats(kind, wave)
 	var hp: float = stats.hp
 	var dmg: float = stats.damage

@@ -6,10 +6,9 @@ const InputSetup = preload("res://scripts/core/input_setup.gd")
 const Level = preload("res://scripts/world/forest_level.gd")
 const TownLevel = preload("res://scripts/world/town_level.gd")
 const DesertLevel = preload("res://scripts/world/desert_level.gd")
-const CityLevel = preload("res://scripts/world/city_level.gd")
 const ModelLevel = preload("res://scripts/world/model_level.gd")
 ## Maps for Zombie Survival / Deathmatch (the campaign is always the forest).
-const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES", "city": "NEIGHBOURHOOD",
+const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES",
 		"warehouse": "WAREHOUSE", "backrooms": "BACKROOMS"}
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
@@ -139,7 +138,7 @@ func _ready() -> void:
 	if ModelLevel.CONFIGS.has(map_id):
 		level = ModelLevel.new(map_id)
 	else:
-		level = TownLevel.new() if map_id == "town" else (DesertLevel.new() if map_id == "desert" else (CityLevel.new() if map_id == "city" else Level.new()))
+		level = TownLevel.new() if map_id == "town" else (DesertLevel.new() if map_id == "desert" else Level.new())
 	level.name = "Level"
 	level.mode = mode
 	add_child(level)

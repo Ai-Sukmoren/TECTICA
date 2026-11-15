@@ -119,7 +119,13 @@ func init_zombie(p_player, p_kind: String, hp: float, spd: float, dmg: float, va
 			_shape.height = 0.6
 			_col.position.y = CreatureBody.BAT_HOVER
 			motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
-	if skin_id != "" and not Types.is_creature(kind) and ZombieSkin.available(skin_id):
+	if skin_id == "polyart" and not Types.is_creature(kind) and ZombieSkin.available(skin_id):
+		# the zombie rig animates (shamble, run, lunge and swing, stagger, crawl,
+		# fall) and the Polyart zombie copies its pose bone for bone
+		var ps := ZombieSkin.polyart_scene(variant)
+		if ps != null:
+			rig.use_model_scene(ps)
+	elif skin_id != "" and not Types.is_creature(kind) and ZombieSkin.available(skin_id):
 		var sk := ZombieSkin.new()
 		sk.name = "Skin"
 		add_child(sk)
@@ -260,6 +266,8 @@ func sever_limb(key: String, at: String, dir: Vector3) -> void:
 	rig.sever(bone, dir)
 	if skin != null:
 		skin.sever(key, at)
+	if rig.model_skin != null:
+		rig.model_skin.hide_limb(key, at)
 	FX.blood(self, joint, dir)
 	FX.knife_spray(self, joint, (dir + Vector3.UP * 0.6).normalized(), true)
 	FX.blood_pool(self, Vector3(joint.x, global_position.y, joint.z))

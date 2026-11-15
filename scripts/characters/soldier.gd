@@ -140,18 +140,19 @@ func rebuild_rig(palette: Dictionary) -> void:
 	_flash_meshes.clear()
 
 
-## Skinned SWAT model (Quaternius Ultimate Modular Characters, CC0) drawn over
-## the procedural rig. Its built-in pistol mesh is hidden: guns come from the rig.
-const CHARACTER_MODEL := "res://assets/thirdparty/quaternius_modular_characters/Swat.gltf"
+## The base character: the casual low-poly male (3ds Max biped rig, local only,
+## not in the repository) drawn over the procedural rig, which keeps doing all
+## the animation; model_skin.gd copies its pose. Guns come from the rig.
+const CHARACTER_MODEL := "res://assets/thirdparty/casual_male/lpMale_rig_tpose.fbx"
 
 
-## Off: player and enemies use the original procedural TECTICA operator body
-## (it carries the player skins). Set true to wear the SWAT model again.
-const USE_CHARACTER_MODEL := false
+## On: player, bots and soldiers wear CHARACTER_MODEL (when the file is present).
+## Off: the original procedural TECTICA operator body.
+const USE_CHARACTER_MODEL := true
 
 
 func use_character_model(tint: Color) -> void:
-	if USE_CHARACTER_MODEL and rig != null:
+	if USE_CHARACTER_MODEL and rig != null and ResourceLoader.exists(CHARACTER_MODEL):
 		rig.use_model(CHARACTER_MODEL, tint, ["Pistol"])
 
 

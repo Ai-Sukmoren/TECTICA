@@ -1,6 +1,6 @@
 extends SceneTree
 ## The gunsmith opens from the pause menu in the campaign and PvP (and their
-## co-op sessions), never in Zombie Survival; closing it solo re-issues the
+## co-op sessions and Zombie Survival; closing it solo re-issues the
 ## loadout. Never writes the loadout file: the test restores what it changed.
 ##   godot --headless --path . -s res://tests/gunsmith_match_test.gd
 const Main = preload("res://scripts/main.gd")
@@ -25,7 +25,7 @@ func start(mode: String, map: String) -> Node:
 
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
-	for m in [["ch1", "forest", true], ["pvp", "town", true], ["zombie", "town", false]]:
+	for m in [["ch1", "forest", true], ["pvp", "town", true], ["zombie", "town", true]]:
 		var main = await start(m[0], m[1])
 		var hud = main.hud
 		var items: Array = hud._pause_items()

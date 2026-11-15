@@ -1558,10 +1558,10 @@ func _draw_blend_space(c: Control, rect: Rect2, rig) -> void:
 
 # ================================================================ pause & settings
 
-## The gunsmith opens mid-match in the campaign, PvP and co-op; Zombie
-## Survival keeps its own supply shop.
+## The gunsmith opens mid-match in every mode; Zombie Survival also keeps its
+## own supply shop.
 func _gunsmith_in_match() -> bool:
-	return main.mode != "zombie"
+	return true
 
 
 func _pause_items() -> Array:

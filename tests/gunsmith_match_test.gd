@@ -36,6 +36,18 @@ func run() -> void:
 		hud._pause_activate(items.find("GUNSMITH"))
 		check(hud.gunsmith.is_open, "%s: GUNSMITH opens the gunsmith" % m[0])
 		var specs_before: Array = main.player.weapons.map(func(w): return w.id)
+		if m[0] == "ch1":
+			# solo: a pick changes the gun in hand at once, before the gunsmith closes
+			var gs = hud.gunsmith
+			gs._build_rows()
+			var row: int = gs._rows.find({"t": "weapon", "s": "primary"})
+			var before := String(main.player.weapons[0].id)
+			gs._change(row, 1)
+			await process_frame
+			var live := String(main.player.weapons[0].id)
+			check(row >= 0 and live != before, "%s: a gunsmith pick changes the gun in hand live (%s -> %s)" % [m[0], before, live])
+			gs._change(row, -1)
+			await process_frame
 		hud.gunsmith.close()
 		hud._gunsmith_closed_in_match()
 		await process_frame

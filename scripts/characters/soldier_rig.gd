@@ -1430,20 +1430,37 @@ func _update_weapon_pose(delta: float) -> void:
 		# slow into the catch, where the muzzle dips past level and springs back.
 		# The gun is carried up and turned side-on so the spin reads as a wheel.
 		var ct := clampf(cycle_t, 0.0, 1.0)
+		var spin_cock: bool = weapon.lever != null
 		var su := clampf(ct / 0.8, 0.0, 1.0)
-		_twirl = TAU * 2.0 * (1.0 - pow(1.0 - su, 2.6))
+		if spin_cock:
+			# one even roll through the middle of the cycle: whips round fast, caught at SPIN_CATCH
+			var sp := clampf((ct - 0.1) / (SPIN_CATCH - 0.1), 0.0, 1.0)
+			_twirl = TAU * sp * sp * (3.0 - 2.0 * sp)
+		else:
+			_twirl = TAU * 2.0 * (1.0 - pow(1.0 - su, 2.6))
 		var cv := clampf((ct - 0.8) / 0.2, 0.0, 1.0)
 		var settle := -0.2 * sin(PI * cv) * (1.0 - cv)
 		var show := pow(sin(PI * minf(ct / 0.86, 1.0)), 0.6)
 		var fpk := 1.0 if fp_mode else 0.4
 		var pv: Vector3 = (weapon.global_transform.affine_inverse() * weapon.twirl.global_transform).origin
 		var spin := Basis(Vector3.RIGHT, _twirl)
-		xf = xf * Transform3D(Basis.from_euler(Vector3(settle, 0.85 * show * fpk, 0.25 * show)),
-				Vector3(-0.08 * show * fpk, 0.07 * show, 0.1 * show * fpk)) * Transform3D(spin, pv - spin * pv)
-		if not _tw_a and ct > 0.32:
+		if spin_cock:
+			# lever-action spin cock: the rifle stays square to the body (no sideways
+			# swing) and rolls straight back toward it once round the lever loop,
+			# held a little low so the barrel passes clear of the head, then is caught
+			var out := smoothstep(0.0, 0.14, ct) * (1.0 - smoothstep(0.8, 1.0, ct))
+			# a small forward flick of the wrist starts it; the catch kicks the muzzle up a touch
+			var flick := sin(PI * clampf(ct / 0.12, 0.0, 1.0)) * 0.25
+			var catch_kick := sin(PI * clampf((ct - SPIN_CATCH) / 0.14, 0.0, 1.0)) * 0.12
+			xf = xf * Transform3D(Basis(Vector3.RIGHT, -flick + catch_kick),
+					Vector3(0, -0.14 * out, 0.06 * out * fpk)) * Transform3D(spin, pv - spin * pv)
+		else:
+			xf = xf * Transform3D(Basis.from_euler(Vector3(settle, 0.85 * show * fpk, 0.25 * show)),
+					Vector3(-0.08 * show * fpk, 0.07 * show, 0.1 * show * fpk)) * Transform3D(spin, pv - spin * pv)
+		if not _tw_a and ct > (0.42 if spin_cock else 0.32):
 			_tw_a = true
 			Sfx.play(self, "knife_swing", weapon.global_position, -6.0, 0.15)
-		if not _tw_b and ct > 0.8:
+		if not _tw_b and ct > (SPIN_CATCH if spin_cock else 0.8):
 			_tw_b = true
 			Sfx.play(self, "bolt", weapon.global_position, -3.0)   # caught, hammers back
 	if cycle_t >= 0.0 and weapon.roll != null:
@@ -1630,6 +1647,12 @@ func _update_arms(delta: float) -> void:
 	# reaches. Real shooters roll the shoulder forward (and blade the torso):
 	# the shoulder follows the hand by up to 13 cm in third person, and as far
 	# as needed in first person, where the shoulders are off-screen.
+	if fp_mode and aim_amt > 0.0 and _free_arm < 0.5 and reload_t < 0.0:
+		# aiming in first person, the gloves and cuffs must not rise into the
+		# view of the gun: each hand drops just below its hold point as the eye sees it
+		var up := fp_eye.basis.y.normalized()
+		r_xf.origin -= up * _ads_hand_drop(hands[1], r_xf.basis, r_xf.origin, weapon.grip.global_position, shoulders[1].global_position) * aim_amt
+		l_pos -= up * _ads_hand_drop(hands[0], l_basis, l_pos, weapon.support.global_position, shoulders[0].global_position) * aim_amt
 	_reach_shoulder(0, l_pos, 0.13)
 	_reach_shoulder(1, r_xf.origin, 0.06)
 	_solve_ik(shoulders[1], elbows[1], UPPER_ARM, FOREARM, r_xf.origin, (cb * r_pole).normalized())
@@ -1650,6 +1673,53 @@ func _one_hand_run() -> bool:
 	return fp_mode or weapon.is_pistol() or weapon.is_melee()
 
 
+## Glove extents in hand space (corners of all its meshes), measured once.
+var _hand_box: Array = []
+## The wrist cuff's radius: it sits at the hand's origin.
+const CUFF_R := 0.065
+## How far (0..1) a glove may rise from its hold point toward the sight line while aiming.
+const ADS_HAND_RISE := 0.33
+
+
+## How far (m, along the view's up) a hand placed at `hb`/`at` must drop
+## so that no part of the glove, its cuff or the sleeve behind it rises more than
+## ADS_HAND_RISE of the way from `hold` up to the sight line, seen from the eye.
+func _ads_hand_drop(hand: Node3D, hb: Basis, at: Vector3, hold: Vector3, shoulder: Vector3) -> float:
+	if _hand_box.is_empty():
+		var box := AABB()
+		var first := true
+		for n in hand.find_children("*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			var a: AABB = mi.transform * mi.get_aabb()
+			box = a if first else box.merge(a)
+			first = false
+		for k in 8:
+			_hand_box.append(box.get_endpoint(k))
+	var inv := fp_eye.affine_inverse()
+	var h := inv * hold
+	if h.z >= -0.01:
+		return 0.0
+	# the eye sits on the sight line (slope 0): the glove may rise a third of the
+	# way from its hold point toward it, staying on the gun's lower part, off the
+	# slide / receiver top and the sights
+	var slope := h.y / -h.z * (1.0 - ADS_HAND_RISE)
+	var pts: Array = []
+	for c in _hand_box:
+		pts.append(at + hb * (c as Vector3))
+	# the glove cuff and the sleeve behind it: rings round the forearm, which runs
+	# back toward the shoulder, so seen end-on from the eye they are wide discs
+	var up := fp_eye.basis.y.normalized()
+	var back := (shoulder - at).normalized()
+	for k in [0.0, 0.035, 0.1, 0.18]:
+		pts.append(at + back * float(k) + up * CUFF_R)
+	var drop := 0.0
+	for pt in pts:
+		var v: Vector3 = inv * (pt as Vector3)
+		if v.z < -0.01:
+			drop = maxf(drop, v.y - slope * -v.z)
+	return minf(drop, 0.12)
+
+
 func _reach_shoulder(i: int, target: Vector3, tp_limit: float) -> void:
 	var sh: Node3D = shoulders[i]
 	var to := target - sh.global_position
@@ -1662,6 +1732,8 @@ func _reach_shoulder(i: int, target: Vector3, tp_limit: float) -> void:
 
 ## How far a lever-action's lever swings open (radians).
 const LEVER_OPEN := 0.9
+## Spin cock: where in the cycle (0..1) the rifle completes its roll and is caught.
+const SPIN_CATCH := 0.78
 
 ## Bolt-action / pump-action / lever-action cycling after each shot.
 func _update_cycle(delta: float) -> void:
@@ -1682,7 +1754,14 @@ func _update_cycle(delta: float) -> void:
 		weapon.bolt.position = Vector3(0, 0, 0.075 * w)
 	if weapon.pump != null:
 		weapon.pump.position = _pump_base + Vector3(0, 0, 0.09 * w)
-	if weapon.lever != null:
+	if weapon.lever != null and weapon.twirl != null:
+		# spin cock: the lever flies open as the rifle whips round and snaps shut on the catch
+		var ct := minf(cycle_t, 1.0)
+		var lw := smoothstep(0.12, 0.38, ct) - smoothstep(SPIN_CATCH - 0.1, SPIN_CATCH, ct)
+		weapon.lever.rotation.x = LEVER_OPEN * lw
+		if weapon.bolt != null:
+			weapon.bolt.position = Vector3(0, 0, 0.075 * lw)
+	elif weapon.lever != null:
 		weapon.lever.rotation.x = LEVER_OPEN * w   # swings down and forward, then back
 	if weapon.roll != null:
 		# hammer falls at the shot, is thumbed back to full cock, then the block
@@ -1692,7 +1771,7 @@ func _update_cycle(delta: float) -> void:
 		weapon.roll.rotation.x = 1.25 * (smoothstep(0.3, 0.5, ct) - smoothstep(0.72, 0.92, ct))
 	if not _cycle_cased and cycle_t > 0.5:
 		_cycle_cased = true
-		if weapon.twirl == null:   # a break-action keeps its shells until the reload
+		if weapon.twirl == null or weapon.lever != null:   # a break-action keeps its shells until the reload
 			FX.casing(self, weapon.eject.global_position, weapon.global_transform.basis.x, false)
 	if cycle_t >= 1.0:
 		cycle_t = -1.0

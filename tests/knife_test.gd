@@ -1,5 +1,5 @@
 extends SceneTree
-## Knives: the melee slot (key 3), slash hits in front, backstab bonus,
+## Knives: the melee slot (key 4), slash hits in front, backstab bonus,
 ## no hits out of reach or through walls, all three models build, the
 ## inspect flourishes move the parts, and the loadout keeps the choice.
 ##   godot --headless --path . -s res://tests/knife_test.gd
@@ -57,11 +57,11 @@ func run() -> void:
 
 	check(p.weapons.back().is_melee(), "loadout carries a knife (%s)" % p.weapons.back().id)
 	check(p._slot("knife") == p.weapons.size() - 1 and p._slot("pistol") >= 0, "number keys find the knife and pistol by role")
-	Input.action_press("weapon_3")
+	Input.action_press("weapon_4")
 	await ticks(2)
-	Input.action_release("weapon_3")
+	Input.action_release("weapon_4")
 	await ticks(Engine.physics_ticks_per_second)
-	check(p.current_weapon().is_melee(), "key 3 draws the knife")
+	check(p.current_weapon().is_melee(), "key 4 draws the knife")
 	var dmg := float(p.current_weapon().stats.damage)
 
 	var z = await zombie(main, 1.3, false)

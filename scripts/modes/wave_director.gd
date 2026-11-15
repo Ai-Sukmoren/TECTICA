@@ -231,11 +231,18 @@ func apply_net_state(s: Array) -> void:
 	boss_frac = float(s[7]) if s.size() > 7 else -1.0
 
 
+## The animated model zombies wear on the current map: the Partygoer in the
+## Backrooms, the Polyart zombie pack everywhere else.
+func skin_for_map() -> String:
+	return "partygoer" if main.map_id == "backrooms" else "polyart"
+
+
 ## A host-spawned zombie on a client.
 func spawn_puppet(nm: String, pos: Vector3, args: Array) -> void:
 	var z := Zombie.new()
 	z.name = nm
 	z.puppet = true
+	z.skin_id = skin_for_map()
 	main.add_child(z)
 	z.global_position = pos
 	z.init_zombie(main.player, String(args[0]), float(args[1]), float(args[2]), float(args[3]), int(args[4]))
@@ -269,9 +276,12 @@ func _spawn_one(force_kind: String = "") -> bool:
 		return false
 	var pos: Vector3 = pool[randi() % pool.size()] + Vector3(randf_range(-1.0, 1.0), 0, randf_range(-1.0, 1.0))
 	pos = NavigationServer3D.map_get_closest_point(map, pos)
-	pos.y = Terrain.height(pos.x, pos.z) + 0.05
+	# maps built from a model have no terrain: stand on the navigation mesh's floor
+	pos.y = maxf(Terrain.height(pos.x, pos.z), pos.y - 0.3) + 0.05
 
 	var kind := force_kind if force_kind != "" else Types.pick(wave, randf())
+	if main.map_id == "backrooms" and Types.is_creature(kind):
+		kind = "runner"   # only Partygoers walk the Backrooms
 	var stats := Types.stats(kind, wave)
 	var hp: float = stats.hp
 	var dmg: float = stats.damage
@@ -281,6 +291,7 @@ func _spawn_one(force_kind: String = "") -> bool:
 
 	var z := Zombie.new()
 	z.name = "Zombie%d" % _variant
+	z.skin_id = skin_for_map()
 	main.add_child(z)
 	z.global_position = pos
 	z.init_zombie(player, kind, hp, spd, dmg, _variant)

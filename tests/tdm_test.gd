@@ -27,7 +27,7 @@ func run() -> void:
 	var ally = m.enemies[1]
 	var foe = m.enemies[0]
 	var hp: float = ally.health
-	ally.take_damage(20.0, ally.global_position, Vector3.FORWARD, m.player)
+	ally.apply_damage(20.0, ally.global_position, Vector3.FORWARD, m.player)
 	check(ally.health == hp, "friendly fire blocked")
 	foe.last_attacker_name = String(m.player.name)
 	m._pvp_on_death(foe)

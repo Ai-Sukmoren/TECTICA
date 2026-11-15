@@ -4,16 +4,22 @@ extends RefCounted
 ## base stat of the same name (e.g. "recoil": 0.8 = 20 % less recoil); boolean
 ## modifiers override. "mag" multiplies magazine capacity.
 
-const SLOTS := ["optic", "muzzle", "underbarrel", "magazine", "stock"]
-const SLOT_NAMES := {"optic": "OPTIC", "muzzle": "MUZZLE", "underbarrel": "UNDERBARREL", "magazine": "MAGAZINE", "stock": "STOCK"}
+const SLOTS := ["optic", "muzzle", "handguard", "rail", "underbarrel", "magazine", "stock"]
+const SLOT_NAMES := {"optic": "OPTIC", "muzzle": "MUZZLE", "handguard": "HANDGUARD", "rail": "RAIL", "underbarrel": "UNDERBARREL", "magazine": "MAGAZINE", "stock": "STOCK"}
 
 const ATTACHMENTS := {
 	"optic": {
 		"iron": {"name": "Iron Sights", "ads_speed": 1.08},
 		"reddot": {"name": "Red Dot", "zoom": 1.15, "spread_aim": 0.92},
 		"holo": {"name": "Holographic", "zoom": 1.2, "spread_aim": 0.9},
+		# the rest of the low-poly collimator set: a micro dot, an open reflex, a compact holo
+		"micro_dot": {"name": "Micro Red Dot", "zoom": 1.1, "spread_aim": 0.93, "ads_speed": 1.04},
+		"reflex": {"name": "Open Reflex", "zoom": 1.1, "spread_aim": 0.94, "ads_speed": 1.03},
+		"uh1_holo": {"name": "UH-1 Holographic", "zoom": 1.25, "spread_aim": 0.88, "ads_speed": 0.97},
 		# sights built into the gun's own model (no extra part is drawn)
-		"builtin_15x": {"name": "Built-in 1.5x", "zoom": 1.5, "spread_aim": 0.85},
+		# the AUG's own 1.5x: a hollow tube on the model, so it is seen through the
+		# scope overlay with the AUG's black ring reticle
+		"builtin_15x": {"name": "Built-in 1.5x", "zoom": 1.5, "spread_aim": 0.85, "overlay": true, "ring": true},
 		"builtin_scope": {"name": "Built-in 4x Scope", "zoom": 3.2, "spread_aim": 0.6, "ads_speed": 0.85, "range": 1.2, "scope": true},
 	},
 	"muzzle": {
@@ -24,9 +30,21 @@ const ATTACHMENTS := {
 		"brake": {"name": "Muzzle Brake", "recoil": 0.6, "noise_radius": 1.3, "shake": 1.4},
 		"heavy_suppressor": {"name": "Heavy Suppressor", "noise_radius": 0.15, "damage": 0.88, "range": 0.85, "suppressed": true, "flash": 0.15, "ads_speed": 0.9, "mobility": 0.97},
 	},
+	"handguard": {
+		"standard": {"name": "Standard Handguard"},
+		# a lighter hexagonal aluminium tube in place of the gun's own handguard
+		"hex": {"name": "Hex Handguard", "mobility": 1.02, "ads_speed": 1.03},
+	},
+	# a rail adapter under the handguard (or a pistol's frame); underbarrel parts mount on it
+	"rail": {
+		"none": {"name": "No Rail"},
+		"rail": {"name": "Rail Mount"},
+	},
 	"underbarrel": {
 		"none": {"name": "None"},
 		"laser": {"name": "Laser Sight", "spread_hip": 0.62, "laser": true},
+		# GP-25 under-barrel grenade launcher: 40 mm rounds on the launcher key
+		"gp25": {"name": "GP-25 Launcher", "launcher": true, "mobility": 0.94, "ads_speed": 0.92},
 	},
 	"magazine": {
 		"standard": {"name": "Standard Mag"},
@@ -45,7 +63,7 @@ const ATTACHMENTS := {
 	},
 }
 
-const _ALL_OPTICS := ["iron", "reddot", "holo"]
+const _ALL_OPTICS := ["iron", "reddot", "holo", "micro_dot", "reflex", "uh1_holo"]
 const _RIFLE_MUZZLES := ["none", "suppressor", "heavy_suppressor", "flash_hider", "brake"]
 const _RIFLE_UNDER := ["none", "laser"]
 const _PISTOL_OPTICS := ["iron"]
@@ -60,9 +78,9 @@ const WEAPONS := {
 		"recoil": 0.75, "reload": 2.2, "reload_empty": 2.8,
 		"suppressed": true, "noise_radius": 11.0, "shake": 0.11, "sound": "shot_suppressed", "volume": -2.0,
 		"mobility": 1.02, "ads_speed": 1.05, "flash": 0.4,
-		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": ["integral"], "underbarrel": _RIFLE_UNDER,
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": _ALL_OPTICS, "muzzle": ["integral"], "underbarrel": _RIFLE_UNDER,
 				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "reddot", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "reddot", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# asset pack 4 (alstraInfinite PPS Shooter Essentials) models
 	"mgp7": {
@@ -74,9 +92,9 @@ const WEAPONS := {
 		"recoil": 0.62, "reload": 2.0, "reload_empty": 2.5,
 		"suppressed": false, "noise_radius": 30.0, "shake": 0.08, "sound": "shot_smg", "volume": -4.0,
 		"mobility": 1.08, "ads_speed": 1.25,
-		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": ["none", "suppressor", "heavy_suppressor", "flash_hider"],
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES,
 				"underbarrel": _RIFLE_UNDER, "magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# lever-action rifle: heavy rounds loaded one at a time through the side
 	# gate; the lever swings down and back after every shot (SoldierRig._update_cycle)
@@ -89,8 +107,8 @@ const WEAPONS := {
 		"recoil": 2.4, "reload": 2.8, "reload_empty": 3.2,
 		"suppressed": false, "noise_radius": 42.0, "shake": 0.3, "sound": "shot_sniper", "volume": -1.0,
 		"mobility": 0.96, "ads_speed": 1.05, "cycle": "lever",
-		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none", "laser"], "magazine": ["standard", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none", "laser"], "magazine": ["standard", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"zc57": {
 		"name": "ZC57", "category": "PISTOL", "kind": "pistol", "model": "zc57",
@@ -101,9 +119,9 @@ const WEAPONS := {
 		"recoil": 0.95, "reload": 1.5, "reload_empty": 1.8,
 		"suppressed": false, "noise_radius": 27.0, "shake": 0.12, "sound": "shot_pistol", "volume": -2.0,
 		"mobility": 1.06, "ads_speed": 1.35,
-		"options": {"optic": _PISTOL_OPTICS, "muzzle": ["none", "suppressor"], "underbarrel": ["none"],
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": _PISTOL_OPTICS, "muzzle": ["none", "suppressor"], "underbarrel": ["none", "laser"],
 				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# 9x21 PDW: the magazine goes up through the pistol grip, 40 rounds
 	"gepard": {
@@ -115,9 +133,9 @@ const WEAPONS := {
 		"recoil": 0.7, "reload": 2.2, "reload_empty": 2.7,
 		"suppressed": false, "noise_radius": 30.0, "shake": 0.08, "sound": "shot_smg", "volume": -4.0,
 		"mobility": 1.07, "ads_speed": 1.2,
-		"options": {"optic": ["iron", "reddot", "holo"], "muzzle": ["none", "suppressor", "heavy_suppressor"], "underbarrel": ["none", "laser"],
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser"],
 				"magazine": ["standard", "extended", "fast", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# ---- low-poly asset guns (assets/thirdparty/low_poly_guns, local only)
 	"aug_a1": {
@@ -129,9 +147,9 @@ const WEAPONS := {
 		"recoil": 0.8, "reload": 2.6, "reload_empty": 3.1,
 		"suppressed": false, "noise_radius": 34.0, "shake": 0.1, "sound": "shot_rifle", "volume": -4.0,
 		"mobility": 0.99, "ads_speed": 0.95,
-		"options": {"optic": ["builtin_15x"], "muzzle": ["none", "suppressor", "heavy_suppressor"], "underbarrel": ["none", "laser"],
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["builtin_15x"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser", "gp25"],
 				"magazine": ["standard", "extended", "fast", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "builtin_15x", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "builtin_15x", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"hk33": {
 		"name": "HK33", "category": "ASSAULT RIFLE", "kind": "rifle", "model": "hk33",
@@ -142,9 +160,9 @@ const WEAPONS := {
 		"recoil": 0.95, "reload": 2.3, "reload_empty": 2.9,
 		"suppressed": false, "noise_radius": 36.0, "shake": 0.11, "sound": "shot_rifle", "volume": -4.0,
 		"mobility": 0.98, "ads_speed": 0.97,
-		"options": {"optic": ["iron"], "muzzle": ["none", "suppressor", "heavy_suppressor"], "underbarrel": ["none", "laser"],
+		"options": {"handguard": ["standard", "hex"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser", "gp25"],
 				"magazine": ["standard", "extended", "fast", "dual", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# 7.62 marksman rifle with its scope built in
 	"uar10": {
@@ -156,9 +174,9 @@ const WEAPONS := {
 		"recoil": 1.6, "reload": 2.6, "reload_empty": 3.2,
 		"suppressed": false, "noise_radius": 42.0, "shake": 0.2, "sound": "shot_loud", "volume": -2.0,
 		"mobility": 0.9, "ads_speed": 0.85,
-		"options": {"optic": ["builtin_scope"], "muzzle": ["none", "suppressor", "heavy_suppressor"], "underbarrel": ["none", "laser"],
+		"options": {"handguard": ["standard", "hex"], "rail": ["none", "rail"], "optic": ["builtin_scope"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser", "gp25"],
 				"magazine": ["standard", "extended", "ap", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "builtin_scope", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "builtin_scope", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"g17": {
 		"name": "GLOCK 17", "category": "PISTOL", "kind": "pistol", "model": "g17",
@@ -169,9 +187,9 @@ const WEAPONS := {
 		"recoil": 0.9, "reload": 1.5, "reload_empty": 1.8,
 		"suppressed": false, "noise_radius": 27.0, "shake": 0.12, "sound": "shot_pistol", "volume": -2.0,
 		"mobility": 1.06, "ads_speed": 1.35,
-		"options": {"optic": ["iron"], "muzzle": ["none", "suppressor"], "underbarrel": ["none"],
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["none", "suppressor"], "underbarrel": ["none", "laser"],
 				"magazine": ["standard", "extended", "fast", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# B&T VP9: bolt-action pistol with an integral suppressor, five rounds
 	"vp9": {
@@ -183,8 +201,8 @@ const WEAPONS := {
 		"recoil": 0.7, "reload": 1.8, "reload_empty": 2.1,
 		"suppressed": true, "noise_radius": 6.0, "shake": 0.08, "sound": "shot_suppressed", "volume": -4.0,
 		"mobility": 1.05, "ads_speed": 1.25, "flash": 0.2, "cycle": "bolt",
-		"options": {"optic": ["iron"], "muzzle": ["integral"], "underbarrel": ["none"], "magazine": ["standard", "hollow"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["integral"], "underbarrel": ["none", "laser"], "magazine": ["standard", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# ---- knives (melee slot). Starting values: damage per slash, swings per minute,
 	# reach in metres, damage multiplier for a hit from behind.
@@ -197,8 +215,8 @@ const WEAPONS := {
 		"recoil": 0.0, "reload": 1.0, "reload_empty": 1.0,
 		"suppressed": true, "noise_radius": 3.0, "shake": 0.05, "sound": "knife_swing", "volume": -3.0,
 		"mobility": 1.28, "ads_speed": 1.0,
-		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"options": {"handguard": ["standard"], "rail": ["none"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"karambit": {
 		"name": "KARAMBIT", "category": "KNIFE", "kind": "melee", "model": "karambit", "inspect": "karambit",
@@ -209,8 +227,8 @@ const WEAPONS := {
 		"recoil": 0.0, "reload": 1.0, "reload_empty": 1.0,
 		"suppressed": true, "noise_radius": 3.0, "shake": 0.05, "sound": "knife_swing", "volume": -4.0,
 		"mobility": 1.28, "ads_speed": 1.0,
-		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"options": {"handguard": ["standard"], "rail": ["none"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	"butterfly": {
 		"name": "BUTTERFLY KNIFE", "category": "KNIFE", "kind": "melee", "model": "butterfly", "inspect": "butterfly",
@@ -221,8 +239,8 @@ const WEAPONS := {
 		"recoil": 0.0, "reload": 1.0, "reload_empty": 1.0,
 		"suppressed": true, "noise_radius": 3.0, "shake": 0.05, "sound": "knife_swing", "volume": -3.5,
 		"mobility": 1.28, "ads_speed": 1.0,
-		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"options": {"handguard": ["standard"], "rail": ["none"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 	# hostile militia weapon (balanced for AI)
 	"akm": {
@@ -234,8 +252,8 @@ const WEAPONS := {
 		"recoil": 1.1, "reload": 2.6, "reload_empty": 3.1,
 		"suppressed": false, "noise_radius": 38.0, "shake": 0.05, "sound": "shot_loud", "volume": -3.0,
 		"mobility": 1.0, "ads_speed": 1.0,
-		"options": {"optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none"], "magazine": ["standard"], "stock": ["standard"]},
-		"defaults": {"optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+		"options": {"handguard": ["standard", "hex"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none", "laser", "gp25"], "magazine": ["standard"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
 }
 
@@ -285,6 +303,10 @@ static func sanitize(id: String, att: Dictionary) -> Dictionary:
 		var opts: Array = w.options[slot]
 		var choice: String = att.get(slot, w.defaults[slot])
 		out[slot] = choice if choice in opts else String(w.defaults[slot])
+	# underbarrel parts mount on the rail: a gun that offers one gets it with them
+	# (this also keeps lasers saved before the rail was a slot of its own)
+	if out.underbarrel != "none" and "rail" in (w.options.rail as Array):
+		out.rail = "rail"
 	return out
 
 
@@ -294,6 +316,7 @@ static func compute(id: String, att: Dictionary) -> Dictionary:
 	s["zoom"] = 1.0
 	s["scope"] = false
 	s["laser"] = false
+	s["launcher"] = false
 	s["flash"] = float(s.get("flash", 1.0))
 	s["recoil_crouch"] = 1.0
 	s["cycle"] = String(s.get("cycle", ""))

@@ -500,7 +500,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Looking through a magnified optic (ACOG / sniper scope) in first person.
 func is_scoped() -> bool:
-	return first_person and not is_dead and rig.aim_amt > 0.85 and float(current_weapon().stats.zoom) >= 2.0
+	var st: Dictionary = current_weapon().stats
+	return first_person and not is_dead and rig.aim_amt > 0.85 and (float(st.zoom) >= 2.0 or bool(st.get("overlay", false)))
 
 
 func _update_scope_visibility() -> void:
@@ -716,6 +717,8 @@ func _physics_process(delta: float) -> void:
 		_throw()
 	if Input.is_action_just_pressed("flashbang"):
 		_throw("flash")
+	if Input.is_action_just_pressed("launcher"):
+		fire_launcher(aim_point)
 	if Input.is_action_just_pressed("reload") and not ctx:
 		start_reload()
 	if Input.is_action_just_pressed("weapon_1"):

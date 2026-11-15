@@ -373,6 +373,7 @@ func _build_cafe() -> void:
 		# street signs and the vase on its pavement
 		_box_shape(b, Vector3(0.4, 3.0, 0.4), Vector3(0.79, 1.5, 3.72))
 		_box_shape(b, Vector3(1.3, 0.9, 1.3), Vector3(3.23, 0.45, 3.23))
+		_cafe_back()
 	else:
 		_building(CAFE_POS, 4.5, 8.0, 4.2, _mat_brick, {"w": [0.0, 1.8]}, "", 0.8)
 		var lbl := Label3D.new()
@@ -394,6 +395,38 @@ func _build_cafe() -> void:
 	_build_sale_sign(CAFE_POS + Vector3(-6.0, 0, -3.4))
 	_dumpster(CAFE_POS + Vector3(1.5, 0, 6.2), 0.0)
 	_bench(CAFE_POS + Vector3(-5.2, 0, 3.0), PI * 0.5)
+
+
+## The cafe model is only its street front: behind it there is nothing. A brick
+## block fills its footprint (the collision box) behind the facade, with a flat
+## roof, a parapet, a back door and an AC unit, so it reads as a whole building.
+func _cafe_back() -> void:
+	# footprint in world space (the model faces west, rotated -90 degrees)
+	var front_x := CAFE_POS.x - 2.16 + 2.7   # behind the recessed shop and upper windows
+	var back_x := CAFE_POS.x + 2.16
+	var z0 := CAFE_POS.z + 0.76 - 3.9
+	var z1 := CAFE_POS.z + 0.76 + 3.9
+	var h := 6.9
+	var c := Vector3((front_x + back_x) * 0.5, h * 0.5, (z0 + z1) * 0.5)
+	var size := Vector3(back_x - front_x, h, z1 - z0)
+	_mesh(self, ML.box(size), _mat_brick, c).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var trim := M.solid(Color(0.3, 0.26, 0.22), 0.8)
+	_mesh(self, ML.box(Vector3(size.x + 0.1, 0.12, size.z + 0.1)), M.concrete("cafe_roof", Color(0.32, 0.31, 0.3), 0.6), c + Vector3(0, h * 0.5 + 0.06, 0))
+	for e in [[Vector3(back_x, h + 0.3, c.z), Vector3(0.25, 0.6, size.z + 0.25)], [Vector3(c.x, h + 0.3, z0), Vector3(size.x, 0.6, 0.25)], [Vector3(c.x, h + 0.3, z1), Vector3(size.x, 0.6, 0.25)]]:
+		_mesh(self, ML.box(e[1]), trim, e[0])
+	# back door with a step and a light over it
+	_mesh(self, ML.box(Vector3(0.08, 2.1, 1.0)), M.painted_metal("cafe_door", Color(0.25, 0.32, 0.3)), Vector3(back_x + 0.04, 1.05, c.z + 1.2))
+	_mesh(self, ML.box(Vector3(0.6, 0.15, 1.4)), M.concrete("cafe_step", Color(0.5, 0.49, 0.47), 0.6), Vector3(back_x + 0.3, 0.07, c.z + 1.2))
+	_mesh(self, ML.box(Vector3(0.18, 0.12, 0.3)), M.emissive("cafe_back_lamp", Color(1.0, 0.8, 0.55), 1.5), Vector3(back_x + 0.1, 2.45, c.z + 1.2))
+	# AC unit on the back wall and one on the roof
+	var ac := M.painted_metal("cafe_ac", Color(0.7, 0.7, 0.68))
+	_mesh(self, ML.box(Vector3(0.6, 0.7, 0.9)), ac, Vector3(back_x + 0.32, 3.4, c.z - 1.6))
+	_mesh(self, ML.box(Vector3(1.2, 0.8, 1.0)), ac, Vector3(c.x + 0.4, h + 0.4, c.z - 1.0))
+	# upper windows on the back so the wall is not blank
+	var glass := M.solid(Color(0.12, 0.14, 0.16), 0.2, 0.3)
+	for dz in [-2.3, 0.0, 2.3]:
+		_mesh(self, ML.box(Vector3(0.06, 1.1, 1.0)), glass, Vector3(back_x + 0.03, 4.9, c.z + dz))
+		_mesh(self, ML.box(Vector3(0.1, 0.1, 1.15)), trim, Vector3(back_x + 0.05, 4.3, c.z + dz))
 
 
 ## "EVERYTHING MUST GO" board on two posts by the road, facing west.

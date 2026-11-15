@@ -123,6 +123,9 @@ func _change(i: int, dir: int) -> void:
 		_:
 			return
 	Sfx.play(hud, "switch", Vector3.ZERO, -12.0, 0.0)
+	# in a solo match the gun in the operator's hands changes as you pick
+	if r.t in ["weapon", "att", "charm", "knife", "class"]:
+		hud.gunsmith_live_update()
 
 
 func _activate(i: int) -> bool:

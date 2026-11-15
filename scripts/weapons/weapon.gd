@@ -56,6 +56,8 @@ var _slide_locked := false
 ## Trigger-guard pivot of a gun that is spun around the finger after a shot.
 var twirl: Node3D
 var laser: Node3D
+## The GP-25's muzzle when one is fitted, else null.
+var launcher: Node3D
 var _beam: MeshInstance3D
 var _beam_dot: MeshInstance3D
 
@@ -88,6 +90,7 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	lever = parts.get("lever")
 	blowback = float(parts.get("blowback", 0.0))
 	laser = parts.laser
+	launcher = parts.get("launcher")
 	var sight: Dictionary = parts.sight
 	set_meta("iron_info", sight)   # sight line / rear / front positions, for fit checks
 	var relief: float = sight.relief
@@ -259,17 +262,60 @@ func apply_charm(charm_id: String) -> void:
 	if charm != "":
 		_charm = Charm.new()
 		_charm.setup(charm, is_pistol())
-		# Seat the lanyard stud on the actual receiver / grip surface, including
-		# imported guns, rather than assuming every weapon has the same width.
+		# Seat the lanyard stud on the gun's real left-side surface (its triangles,
+		# not its bounding box: on a bullpup the box is far wider than the body at
+		# the stud). No surface at the default spot: step along the gun until one.
 		var mount: Vector3 = _charm.position
-		var side := INF
-		for bounds: AABB in Sticker._parts(_model_root):
-			if mount.y >= bounds.position.y and mount.y <= bounds.end.y and mount.z >= bounds.position.z and mount.z <= bounds.end.z:
-				side = minf(side, bounds.position.x)
-		if is_finite(side):
-			mount.x = side - 0.003
-			_charm.position = mount
+		var faces := _model_faces()
+		for dz in [0.0, -0.015, 0.015, -0.03, 0.03, -0.05, 0.05, -0.075, 0.075, -0.1, 0.1]:
+			for dy in [0.0, -0.012, 0.012, -0.025]:
+				var x := _left_surface(faces, mount.y + dy, mount.z + dz)
+				if is_finite(x):
+					_charm.position = Vector3(x - 0.003, mount.y + dy, mount.z + dz)
+					break
+			if _charm.position != mount:
+				break
 		add_child(_charm)
+
+
+## Every triangle of the gun model in this weapon's space.
+func _model_faces() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if _model_root == null:
+		return out
+	for n in _model_root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or not mi.visible:
+			continue
+		var xf := Transform3D.IDENTITY
+		var p: Node = mi
+		while p != null and p != self:
+			xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		for v in mi.mesh.get_faces():
+			out.append(xf * v)
+	return out
+
+
+## Where a line along X at height `y`, depth `z` first meets the gun from the
+## left (lowest x), or INF when it misses every triangle.
+static func _left_surface(faces: PackedVector3Array, y: float, z: float) -> float:
+	var best := INF
+	for i in range(0, faces.size(), 3):
+		var a := faces[i]
+		var b := faces[i + 1]
+		var c := faces[i + 2]
+		# barycentric test in the YZ plane
+		var d := (b.y - c.y) * (a.z - c.z) + (c.z - b.z) * (a.y - c.y)
+		if absf(d) < 1e-9:
+			continue
+		var w1 := ((b.y - c.y) * (z - c.z) + (c.z - b.z) * (y - c.y)) / d
+		var w2 := ((c.y - a.y) * (z - c.z) + (a.z - c.z) * (y - c.y)) / d
+		var w3 := 1.0 - w1 - w2
+		if w1 < 0.0 or w2 < 0.0 or w3 < 0.0:
+			continue
+		best = minf(best, w1 * a.x + w2 * b.x + w3 * c.x)
+	return best
 
 
 func display_name() -> String:

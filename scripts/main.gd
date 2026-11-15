@@ -7,8 +7,10 @@ const Level = preload("res://scripts/world/forest_level.gd")
 const TownLevel = preload("res://scripts/world/town_level.gd")
 const DesertLevel = preload("res://scripts/world/desert_level.gd")
 const CityLevel = preload("res://scripts/world/city_level.gd")
+const ModelLevel = preload("res://scripts/world/model_level.gd")
 ## Maps for Zombie Survival / Deathmatch (the campaign is always the forest).
-const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES", "city": "NEIGHBOURHOOD"}
+const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES", "city": "NEIGHBOURHOOD",
+		"warehouse": "WAREHOUSE", "backrooms": "BACKROOMS"}
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
 const Nature = preload("res://scripts/world/nature.gd")
@@ -134,7 +136,10 @@ func _ready() -> void:
 	net.setup(self)
 
 	map_id = saved_map if mode in ["zombie", "pvp"] and MAPS.has(saved_map) else "forest"
-	level = TownLevel.new() if map_id == "town" else (DesertLevel.new() if map_id == "desert" else (CityLevel.new() if map_id == "city" else Level.new()))
+	if ModelLevel.CONFIGS.has(map_id):
+		level = ModelLevel.new(map_id)
+	else:
+		level = TownLevel.new() if map_id == "town" else (DesertLevel.new() if map_id == "desert" else (CityLevel.new() if map_id == "city" else Level.new()))
 	level.name = "Level"
 	level.mode = mode
 	add_child(level)
@@ -347,6 +352,7 @@ func on_deploy() -> void:
 		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout(), "team": player.team}
 	player.grenades = 2
 	player.flashbangs = 2
+	player.launcher_rounds = player.LAUNCHER_MAX
 	if director != null:
 		player.grenades = 3
 		player.regen_cap = 70.0
@@ -584,6 +590,7 @@ func _physics_process(delta: float) -> void:
 			player.health = minf(player.health + 35.0, player.max_health)
 			player.grenades = mini(player.grenades + 1, 4)
 			player.flashbangs = mini(player.flashbangs + 1, 3)
+			player.launcher_rounds = player.LAUNCHER_MAX
 			hud.add_feed("RESUPPLIED  ·  +AMMO  +FRAG  +FLASH  +35 HP", Color(0.5, 1.0, 0.7))
 			Sfx.play(self, "mag_in", n.global_position, 0.0)
 			_ammo_nodes.erase(n)
@@ -949,6 +956,7 @@ func respawn_local(pos: Vector3, yaw: float) -> void:
 	camera_rig.snap()
 	hud.player = p
 	p.grenades = 3 if director != null else 2
+	p.launcher_rounds = p.LAUNCHER_MAX
 	p.flashbangs = 2
 	if director != null:
 		p.regen_cap = 70.0

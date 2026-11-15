@@ -128,6 +128,12 @@ static func cycle_attachment(slot: String, att_slot: String, dir: int) -> void:
 	var opts: Array = Data.WEAPONS[e.id].options[att_slot]
 	var idx := opts.find(e.att[att_slot])
 	e.att[att_slot] = opts[posmod(idx + dir, opts.size())]
+	# underbarrel parts sit on the rail: taking the rail off takes them off too,
+	# and fitting one puts the rail on
+	if att_slot == "rail" and e.att.rail == "none":
+		e.att.underbarrel = "none"
+	elif att_slot == "underbarrel" and e.att.underbarrel != "none":
+		e.att.rail = "rail"
 
 
 static func reset_class() -> void:

@@ -53,18 +53,18 @@ func run() -> void:
 
 	# --- can't afford, then buy a primary
 	shop.points = 100
-	check(shop.buy("gun_mgp7", p) == "", "a gun you can't afford is refused")
+	check(shop.buy("gun_marlin", p) == "", "a gun you can't afford is refused")
 	check(p.weapons.size() == 2, "nothing changed")
 	shop.points = 5000
 	var pistol_reserve: int = p.weapons[0].reserve
-	check(shop.buy("gun_mgp7", p) != "", "buys the MGP7")
+	check(shop.buy("gun_marlin", p) != "", "buys the Marlin")
 	ids = p.weapons.map(func(w): return String(w.id))
 	print("  after buying: ", ids)
-	check(p.weapons.size() == 3 and String(p.weapons[0].id) == "mgp7", "MGP7 is the primary")
+	check(p.weapons.size() == 3 and String(p.weapons[0].id) == "marlin", "the Marlin is the primary")
 	check(p.weapon_index == 0, "the new gun is in hand")
 	check(p.weapons[1].reserve == pistol_reserve, "the pistol keeps its ammo")
-	check(shop.points == 5000 - 1200, "price taken")
-	check(shop.buy("gun_mgp7", p) == "", "can't buy the same gun twice")
+	check(shop.points == 5000 - 1500, "price taken")
+	check(shop.buy("gun_marlin", p) == "", "can't buy the same gun twice")
 	check(Player.zombie_specs.size() == 3, "net loadout carries the new gun")
 
 	# --- upgrade the gun in hand
@@ -76,7 +76,7 @@ func run() -> void:
 	check(int(p.weapons[0].stats.mag) > mag0, "MK I: bigger magazine")
 	shop.buy("upgrade", p)
 	shop.buy("upgrade", p)
-	check(shop.upgrade_tag("mgp7") == "MK III", "upgrades stop at MK III")
+	check(shop.upgrade_tag("marlin") == "MK III", "upgrades stop at MK III")
 	var pts_before: int = shop.points
 	check(shop.buy("upgrade", p) == "" and shop.points == pts_before, "no fourth upgrade")
 	check(is_equal_approx(float(p.weapons[0].stats.damage), dmg0 * 1.9), "MK III: +90% damage, no compounding")
@@ -111,9 +111,20 @@ func run() -> void:
 
 	# --- buying a new primary replaces the old one and drops its upgrades
 	shop.buy("gun_aug_a1", p)
-	check(String(p.weapons[0].id) == "aug_a1" and p.weapons.size() == 3, "AUG A1 replaces the MGP7")
-	check(shop.upgrade_tag("mgp7") == "" and shop.upgrade_tag("aug_a1") == "", "old upgrades are gone, new gun starts at MK 0")
+	check(String(p.weapons[0].id) == "aug_a1" and p.weapons.size() == 3, "AUG A1 replaces the Marlin")
+	check(shop.upgrade_tag("marlin") == "" and shop.upgrade_tag("aug_a1") == "", "old upgrades are gone, new gun starts at MK 0")
 	check(is_equal_approx(float(p.weapons[0].stats.reload), float(load("res://scripts/weapons/weapon_data.gd").compute("aug_a1", p.weapons[0].attachments).reload) * 0.6), "perks apply to the new gun")
+
+	# --- an SMG adds the third gun, in its own slot next to the rifle
+	shop.points = 5000
+	check(shop.buy("smg_mgp7", p) != "", "buys the MGP7 SMG")
+	ids = p.weapons.map(func(w): return String(w.id))
+	print("  after the SMG: ", ids)
+	check(p.weapons.size() == 4 and String(p.weapons[0].id) == "aug_a1" and String(p.weapons[1].id) == "mgp7", "rifle, SMG, pistol, knife")
+	check(p.weapon_index == 1, "the SMG is in hand")
+	check(Player.zombie_specs.size() == 4, "net loadout carries the SMG")
+	shop.buy("smg_gepard", p)
+	check(p.weapons.size() == 4 and String(p.weapons[1].id) == "gepard", "the Gepard replaces the MGP7")
 
 	# --- wave end pays out, and the operator keeps everything after respawning
 	var pts: int = shop.points

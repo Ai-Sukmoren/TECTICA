@@ -85,7 +85,7 @@ func run() -> void:
 		var base: float = float(b.rail_y) - 0.002 * s
 		var top_from := o + Vector3(0, float(b.rail_y) + 0.06, float(b.rail_z))
 		var opts: Dictionary = Data.WEAPONS[id].options
-		var takes_optic: bool = (opts.optic as Array).any(func(o): return o in ["reddot", "holo", "prism", "acog", "scope", "minidot"])
+		var takes_optic: bool = (opts.optic as Array).any(func(o): return o in ["reddot", "holo", "micro_dot", "reflex", "uh1_holo", "prism", "acog", "scope", "minidot"])
 		var takes_under: bool = (opts.underbarrel as Array).any(func(o): return o != "none")
 		var d := _ray(top_from, Vector3.DOWN, 0.2) if takes_optic else INF
 		if d < INF:

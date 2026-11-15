@@ -734,6 +734,11 @@ func _draw_overlay(c: Control) -> void:
 		_text(c, Vector2(vp.x - 330, 140), "INSPECTING  ·  AIM / FIRE TO CANCEL" if player.rig.inspect_t >= 0.0 else "[%s]  INSPECT WEAPON" % Settings.Controls.short("inspect"), 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 300)
 	_text(c, Vector2(vp.x - 330, 160), "FRAG  x%d   [%s]" % [player.grenades, Settings.Controls.short("grenade")], 12, WARN if player.grenades > 0 else Color(DIM, 0.5), HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	_text(c, Vector2(vp.x - 330, 178), "FLASH  x%d   [%s]" % [player.flashbangs, Settings.Controls.short("flashbang")], 12, TEXT if player.flashbangs > 0 else Color(DIM, 0.5), HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
+	if w.launcher != null:
+		var gl := "40MM  x%d   [%s]" % [player.launcher_rounds, Settings.Controls.short("launcher")]
+		if player.launcher_cd > 0.0:
+			gl = "40MM  RELOADING"
+		_text(c, Vector2(vp.x - 330, 196), gl, 12, WARN if player.launcher_rounds > 0 and player.launcher_cd <= 0.0 else Color(DIM, 0.5), HORIZONTAL_ALIGNMENT_RIGHT, 300, true)
 	for i in feed.size():
 		var f = feed[i]
 		var col: Color = f.color
@@ -1146,8 +1151,8 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(0, vp.y - bar_h, vp.x, bar_h), Color(0, 0, 0, 0.85))
 	var lines := [
 		["TECTICA  //  ZOMBIE SURVIVAL", RED, 20],
-		[String({"town": "LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN", "desert": "LOCATION   ATOMIC ACRES - TEST TOWN CUL-DE-SAC, OVERRUN", "city": "LOCATION   NEIGHBOURHOOD - APARTMENT BLOCKS, OVERRUN"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
-		[String({"town": "SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET", "desert": "SITREP     THE TEST SHOT IS LIVE. EVERY BOSS WAVE, LOOK AWAY FROM THE FLASH", "city": "SITREP     THEY COME DOWN EVERY STREET AND ALLEY BETWEEN THE BLOCKS"}.get(main.map_id, "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES")), TEXT, 14],
+		[String({"town": "LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN", "desert": "LOCATION   ATOMIC ACRES - TEST TOWN CUL-DE-SAC, OVERRUN", "city": "LOCATION   NEIGHBOURHOOD - APARTMENT BLOCKS, OVERRUN", "warehouse": "LOCATION   WAREHOUSE - LOADING FLOOR, OVERRUN", "backrooms": "LOCATION   THE BACKROOMS - LEVEL 0, NO EXIT"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
+		[String({"town": "SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET", "desert": "SITREP     THE TEST SHOT IS LIVE. EVERY BOSS WAVE, LOOK AWAY FROM THE FLASH", "city": "SITREP     THEY COME DOWN EVERY STREET AND ALLEY BETWEEN THE BLOCKS", "warehouse": "SITREP     CLOSE QUARTERS BETWEEN THE CRATES. WATCH EVERY AISLE", "backrooms": "SITREP     THE LIGHTS HUM. SOMETHING WALKS THE YELLOW HALLS"}.get(main.map_id, "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES")), TEXT, 14],
 		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
 		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("shop") + "] SHOP BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
 		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
@@ -1430,7 +1435,7 @@ func _draw_reticle(c: Control) -> void:
 		col = Color(Color(1.0, 0.85, 0.2) if int(Settings.v.crosshair_color) == 4 else Color(1.0, 0.35, 0.3), col.a)
 	var ads: bool = player.first_person and player.rig.aim_amt > 0.7
 	if player.is_scoped():
-		_draw_scope(c, m, bool(player.current_weapon().stats.scope))
+		_draw_scope(c, m, bool(player.current_weapon().stats.scope), bool(player.current_weapon().stats.get("ring", false)))
 		return
 	if ads:
 		pass  # the weapon's own red dot / iron sights take over
@@ -1509,13 +1514,18 @@ func draw_crosshair(c: Control, m: Vector2, spread_r: float, col: Color) -> void
 					c.draw_polyline(PackedVector2Array([m + Vector2(-h, h * 0.7), m, m + Vector2(h, h * 0.7)]), cc, ww, true)
 
 
-func _draw_scope(c: Control, m: Vector2, sniper: bool) -> void:
+func _draw_scope(c: Control, m: Vector2, sniper: bool, ring: bool = false) -> void:
 	var vp := c.size
 	var r := vp.y * (0.44 if sniper else 0.4)
 	c.draw_arc(m, r + vp.x, 0, TAU, 96, Color.BLACK, vp.x * 2.0)
 	c.draw_arc(m, r, 0, TAU, 96, Color(0, 0, 0, 0.9), 10.0, true)
 	c.draw_arc(m, r - 18.0, 0, TAU, 96, Color(0, 0, 0, 0.35), 26.0, true)
 	var col := Color(0, 0, 0, 0.9)
+	if ring:
+		# AUG 1.5x: a black ring sized to a man at 300 m, with a fine centre dot
+		c.draw_arc(m, r * 0.11, 0, TAU, 64, col, 3.0, true)
+		c.draw_circle(m, 1.6, col)
+		return
 	if not sniper:
 		# ACOG: illuminated chevron + bullet-drop stadia
 		var amber := Color(1.0, 0.45, 0.1)
@@ -1792,6 +1802,14 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	if _shop_msg_t > 0.0:
 		_text(c, Vector2(x0, y + 26), _shop_msg, 14, Color(WARN, clampf(_shop_msg_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, w, true)
 	_text(c, Vector2(x0, y + 50), "W/S or mouse select  ·  ENTER / click buy  ·  [%s] or ESC close" % Settings.Controls.short("shop"), 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
+
+
+## A gunsmith pick in a solo match: the operator is re-issued the loadout at
+## once, so the gun in hand changes live. Multiplayer waits for the respawn.
+func gunsmith_live_update() -> void:
+	if title or Net.active or player == null or player.is_dead:
+		return
+	player.apply_loadout()
 
 
 ## Back from the gunsmith to the pause menu. Solo the new loadout is issued at

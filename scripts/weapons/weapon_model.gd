@@ -85,7 +85,7 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 		"marlin":
 			b = _marlin(root)
 		_:
-			b = _low_poly(root, model)
+			b = _low_poly(root, model, String(att.get("handguard", "standard")))
 
 	var parts := {"root": root, "blowback": float(b.get("blowback", 0.022 if b.get("pistol", false) else 0.045)), "grip": b.grip, "support": b.support, "charge": b.charge, "eject": b.eject,
 			"pump": b.get("pump"), "bolt": b.get("bolt"), "roll": b.get("roll"), "hammer": b.get("hammer"), "twirl": b.get("twirl"), "lever": b.get("lever"), "laser": null}
@@ -105,13 +105,19 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 	# underbarrel
 	var ub_kind := String(att.get("underbarrel", "none"))
 	var ub_at: Node3D = b.under_at
-	if ub_kind != "none" and b.get("rail_adapter", false) and _att_model(ub_at, "rail") != null:
-		ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP, 0))
-	var ub := _underbarrel(ub_at, ub_kind)
+	var small := float(LP_PISTOL_UNDER_SCALE if b.get("pistol", false) else 1.0)
+	# the rail slot: an adapter under the handguard (or frame) that underbarrel parts clamp to
+	if String(att.get("rail", "none")) == "rail" or (ub_kind != "none" and b.get("rail_adapter", false)):
+		var rail := _att_model(ub_at, "rail")
+		if rail != null:
+			rail.scale = Vector3.ONE * small
+			ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP * small, 0))
+	var ub := _underbarrel(ub_at, ub_kind, small)
 	if ub.has("support"):
 		parts.support = ub.support
 	if ub.has("laser"):
 		parts.laser = ub.laser
+	parts.launcher = ub.get("launcher")
 	# optic
 	parts.sight = _optic(root, b, String(att.get("optic", "iron")))
 	_signature_details(root, model, b)
@@ -408,6 +414,8 @@ static func _zc57(r: Node3D) -> Dictionary:
 # pin). Grip at the origin, barrel along -Z, metres. Not in the repository:
 # without it the gun falls back to the procedural M870 body.
 const MARLIN_GLB := "res://assets/thirdparty/marlin_1895/marlin_1895.glb"
+## The lever's finger loop, from its front pin (closed).
+const LEVER_LOOP := Vector3(0, -0.058, 0.098)
 
 static func _marlin(r: Node3D) -> Dictionary:
 	if not ResourceLoader.exists(MARLIN_GLB):
@@ -441,11 +449,15 @@ static func _marlin(r: Node3D) -> Dictionary:
 		else:
 			mi.transform = xf
 			r.add_child(mi)
+	# spin cocking: the rifle turns round the lever loop the fingers sit in
+	var spin: Node3D = null
+	if lever != null:
+		spin = _marker(r, "Twirl", lever.position + LEVER_LOOP)
 	return {
-		"glb": true, "lever": lever, "bolt": bolt,
+		"glb": true, "lever": lever, "bolt": bolt, "twirl": spin,
 		"grip": _marker(r, "Grip", Vector3(0, -0.01, 0.0), Vector3(-0.35, 0, 0)),
 		"support": _marker(r, "Support", Vector3(-0.005, 0.035, -0.31), Vector3(0, 0, -0.5)),
-		"charge": _marker(lever if lever != null else r, "Charge", Vector3(0, -0.058, 0.098)),
+		"charge": _marker(lever if lever != null else r, "Charge", LEVER_LOOP),
 		"eject": _marker(r, "Eject", Vector3(0.022, 0.055, -0.157)),
 		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.069, -0.68)),
 		"under_at": _marker(r, "UnderAt", Vector3(0, _bottom_at(r, -0.42, 0.03), -0.42)),
@@ -470,11 +482,11 @@ const LOW_POLY := "res://assets/thirdparty/low_poly_guns/"
 const LP_GUNS := {
 	"aug_a1": {"length": 0.79, "grip": Vector2(-0.767, -0.304), "support": Vector2(1.33, -0.41), "mag": Vector2(-1.81, -0.1),
 			"muzzle": Vector2(3.944, 0.214), "eject": Vector2(-1.5, 0.2), "charge": Vector2(0.95, 0.3), "under": Vector2(2.3, 0.0), "rail_adapter": true,
-			"sight": Vector2(-1.43, 0.92), "relief": 0.16},
-	"hk33": {"length": 0.93, "grip": Vector2(-1.834, -0.26), "support": Vector2(0.5, 0.12), "mag": Vector2(-0.08, 0.1),
+			"sight": Vector2(-1.43, 0.92), "relief": 0.06},
+	"hk33": {"hex": [-0.46, -0.15], "length": 0.93, "grip": Vector2(-1.834, -0.26), "support": Vector2(0.5, 0.12), "mag": Vector2(-0.08, 0.1),
 			"muzzle": Vector2(4.472, 0.378), "eject": Vector2(-0.6, 0.5), "charge": Vector2(1.9, 0.65), "under": Vector2(1.4, 0.07), "rail_adapter": true,
 			"sight": Vector2(-1.897, 0.95)},
-	"uar10": {"length": 1.03, "grip": Vector2(-1.902, -0.5), "support": Vector2(1.5, -0.04), "mag": Vector2(-0.4, -0.1),
+	"uar10": {"hex": [-0.58, -0.27], "length": 1.03, "grip": Vector2(-1.902, -0.5), "support": Vector2(1.5, -0.04), "mag": Vector2(-0.4, -0.1),
 			"muzzle": Vector2(5.356, 0.227), "eject": Vector2(-1.0, 0.25), "charge": Vector2(-2.1, 0.49), "under": Vector2(2.1, -0.05), "rail_adapter": true,
 			"sight": Vector2(-1.855, 0.964), "relief": 0.1},
 	"as_val": {"length": 0.9, "grip": Vector2(-1.422, -0.426), "support": Vector2(0.8, 0.02), "mag": Vector2(0.14, -0.1),
@@ -497,7 +509,7 @@ static func _lp(v: Vector2, g: Vector2, side: float = 0.0) -> Vector3:
 	return Vector3(side, (v.y - g.y) * 0.1, -(v.x - g.x) * 0.1)
 
 
-static func _low_poly(r: Node3D, model: String) -> Dictionary:
+static func _low_poly(r: Node3D, model: String, handguard: String = "standard") -> Dictionary:
 	var spec: Dictionary = LP_GUNS.get(model, {})
 	var pistol := bool(spec.get("pistol", false))
 	var path := LOW_POLY + model + ".glb"
@@ -519,6 +531,8 @@ static func _low_poly(r: Node3D, model: String) -> Dictionary:
 		mi.transform = e[2]
 		mi.set_meta("pack4", true)   # skins recolour these too
 		_clear_glass(mi)
+		if part.begins_with("Body") and handguard == "hex" and spec.has("hex"):
+			mi.mesh = _without_handguard(model, e[1], e[2], spec)
 		if part.begins_with("Bolt"):
 			bolt = Node3D.new()
 			bolt.name = "Bolt"
@@ -527,9 +541,15 @@ static func _low_poly(r: Node3D, model: String) -> Dictionary:
 		else:
 			r.add_child(mi)
 	var g: Vector2 = spec.grip
+	if handguard == "hex" and spec.has("hex"):
+		# the tube's rear sits where the gun's own handguard began, on the bore line
+		var hz: Array = spec.hex
+		var tube := _att_model(r, "hex_handguard")
+		if tube != null:
+			tube.position = Vector3(0, (spec.muzzle.y - g.y) * 0.1, float(hz[1]))
 	var under := _lp(spec.under, g)
-	if spec.get("rail_adapter", false) or spec.get("snap_under", false):
-		under.y = _bottom_at(r, under.z, under.y)
+	# every gun can take the rail now, so its mount sits on the model's real underside
+	under.y = _bottom_at(r, under.z, under.y)
 	var sight := _lp(spec.sight, g)
 	var rail := _lp(spec.get("rail", spec.sight), g)
 	var out := {
@@ -552,6 +572,43 @@ static func _low_poly(r: Node3D, model: String) -> Dictionary:
 		out.mini = true
 	else:
 		out.support = _marker(r, "Support", _lp(spec.support, g, -0.005), Vector3(0, 0, -0.5))
+	return out
+
+
+## Ring round the bore (m) that is the handguard shell: inside is the barrel, outside
+## sights / scopes that overhang it, both kept.
+const HANDGUARD_SHELL := Vector2(0.017, 0.045)
+static var _hg_cache := {}
+
+
+## The gun's body mesh with its own handguard cut away (triangles in the
+## handguard's length whose centre lies in the shell round the bore), for the hex tube.
+static func _without_handguard(model: String, mesh: Mesh, xf: Transform3D, spec: Dictionary) -> Mesh:
+	if _hg_cache.has(model):
+		return _hg_cache[model]
+	var g: Vector2 = spec.grip
+	var bore_y := (float(spec.muzzle.y) - g.y) * 0.1
+	var hz: Array = spec.hex
+	var out := ArrayMesh.new()
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		if idx.is_empty():
+			idx.resize(verts.size())
+			for i in verts.size():
+				idx[i] = i
+		var keep := PackedInt32Array()
+		for t in range(0, idx.size(), 3):
+			var c := (xf * verts[idx[t]] + xf * verts[idx[t + 1]] + xf * verts[idx[t + 2]]) / 3.0
+			var rad := Vector2(c.x, c.y - bore_y).length()
+			var cut := c.z > float(hz[0]) and c.z < float(hz[1]) and rad > HANDGUARD_SHELL.x and rad < HANDGUARD_SHELL.y
+			if not cut:
+				keep.append(idx[t]); keep.append(idx[t + 1]); keep.append(idx[t + 2])
+		arrays[Mesh.ARRAY_INDEX] = keep
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.surface_set_material(s, mesh.surface_get_material(s))
+	_hg_cache[model] = out
 	return out
 
 
@@ -610,13 +667,16 @@ static func _keep_eject(r: Node3D, held: Dictionary) -> void:
 const LP_ATT := "res://assets/thirdparty/low_poly_attachments/"
 ## Optic sight lines measured on the models: height of the dot above the mount
 ## base, and how far behind the mount centre the rear of the window sits.
-const LP_OPTICS := {"reddot": [0.0561, 0.062, 0.16], "holo": [0.0561, 0.024, 0.24]}
+const LP_OPTICS := {"reddot": [0.0561, 0.062, 0.16], "holo": [0.0561, 0.024, 0.24],
+		"micro_dot": [0.045, 0.03, 0.18], "reflex": [0.038, 0.035, 0.18], "uh1_holo": [0.042, 0.04, 0.22]}
 ## The PEQ-2 is drawn at this scale (full size swamps slim handguards like the
 ## AS VAL's), and where its beam leaves it, from its mount (it hangs under the handguard).
 const LP_LASER_SCALE := 0.6
 ## The rail adapter's depth: an underbarrel part hangs this far below the gun.
 const LP_RAIL_DROP := 0.0126
 const LP_LASER_AT := Vector3(0, -0.053, -0.051) * LP_LASER_SCALE
+## Rail and laser are drawn smaller still on a pistol's short dust cover.
+const LP_PISTOL_UNDER_SCALE := 0.6
 
 
 ## The attachment model `name` under `at`, or null when its file is missing.
@@ -652,6 +712,23 @@ static func _clear_glass(mi: MeshInstance3D) -> void:
 				mi.set_surface_override_material(s, _glass)
 
 
+## The centre of a launcher's muzzle: the middle of the geometry within 1.5 cm
+## of the model's front face (its barrel's mouth), in the holder's space.
+static func _bore_front(holder: Node3D) -> Vector3:
+	var front := -_reach(holder)
+	var sum := Vector3.ZERO
+	var n := 0
+	for c in holder.get_children():
+		if c is MeshInstance3D:
+			var mi := c as MeshInstance3D
+			for v in mi.mesh.get_faces():
+				var w: Vector3 = mi.transform * v
+				if w.z < front + 0.015:
+					sum += w
+					n += 1
+	return Vector3(0, sum.y / n, front) if n > 0 else Vector3(0, -0.045, front)
+
+
 ## How far a model reaches forward (-Z) of its origin.
 static func _reach(holder: Node3D) -> float:
 	var front := 0.0
@@ -670,12 +747,17 @@ static func _muzzle(at: Node3D, kind: String, pistol: bool) -> Node3D:
 	return _marker(at, "Muzzle", Vector3.ZERO)
 
 
-static func _underbarrel(at: Node3D, kind: String) -> Dictionary:
+static func _underbarrel(at: Node3D, kind: String, small: float = 1.0) -> Dictionary:
+	if kind == "gp25":
+		var g := _att_model(at, "gp25")
+		if g != null:
+			return {"launcher": _marker(at, "Launcher", _bore_front(g))}
+		return {"launcher": _marker(at, "Launcher", Vector3(0, -0.045, -0.16))}
 	if kind == "laser":
 		var m := _att_model(at, "laser")
 		if m != null:
-			m.scale = Vector3.ONE * LP_LASER_SCALE
-			return {"laser": _marker(at, "Laser", LP_LASER_AT)}
+			m.scale = Vector3.ONE * LP_LASER_SCALE * small
+			return {"laser": _marker(at, "Laser", LP_LASER_AT * small)}
 	return {}
 
 

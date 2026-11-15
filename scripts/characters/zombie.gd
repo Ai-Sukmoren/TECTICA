@@ -11,6 +11,7 @@ const Geo = preload("res://scripts/core/mesh_lib.gd")
 const Palettes = preload("res://scripts/core/palettes.gd")
 const CreatureBody = preload("res://scripts/characters/creature_body.gd")
 const Blast = preload("res://scripts/weapons/blast.gd")
+const ZombieSkin = preload("res://scripts/characters/zombie_skin.gd")
 
 const ATTACK_RANGE := 1.35
 const HIT_RANGE := 1.9
@@ -47,6 +48,10 @@ static var _live_frame := -1
 const CORPSE_SETTLE := 1.6
 ## Non-humanoid body (dog / bat); the humanoid rig is hidden for these.
 var creature: CreatureBody
+## Set before init_zombie: an animated model drawn in place of the built body
+## ("polyart", "partygoer"); "" keeps the built body.
+var skin_id := ""
+var skin: Node3D
 var _exploded := false
 ## Juggernaut (kind "boss"): slam and charge state, simulated by the owner.
 var _slam_cd := 2.0
@@ -114,6 +119,16 @@ func init_zombie(p_player, p_kind: String, hp: float, spd: float, dmg: float, va
 			_shape.height = 0.6
 			_col.position.y = CreatureBody.BAT_HOVER
 			motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	if skin_id != "" and not Types.is_creature(kind) and ZombieSkin.available(skin_id):
+		var sk := ZombieSkin.new()
+		sk.name = "Skin"
+		add_child(sk)
+		var tall := (2.15 if skin_id == "partygoer" else 1.8) * rig.scale.y
+		if sk.build(skin_id, variant, tall):
+			skin = sk
+			rig.visible = false   # still animated: hit zones and headshots follow it
+		else:
+			sk.queue_free()
 	if not Types.is_creature(kind):
 		_add_hit_zone()
 	nav = NavigationAgent3D.new()
@@ -243,6 +258,8 @@ func sever_limb(key: String, at: String, dir: Vector3) -> void:
 		bone = rig.thighs[i] if at == "upper" else rig.shins[i]
 	var joint: Vector3 = bone.global_position
 	rig.sever(bone, dir)
+	if skin != null:
+		skin.sever(key, at)
 	FX.blood(self, joint, dir)
 	FX.knife_spray(self, joint, (dir + Vector3.UP * 0.6).normalized(), true)
 	FX.blood_pool(self, Vector3(joint.x, global_position.y, joint.z))
@@ -287,7 +304,7 @@ func is_head_hit(hit_pos: Vector3) -> bool:
 ## movement capsule, which is much wider than the body and knows nothing of
 ## the lurching posture. weapon.gd asks hit_part() after the capsule is hit.
 func _humanoid_hits() -> bool:
-	return not Types.is_creature(kind) and rig != null and rig.visible and rig.head != null
+	return not Types.is_creature(kind) and rig != null and (rig.visible or skin != null) and rig.head != null
 
 
 func _head_center() -> Vector3:
@@ -430,6 +447,8 @@ func die(dir: Vector3) -> void:
 	if is_instance_valid(_hit_zone):
 		_hit_zone.queue_free()   # corpses stop catching bullets
 	super.die(dir)
+	if skin != null:
+		skin.die(dir)
 	if kind == "bloater":
 		_detonate()
 
@@ -470,6 +489,8 @@ func _pick_target() -> void:
 func _physics_process(delta: float) -> void:
 	if rig == null:
 		return
+	if skin != null and not is_dead:
+		skin.update(aim_yaw, Vector2(velocity.x, velocity.z).length(), _attacking > 0.0)
 	if is_dead:
 		if not puppet:
 			move_with(Vector3.ZERO, delta)

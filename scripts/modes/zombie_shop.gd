@@ -1,8 +1,9 @@
 extends RefCounted
 ## Zombie Survival economy: every operator starts the run with only a pistol
 ## and a knife, earns points by hitting and killing infected, and spends them
-## in the shop between waves (B) on a primary, ammo, healing, grenades, gun
-## upgrades and perks. Each peer runs its own wallet for its own operator;
+## in the shop between waves (B), building up to three guns like the other
+## modes (a rifle and an SMG next to the pistol), plus ammo, healing,
+## grenades, gun upgrades and perks. Each peer runs its own wallet for its own operator;
 ## a new loadout is sent to the others as a "loadout" event.
 ##
 ## Points: hit 10, kill 60, headshot kill +40, wave cleared 100 + 50 x wave.
@@ -18,11 +19,13 @@ const KILL_POINTS := 60
 const HEADSHOT_POINTS := 40
 const MAX_UPGRADE := 3
 
-## Primary weapons for sale, cheapest first.
+## Rifles for sale (the primary slot), cheapest first.
 const GUNS := [
-	["mgp7", 1200], ["marlin", 1500], ["hk33", 1700], ["aug_a1", 1900],
+	["marlin", 1500], ["hk33", 1700], ["aug_a1", 1900],
 	["as_val", 2000], ["uar10", 2400],
 ]
+## SMGs for sale (their own slot, carried alongside the rifle).
+const SMG_GUNS := [["mgp7", 1100], ["gepard", 1300]]
 ## id -> [name, price, description]
 const PERKS := {
 	"tough": ["JUGGERNAUT VEST", 2500, "+50 MAX HEALTH, FASTER REGEN"],
@@ -37,8 +40,10 @@ const MULE_RESERVE := 1.6
 var points := START_POINTS
 var earned := 0
 var spent := 0
-## Primary bought this run ("" = pistol only).
+## Rifle bought this run ("" = none yet).
 var primary := ""
+## SMG bought this run ("" = none yet).
+var smg := ""
 ## weapon id -> upgrade level 1..MAX_UPGRADE
 var upgrades := {}
 var perks := {}
@@ -74,12 +79,22 @@ func upgrade_price(level: int) -> int:
 	return 1500 * (level + 1)
 
 
-## Weapon specs for this operator: [primary?, pistol, knife].
+## Weapon specs for this operator: [rifle?, SMG?, pistol, knife].
 func specs() -> Array:
-	var base := starting_specs()
-	if primary == "":
-		return base
-	return [_primary_spec(primary)] + base
+	var out: Array = []
+	if primary != "":
+		out.append(_primary_spec(primary))
+	if smg != "":
+		out.append(_smg_spec(smg))
+	return out + starting_specs()
+
+
+## The player's own SMG attachments / skin when they bought their class SMG.
+func _smg_spec(id: String) -> Array:
+	var full: Array = Loadout.weapon_list()
+	if String(full[1][0]) == id:
+		return full[1]
+	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), ""]
 
 
 ## The player's own attachments / skin when they bought their class primary,
@@ -122,6 +137,14 @@ func items(p) -> Array:
 		if primary != "" and not have:
 			desc += "  ·  REPLACES " + String(Data.WEAPONS[primary].name)
 		out.append(_row("gun_" + gid, "WEAPONS", String(st.name), desc, int(g[1]), not have, "EQUIPPED" if have else ""))
+	# SMGs: a second gun slot
+	for g in SMG_GUNS:
+		var gid: String = g[0]
+		var st: Dictionary = Data.WEAPONS[gid]
+		var have := smg == gid
+		var desc := "%s  ·  DMG %d  ·  %d RPM" % [String(st.category), int(st.damage), int(st.rpm)]
+		desc += ("  ·  REPLACES " + String(Data.WEAPONS[smg].name)) if smg != "" and not have else "  ·  ADDS A GUN SLOT"
+		out.append(_row("smg_" + gid, "SMGS", String(st.name), desc, int(g[1]), not have, "EQUIPPED" if have else ""))
 	return out
 
 
@@ -173,10 +196,31 @@ func buy(id: String, p) -> String:
 							w.reserve = maxi(w.reserve, int(w.stats.reserve))
 			elif id.begins_with("gun_"):
 				_equip_primary(id.substr(4), p)
+			elif id.begins_with("smg_"):
+				_equip_smg(id.substr(4), p)
 	return "BOUGHT  ·  %s  ·  -%d PTS" % [String(row.label), int(row.price)]
 
 
 ## Swaps in a new primary, keeping the pistol's ammo, and tells the others.
+## Buys / swaps the SMG slot, keeping the other guns' ammo, then draws the SMG.
+func _equip_smg(gid: String, p) -> void:
+	if smg != "":
+		upgrades.erase(smg)
+	var keep := {}
+	for w in p.weapons:
+		keep[String(w.id)] = [w.ammo, w.reserve]
+	smg = gid
+	p.set_loadout(specs())
+	for w in p.weapons:
+		if keep.has(String(w.id)):
+			w.ammo = int(keep[w.id][0])
+			w.reserve = int(keep[w.id][1])
+	apply_mods(p)
+	p.weapon_index = 1 if primary != "" else 0
+	p._equip_current()
+	sync(p)
+
+
 func _equip_primary(gid: String, p) -> void:
 	if primary != "":
 		upgrades.erase(primary)   # the old gun's upgrades leave with it

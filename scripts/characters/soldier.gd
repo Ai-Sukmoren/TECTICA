@@ -50,6 +50,13 @@ var _switch_swapped := true
 var _shape: CapsuleShape3D
 var _peek_off := Vector3.ZERO
 var grenades := 0
+## 40 mm rounds for an under-barrel GP-25.
+var launcher_rounds := 0
+const LAUNCHER_MAX := 3
+## Seconds until the GP-25 is reloaded after a shot.
+var launcher_cd := 0.0
+const LAUNCHER_RELOAD := 1.6
+const LAUNCHER_SPEED := 62.0
 var flashbangs := 0
 var _throw_kind := "frag"
 ## Seconds left blinded by a flashbang.
@@ -404,6 +411,7 @@ func net_switch(i: int) -> void:
 
 func _tick_actions(delta: float) -> void:
 	throwing = maxf(throwing - delta, 0.0)
+	launcher_cd = maxf(launcher_cd - delta, 0.0)
 	since_damage += delta
 	if reload_timer > 0.0:
 		reload_timer -= delta
@@ -436,6 +444,35 @@ func throw_grenade(target: Vector3, kind: String = "frag") -> bool:
 	Sfx.play(self, "pin", global_position + Vector3.UP * 1.3, -6.0)
 	if Net.active and Net.sync:
 		Net.sync.send_event(self, "throw")
+	return true
+
+
+## Fires the current weapon's GP-25 toward `target`: a 40 mm round from its
+## muzzle on a flat arc, exploding where it hits. False when it cannot fire.
+func fire_launcher(target: Vector3) -> bool:
+	var w = current_weapon() if has_method("current_weapon") else null
+	if w == null or w.launcher == null or not can_act() or launcher_rounds <= 0 or launcher_cd > 0.0:
+		return false
+	launcher_rounds -= 1
+	launcher_cd = LAUNCHER_RELOAD
+	var p0: Vector3 = w.launcher.global_position
+	var dir := (target - p0).normalized()
+	if dir.length() < 0.5:
+		dir = -w.global_transform.basis.z
+	var g := Grenade.new()
+	g.thrower = self
+	g.kind = "vog"
+	get_tree().current_scene.add_child(g)
+	g.global_position = p0 + dir * 0.05
+	# a little loft so it carries like a 40 mm round, not a bullet
+	g.linear_velocity = dir * LAUNCHER_SPEED + Vector3.UP * 1.2
+	g.reset_physics_interpolation()
+	Sfx.play(self, "shot_shotgun", p0, -2.0, 0.1)
+	FX.muzzle_flash(w.launcher, 1.4)
+	if rig != null:
+		rig.add_recoil(1.6)
+	if Net.active and Net.sync:
+		Net.sync.send_event(self, "grenade", [g.global_position, g.linear_velocity, Vector3.ZERO, "vog"])
 	return true
 
 

@@ -40,6 +40,7 @@ static func setup() -> void:
 	_act("zoom_out", [], [])
 	_act("grenade", [KEY_G], [JOY_BUTTON_DPAD_DOWN])
 	_act("flashbang", [KEY_H], [])
+	_act("launcher", [KEY_Y], [])
 	_act("toggle_debug", [KEY_F1])
 	_act("flashlight", [KEY_T], [JOY_BUTTON_BACK])
 	_act("interact", [KEY_F], [JOY_BUTTON_X])

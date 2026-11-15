@@ -24,6 +24,9 @@ var radius := 6.5
 var _clink_cd := 0.0
 var _exploded := false
 var _landed := false
+var _age := 0.0
+## A VOG round arms after this long in flight (so it cannot go off in the launcher).
+const VOG_ARM := 0.06
 
 
 func _ready() -> void:
@@ -45,6 +48,22 @@ func _ready() -> void:
 	sh.radius = 0.05
 	cs.shape = sh
 	add_child(cs)
+	if kind == "vog":
+		fuse = 8.0
+		damage = 140.0
+		radius = 5.0
+		sh.radius = 0.02
+		var path := "res://assets/thirdparty/low_poly_attachments/vog25.glb"
+		if ResourceLoader.exists(path):
+			var m := (load(path) as PackedScene).instantiate() as Node3D
+			add_child(m)
+		else:
+			var shell := MeshInstance3D.new()
+			shell.mesh = ML.sphere(0.02, false, 10)
+			shell.material_override = M.painted_metal("vog", Color(0.3, 0.32, 0.25))
+			add_child(shell)
+		add_to_group("grenades")
+		return
 	if kind == "flash":
 		fuse = 1.6
 		if not PP.add(self, "m84", Vector3(0, -0.06, 0), 0.0, 0.12).is_empty():
@@ -68,6 +87,10 @@ func _ready() -> void:
 
 
 func _on_body_entered(_b: Node) -> void:
+	if kind == "vog":
+		if _age >= VOG_ARM and not _exploded:
+			explode()
+		return
 	# first impact: the grenade bites and rolls only a short way
 	if not _landed:
 		_landed = true
@@ -81,6 +104,9 @@ func _on_body_entered(_b: Node) -> void:
 
 func _physics_process(delta: float) -> void:
 	_clink_cd -= delta
+	_age += delta
+	if kind == "vog" and linear_velocity.length() > 2.0:
+		look_at(global_position + linear_velocity, Vector3.UP)   # the round flies nose first
 	fuse -= delta
 	if fuse <= 0.0 and not _exploded:
 		explode()

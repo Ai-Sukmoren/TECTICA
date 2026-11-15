@@ -3,11 +3,14 @@ extends CanvasLayer
 ##   left half      floating move stick (push far to sprint)
 ##   right half     floating aim stick (aim assist on; push to the rim to fire)
 ##   buttons        FIRE, RELOAD, JUMP, CROUCH, SWAP, FRAG, FLASH, KICK, ADS, USE, pause
-##   keyboard       appears on the sign-in screen and the multiplayer text rows
+##   keyboard       appears on the sign-in screen and the multiplayer text rows;
+##                  on sign-in its top bar holds the USERNAME / PASSWORD fields
+##                  and the SIGN IN / CREATE ACCOUNT buttons, clear of the keys
 ## Everything feeds the normal input actions, the same path a gamepad uses.
 ## Touches on a control also swallow the matching emulated mouse event so the
 ## menus underneath don't react to them.
 
+const Platform = preload("res://scripts/core/platform.gd")
 const STICK_R := 92.0       # stick travel radius (UI pixels, 1280x720 layout)
 const FIRE_AT := 0.86       # aim stick deflection that also pulls the trigger
 
@@ -52,6 +55,8 @@ func in_game() -> bool:
 		return false
 	if main.game_over or hud.settings_open or hud.mp_pause or main.get_tree().paused:
 		return false
+	if hud.shop_open:
+		return false   # the shop list sits where the buttons are
 	return not (main.has_method("killcam_active") and main.killcam_active())
 
 
@@ -62,6 +67,22 @@ func wants_keyboard() -> bool:
 	if hud._needs_auth():
 		return true
 	return hud.title and hud.mp_open and int(hud.mp_row) in [0, 3, 4]
+
+
+## A sub-screen with no other way out on a phone is open (Armory, Gunsmith,
+## Settings, multiplayer, open rooms, admin, the zombie shop): show BACK,
+## which sends the same back command as Esc.
+const BACK_RECT := Rect2(16.0, 14.0, 132.0, 56.0)
+
+
+func wants_back() -> bool:
+	if hud == null or wants_keyboard():
+		return false
+	if hud.shop_open or hud.settings_open:
+		return true
+	if not hud.title or hud._needs_auth():
+		return false
+	return hud.armory.is_open or hud.gunsmith.is_open or hud.room_browser.is_open or hud.mp_open or hud.admin_dash.is_open
 
 
 func portrait() -> bool:
@@ -104,18 +125,24 @@ func _layout_keyboard() -> void:
 	_keys.clear()
 	var s := _size()
 	var rows := ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
-	var kw := minf((s.x - 40.0) / 10.5, 84.0)
-	var kh := 50.0
-	var top := s.y - 4.0 * (kh + 6.0) - kh - 12.0
-	# bar above the keys: what is being typed + the actions hidden behind them
-	var bar_y := top - 58.0
+	var kw := minf((s.x - 40.0) / 10.5, 92.0)
+	var kh := 52.0
+	var top := s.y - 4.0 * (kh + 6.0) - kh - 10.0
+	# bar above the keys: on sign-in the two fields (tap to type in one) and
+	# the two buttons; elsewhere what is being typed and HIDE KEYBOARD
+	var bar_y := top - 62.0
 	var actions: Array = [["SIGN IN", "act_signin"], ["CREATE ACCOUNT", "act_create"]] if hud._needs_auth() else [["HIDE KEYBOARD", "act_hide"]]
-	var ax := s.x - 16.0
+	var ax := s.x - 12.0
 	for i in range(actions.size() - 1, -1, -1):
-		var w := 70.0 + String(actions[i][0]).length() * 11.0
+		var w := 64.0 + String(actions[i][0]).length() * 12.0
 		ax -= w
-		_keys.append([Rect2(ax, bar_y, w, 46.0), String(actions[i][0]), String(actions[i][1]), 0])
+		_keys.append([Rect2(ax, bar_y, w, 52.0), String(actions[i][0]), String(actions[i][1]), 0])
 		ax -= 8.0
+	if hud._needs_auth():
+		var fx := 12.0
+		var room := ax - fx
+		_keys.append([Rect2(fx, bar_y, room * 0.58, 52.0), "USERNAME", "act_field0", 0])
+		_keys.append([Rect2(fx + room * 0.58 + 8.0, bar_y, room * 0.42 - 8.0, 52.0), "PASSWORD", "act_field1", 0])
 	for ri in rows.size():
 		var row: String = rows[ri]
 		var x0 := (s.x - row.length() * (kw + 6.0)) * 0.5
@@ -165,6 +192,8 @@ func _ui_pos(event: InputEvent):
 
 
 func _over_control(p: Vector2) -> bool:
+	if wants_back() and BACK_RECT.grow(8.0).has_point(p):
+		return true
 	if wants_keyboard():
 		# the whole panel, gaps included: menus hidden behind it react to the
 		# pointer moving over them (the sign-in screen moves its selection)
@@ -186,6 +215,10 @@ func _over_play_control(p: Vector2) -> bool:
 
 
 func _touch_down(idx: int, p: Vector2) -> void:
+	if wants_back() and BACK_RECT.grow(8.0).has_point(p):
+		_tap.call_deferred("ui_cancel")   # not while this touch is still being dispatched
+		_fingers[idx] = "back"
+		return
 	if wants_keyboard():
 		for k in _keys:
 			if (k[0] as Rect2).has_point(p):
@@ -290,6 +323,10 @@ func _type_key(k: Array) -> void:
 				hud._auth_submit(true)
 			"act_hide":
 				hud.mp_row = 1   # off the text rows
+			"act_field0":
+				hud._auth_row = 0
+			"act_field1":
+				hud._auth_row = 1
 		return
 	var down := InputEventKey.new()
 	down.keycode = int(k[2]) as Key
@@ -357,6 +394,9 @@ func _release_all() -> void:
 
 
 func _process(_delta: float) -> void:
+	if hud != null:
+		# bigger layout for sign-in and play; the dense menus keep the regular one
+		Platform.set_play_ui(hud._needs_auth() or not hud.title)
 	if hud == null:
 		return
 	var playing := in_game()
@@ -387,14 +427,35 @@ func _draw_controls() -> void:
 		for k in _keys:
 			top = minf(top, (k[0] as Rect2).position.y)
 		c.draw_rect(Rect2(0, top - 10.0, s.x, s.y - top + 10.0), Color(0.02, 0.03, 0.04, 0.95))
-		c.draw_string(font, Vector2(20.0, top + 30.0), _field_text(), HORIZONTAL_ALIGNMENT_LEFT, s.x * 0.55, 22, Color(1.0, 0.8, 0.35))
+		var auth: bool = hud._needs_auth()
+		if not auth:
+			c.draw_string(font, Vector2(20.0, top + 34.0), _field_text(), HORIZONTAL_ALIGNMENT_LEFT, s.x * 0.55, 22, Color(1.0, 0.8, 0.35))
+		var cur := "_" if int(Time.get_ticks_msec() / 500) % 2 == 0 else " "
 		for k in _keys:
 			var r: Rect2 = k[0]
+			if k[2] is String and String(k[2]).begins_with("act_field"):
+				# a sign-in field: its name, what is typed, and the caret while selected
+				var fi := 0 if String(k[2]) == "act_field0" else 1
+				var sel := int(hud._auth_row) == fi
+				var val := String(hud._auth_user) if fi == 0 else "*".repeat(String(hud._auth_pin).length())
+				c.draw_rect(r, Color(0, 0, 0, 0.55))
+				c.draw_rect(r, Color(1.0, 0.32, 0.25, 0.95) if sel else Color(1, 1, 1, 0.3), false, 3.0 if sel else 1.5)
+				c.draw_string(font, Vector2(r.position.x + 12.0, r.position.y + 19.0), String(k[1]), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20.0, 13, Color(1, 1, 1, 0.55))
+				var shown := val + (cur if sel else "")
+				if shown.strip_edges() == "" and not sel:
+					shown = "tap to type"
+				c.draw_string(font, Vector2(r.position.x + 12.0, r.position.y + 44.0), shown, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20.0, 24,
+						Color(1.0, 0.85, 0.4) if sel else (Color(1, 1, 1, 0.9) if val != "" else Color(1, 1, 1, 0.35)))
+				continue
 			var act: bool = k[2] is String
 			c.draw_rect(r, Color(0.85, 0.2, 0.15, 0.55) if act else Color(1, 1, 1, 0.1))
 			c.draw_rect(r, Color(1, 1, 1, 0.35), false, 1.5)
 			c.draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 9.0), String(k[1]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 24 if String(k[1]).length() == 1 else 16, Color(1, 1, 1, 0.92))
 		return
+	if wants_back():
+		c.draw_rect(BACK_RECT, Color(0.02, 0.03, 0.04, 0.88))
+		c.draw_rect(BACK_RECT, Color(1, 1, 1, 0.55), false, 2.0)
+		c.draw_string(font, Vector2(BACK_RECT.position.x, BACK_RECT.position.y + 37.0), "‹  BACK", HORIZONTAL_ALIGNMENT_CENTER, BACK_RECT.size.x, 22, Color(1, 1, 1, 0.95))
 	if not in_game():
 		return
 	var ink := Color(1, 1, 1, 0.55)

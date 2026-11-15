@@ -46,9 +46,6 @@ func run() -> void:
 	for id in Skins.weapon_ids():
 		var w := Weapon.new()
 		w.setup(id, {})
-		if w.is_melee():
-			w.free()
-			continue   # knives take skins but no stickers
 		scene.add_child(w)
 		w.apply_skin("ruby")
 		w.apply_sticker({"side": 2, "u": 0.5, "v": 0.6, "s": 1.0})
@@ -56,6 +53,17 @@ func run() -> void:
 		check(st.size() == 2, "%s: two stickers for side=both (got %d)" % [id, st.size()])
 		for m in st:
 			check((m as MeshInstance3D).transform.is_finite(), "%s: sticker transform" % id)
+			# wholly on one part of the weapon: its centre and both ends lie over a part
+			var q := ((m as MeshInstance3D).mesh as QuadMesh).size
+			if absf(((m as MeshInstance3D).basis * Vector3.RIGHT).y) > 0.7:
+				q = Vector2(q.y, q.x)   # upright on a blade
+			var pos := (m as MeshInstance3D).position
+			var on := false
+			for b in Sticker._parts(w._model_root):
+				if pos.z - q.x * 0.5 >= b.position.z - 0.001 and pos.z + q.x * 0.5 <= b.end.z + 0.001 \
+						and pos.y - q.y * 0.5 >= b.position.y - 0.001 and pos.y + q.y * 0.5 <= b.end.y + 0.001:
+					on = true
+			check(on, "%s: sticker lies wholly on one part" % id)
 		w.apply_sticker({"on": false})
 		check(w._model_root.find_children("Sticker*", "MeshInstance3D", false, false).filter(func(n): return not n.is_queued_for_deletion()).is_empty(), "%s: hide removes sticker" % id)
 		w.queue_free()

@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://di6j75eifto4i"
 path.s3tc="res://.godot/imported/concrete_color.jpg-d96789f3c042b4d4465251cf72397abd.s3tc.ctex"
+path.etc2="res://.godot/imported/concrete_color.jpg-d96789f3c042b4d4465251cf72397abd.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/pbr/concrete_color.jpg"
-dest_files=["res://.godot/imported/concrete_color.jpg-d96789f3c042b4d4465251cf72397abd.s3tc.ctex"]
+dest_files=["res://.godot/imported/concrete_color.jpg-d96789f3c042b4d4465251cf72397abd.s3tc.ctex", "res://.godot/imported/concrete_color.jpg-d96789f3c042b4d4465251cf72397abd.etc2.ctex"]
 
 [params]
 

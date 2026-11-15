@@ -97,8 +97,6 @@ func apply_skin(finish: String) -> void:
 
 ## Places the current finish's sticker (if it has one) per `cfg` (see sticker.gd).
 func apply_sticker(cfg: Dictionary) -> void:
-	if is_melee():
-		return   # no room for a sticker on a blade
 	var id := String(Skins.FINISHES[skin].get("sticker", "")) if Skins.FINISHES.has(skin) else ""
 	if id == "":
 		Sticker.remove(_model_root)

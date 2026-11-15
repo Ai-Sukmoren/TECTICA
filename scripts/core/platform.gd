@@ -7,10 +7,36 @@ extends RefCounted
 ##   * adds the on-screen sticks, buttons and keyboard (touch_controls.gd)
 
 const UI_SIZE := Vector2i(1280, 720)
+## Sign-in and play are drawn bigger (keys, sticks and buttons sized for
+## thumbs); the dense menus (title, armory, gunsmith) keep UI_SIZE to fit.
+const UI_SIZE_PLAY := Vector2i(1024, 576)
+static var _play_ui := false
 
 static var _touch := -1
 static var _set_up := false
 static var _defaults_done := false
+
+
+## Layout size the phone UI is drawn at (smaller = bigger on screen).
+## `-- --ui=WxH` overrides the play size for testing.
+static func ui_size(play: bool = false) -> Vector2i:
+	if not play:
+		return UI_SIZE
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--ui="):
+			var p := a.substr(5).split("x")
+			if p.size() == 2:
+				return Vector2i(int(p[0]), int(p[1]))
+	return UI_SIZE_PLAY
+
+
+## Bigger layout for sign-in and play, the regular one for menus.
+static func set_play_ui(on: bool) -> void:
+	if not touch_mode() or on == _play_ui:
+		return
+	_play_ui = on
+	var root := (Engine.get_main_loop() as SceneTree).root
+	root.content_scale_size = ui_size(on)
 
 
 static func is_web() -> bool:
@@ -51,7 +77,7 @@ static func setup_once() -> void:
 	var root := (Engine.get_main_loop() as SceneTree).root
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
-	root.content_scale_size = UI_SIZE
+	root.content_scale_size = ui_size()
 	# lighter rendering: SAFE preset, half-resolution 3D, 60 FPS
 	var S = preload("res://scripts/core/settings.gd")
 	S.set_preset(S.SAFE)

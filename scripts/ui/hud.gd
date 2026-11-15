@@ -888,7 +888,10 @@ func _draw_title(c: Control, vp: Vector2) -> void:
 ## operator cards on the right, status bar along the bottom. The frozen world
 ## stays visible behind it.
 func _draw_main_menu(c: Control, vp: Vector2) -> void:
-	var panel_w := clampf(vp.x * 0.34, 400.0, 520.0)
+	# phones: the menu is two columns (PLAY + OPERATOR | SYSTEM) under a
+	# smaller logo, so every row fits the short screen at a thumb-sized height
+	var two_col := touch != null
+	var panel_w := clampf(vp.x * 0.56, 640.0, 900.0) if two_col else clampf(vp.x * 0.34, 400.0, 520.0)
 	if is_instance_valid(menu_cam) and float(menu_cam.fade) > 0.01:
 		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, float(menu_cam.fade)))
 	# world dimmed, left panel solid, soft edge between them
@@ -904,7 +907,7 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 
 	# logo + context line
 	var pad := 44.0
-	var logo_w := panel_w - pad * 2.0
+	var logo_w := minf(panel_w - pad * 2.0, 300.0) if two_col else panel_w - pad * 2.0
 	var pulse := 0.94 + 0.06 * sin(_time * 2.0)
 	var logo_h := logo_w * (float(_logo.get_height()) / float(_logo.get_width()) if _logo != null else 0.22)
 	_draw_logo(c, Vector2(pad + logo_w * 0.5, 40.0 + logo_h * 0.5), logo_w, pulse)
@@ -918,23 +921,36 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 	# grouped menu
 	var entries := _menu_entries()
 	_menu_rects.clear()
-	var row_w := panel_w - pad * 2.0
+	var row_w := (panel_w - pad * 3.0) * 0.5 if two_col else panel_w - pad * 2.0
 	var top := 40.0 + logo_h + 56.0
 	var avail := vp.y - top - 70.0
 	var row_h := clampf(avail / (entries.size() + 3.6), 30.0, 40.0)
+	if two_col:
+		var counts := [0, 0]
+		for e in entries:
+			counts[1 if String(e.sec) == "SYSTEM" else 0] += 1
+		var secs := 2.0   # section headers in the busier column
+		row_h = clampf((avail - secs * 30.0) / (maxf(counts[0] + 0.45, counts[1])), 30.0, 48.0)
+	var col_y := [top, top]
 	var cy := top
 	var sec := ""
+	var col := 0
+	var x0 := pad
 	for i in entries.size():
 		var e: Dictionary = entries[i]
+		if two_col:
+			col = 1 if String(e.sec) == "SYSTEM" else 0
+			x0 = pad + col * (row_w + pad)
+			cy = col_y[col]
 		if String(e.sec) != sec:
 			sec = String(e.sec)
 			cy += 10.0
-			_text(c, Vector2(pad, cy + 12.0), sec, 11, Color(DIM, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-			c.draw_line(Vector2(pad + 8.0 + sec.length() * 8.5, cy + 8.0), Vector2(pad + row_w, cy + 8.0), Color(DIM, 0.25), 1.0)
+			_text(c, Vector2(x0, cy + 12.0), sec, 11, Color(DIM, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			c.draw_line(Vector2(x0 + 8.0 + sec.length() * 8.5, cy + 8.0), Vector2(x0 + row_w, cy + 8.0), Color(DIM, 0.25), 1.0)
 			cy += 20.0
 		var big := bool(e.get("big", false))
 		var h := row_h * (1.45 if big else 1.0)
-		var r := Rect2(pad, cy, row_w, h - 4.0)
+		var r := Rect2(x0, cy, row_w, h - 4.0)
 		_menu_rects.append(r)
 		var sel := i == menu_index
 		if big:
@@ -956,6 +972,8 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 					val = "‹  " + val + "  ›"
 				_text(c, Vector2(r.position.x, ty - 1.0), val, 13, ACCENT if sel else DIM, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 12.0, sel)
 		cy += h
+		if two_col:
+			col_y[col] = cy
 
 	# right-hand cards (hidden when the window is narrow)
 	if vp.x - panel_w > 560.0:
@@ -969,7 +987,7 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 	# status bar
 	c.draw_rect(Rect2(0, vp.y - 44.0, vp.x, 44.0), Color(0, 0, 0, 0.55))
 	c.draw_line(Vector2(0, vp.y - 44.0), Vector2(vp.x, vp.y - 44.0), Color(TEXT, 0.12), 1.0)
-	_text(c, Vector2(pad, vp.y - 17.0), "W/S  SELECT     A/D  CHANGE     ENTER  CONFIRM     MOUSE  CLICK", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(pad, vp.y - 17.0), "TAP A ROW TO OPEN IT  ·  TAP A ‹ › ROW TO CHANGE IT" if two_col else "W/S  SELECT     A/D  CHANGE     ENTER  CONFIRM     MOUSE  CLICK", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var ver := "v" + String(ProjectSettings.get_setting("application/config/version", "1.5.0-beta")).to_upper()
 	_text(c, Vector2(vp.x - 420.0, vp.y - 17.0), ver + "  ·  BETA BUILD", 11, Color(WARN, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 380.0, true)
 	if Settings.crash_recovered:
@@ -2396,6 +2414,37 @@ func _sign_out() -> void:
 	_switch_profile()
 
 
+## Phone sign-in: the fields and buttons live in the keyboard's top bar
+## (touch_controls.gd); this draws the logo, the message and the accounts
+## saved on this phone above it. Tap an account to fill in its name.
+func _draw_auth_touch(c: Control, vp: Vector2) -> void:
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.025, 0.035, 0.9))
+	var kb_top := 9999.0
+	for k in touch._keys:
+		kb_top = minf(kb_top, (k[0] as Rect2).position.y)
+	if kb_top > vp.y:
+		kb_top = vp.y * 0.38
+	var room := kb_top - 12.0
+	_draw_logo(c, Vector2(vp.x * 0.5, room * 0.3), minf(vp.x * 0.3, room * 1.1), 0.95)
+	_auth_rects.clear()   # the fields are in the keyboard bar
+	var msg := _auth_msg if _auth_msg != "" else "Tap USERNAME or PASSWORD, type, then SIGN IN  ·  first time on this phone? CREATE ACCOUNT"
+	_text(c, Vector2(0, room * 0.66), msg, 15, (DANGER if _auth_bad else ACCENT) if _auth_msg != "" else DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_auth_acc_rects.clear()
+	var accs := Profile.accounts()
+	if not accs.is_empty():
+		var shown := accs.slice(0, 5)
+		var w := 170.0
+		var h := 40.0
+		var x0 := vp.x * 0.5 - (shown.size() * (w + 10) - 10) * 0.5
+		var y := room - h
+		for i in shown.size():
+			var r := Rect2(x0 + i * (w + 10), y, w, h)
+			_auth_acc_rects.append([r, shown[i]])
+			c.draw_rect(r, Color(1, 1, 1, 0.07))
+			c.draw_rect(r, Color(TEXT, 0.35), false, 1.5)
+			_text(c, Vector2(r.position.x, r.position.y + 27), String(shown[i]).to_upper(), 16, TEXT, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
+
+
 func _auth_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and _auth_row in [0, 1]:
 		var k: int = event.keycode
@@ -2457,6 +2506,9 @@ func _auth_activate(i: int) -> void:
 
 
 func _draw_auth(c: Control, vp: Vector2) -> void:
+	if touch != null:
+		_draw_auth_touch(c, vp)
+		return
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.025, 0.035, 0.86))
 	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.2), minf(vp.x * 0.42, 640.0), 0.95)
 	var pw := 460.0

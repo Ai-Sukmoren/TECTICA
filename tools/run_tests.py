@@ -23,6 +23,7 @@ TIMEOUT = 300
 # tests that need a window (rendering) and the user args they take
 WINDOWED = {
     "touch_test": ["--resolution", "1688x780", "--", "--touch"],
+    "touch_signin_test": ["--resolution", "1688x780", "--", "--touch"],
     "locomotion_stability_test": ["--resolution", "960x540"],
     "camera_motion_test": ["--resolution", "960x540"],
     "aim_stability_test": ["--resolution", "960x540", "--max-fps", "144"],

@@ -53,7 +53,7 @@ func run() -> void:
 	p.health = 100000.0
 	main.director.timer = 999.0
 	check(Platform.touch_mode(), "touch mode is on")
-	check(root.content_scale_size == Platform.UI_SIZE, "UI laid out at %s" % [root.content_scale_size])
+	check(root.content_scale_size == Platform.UI_SIZE_PLAY, "play UI laid out at the bigger phone size %s" % [root.content_scale_size])
 	check(hud.touch != null and hud.touch.in_game(), "touch controls are up in play")
 	check(InputMap.action_get_events("fire").filter(func(e): return e is InputEventMouseButton).is_empty(), "a tap is not bound to fire")
 	var tc = hud.touch

@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://lu05d07kwkgy"
 path.s3tc="res://.godot/imported/planks_normal.jpg-dacb8071593ad1ff7130f5e259f746a2.s3tc.ctex"
+path.etc2="res://.godot/imported/planks_normal.jpg-dacb8071593ad1ff7130f5e259f746a2.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/pbr/planks_normal.jpg"
-dest_files=["res://.godot/imported/planks_normal.jpg-dacb8071593ad1ff7130f5e259f746a2.s3tc.ctex"]
+dest_files=["res://.godot/imported/planks_normal.jpg-dacb8071593ad1ff7130f5e259f746a2.s3tc.ctex", "res://.godot/imported/planks_normal.jpg-dacb8071593ad1ff7130f5e259f746a2.etc2.ctex"]
 
 [params]
 

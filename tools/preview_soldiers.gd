@@ -1,12 +1,16 @@
 extends SceneTree
 ## Renders player-style soldiers in several rig states (idle, aim, crouch,
 ## sprint, reload) to check the skinned model follows the procedural rig.
-## Needs a window:  godot --path . -s res://tools/preview_soldiers.gd -- <out.png> [fp]
+## Needs a window:  godot --path . -s res://tools/preview_soldiers.gd -- <out.png> [fp] [front] [gun=<id>]
 
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out := args[0] if args.size() > 0 else "user://soldiers.png"
+	var gun := "akm"   # gun=<weapon id> to check another weapon's hold
+	for a in args:
+		if a.begins_with("gun="):
+			gun = a.substr(4)
 	get_root().size = Vector2i(1920, 1080)
 	var world := Node3D.new()
 	get_root().add_child(world)
@@ -46,7 +50,7 @@ func _initialize() -> void:
 		var s = Soldier.new()
 		world.add_child(s)
 		s.position = Vector3((i - (states.size() - 1) * 0.5) * 1.3, 0, 0)
-		s.setup_soldier(Palettes.player(), ["akm"], 0, 0, PI if states[i] == "turned" else 0.0)
+		s.setup_soldier(Palettes.player(), [gun], 0, 0, PI if states[i] == "turned" else 0.0)
 		s.use_character_model(Color.WHITE if i % 2 == 0 else Color(1.25, 1.05, 0.72))
 		rigs.append(s)
 	for f in 5:

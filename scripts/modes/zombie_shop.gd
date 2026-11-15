@@ -21,11 +21,11 @@ const MAX_UPGRADE := 3
 
 ## Rifles for sale (the primary slot), cheapest first.
 const GUNS := [
-	["marlin", 1500], ["hk33", 1700], ["aug_a1", 1900],
-	["as_val", 2000], ["uar10", 2400],
+	["marlin", 1500], ["mosin", 1600], ["hk33", 1700], ["aug_a1", 1900],
+	["as_val", 2000], ["scar_h", 2200], ["uar10", 2400], ["l96a1", 2600],
 ]
 ## SMGs for sale (their own slot, carried alongside the rifle).
-const SMG_GUNS := [["mgp7", 1100], ["gepard", 1300]]
+const SMG_GUNS := [["mgp7", 1100], ["gepard", 1300], ["p90", 1500]]
 ## id -> [name, price, description]
 const PERKS := {
 	"tough": ["JUGGERNAUT VEST", 2500, "+50 MAX HEALTH, FASTER REGEN"],

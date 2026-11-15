@@ -21,6 +21,7 @@ const ATTACHMENTS := {
 		# scope overlay with the AUG's black ring reticle
 		"builtin_15x": {"name": "Built-in 1.5x", "zoom": 1.5, "spread_aim": 0.85, "overlay": true, "ring": true},
 		"builtin_scope": {"name": "Built-in 4x Scope", "zoom": 3.2, "spread_aim": 0.6, "ads_speed": 0.85, "range": 1.2, "scope": true},
+		"builtin_10x": {"name": "Built-in 10x Scope", "zoom": 6.0, "spread_aim": 0.6, "ads_speed": 0.8, "range": 1.25, "scope": true},
 	},
 	"muzzle": {
 		"none": {"name": "Standard Barrel"},
@@ -204,6 +205,62 @@ const WEAPONS := {
 		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["integral"], "underbarrel": ["none", "laser"], "magazine": ["standard", "hollow"], "stock": ["standard"]},
 		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "integral", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
+	# FN P90: 5.7 mm PDW, the 50-round magazine lies along the top of the receiver
+	"p90": {
+		"name": "FN P90", "category": "SMG", "kind": "rifle", "model": "p90",
+		"mag": 50, "reserve": 200, "rpm": 900, "auto": true, "pellets": 1,
+		"damage": 24.0, "range": 58.0, "falloff_start": 22.0,
+		"spread_hip": 2.4, "spread_aim": 0.7, "spread_move": 1.5,
+		"bloom_add": 0.22, "bloom_max": 2.4, "bloom_recover": 8.0,
+		"recoil": 0.6, "reload": 2.7, "reload_empty": 3.2,
+		"suppressed": false, "noise_radius": 30.0, "shake": 0.07, "sound": "shot_smg", "volume": -4.0,
+		"mobility": 1.08, "ads_speed": 1.2,
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "ap", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
+	# FN SCAR-H: 7.62 battle rifle, hits hard, kicks hard
+	"scar_h": {
+		"name": "FN SCAR-H", "category": "BATTLE RIFLE", "kind": "rifle", "model": "scar_h",
+		"mag": 20, "reserve": 120, "rpm": 600, "auto": true, "pellets": 1,
+		"damage": 44.0, "range": 100.0, "falloff_start": 50.0, "pierce": true,
+		"spread_hip": 3.3, "spread_aim": 0.45, "spread_move": 2.7,
+		"bloom_add": 0.45, "bloom_max": 3.4, "bloom_recover": 5.5,
+		"recoil": 1.35, "reload": 2.5, "reload_empty": 3.0,
+		"suppressed": false, "noise_radius": 42.0, "shake": 0.16, "sound": "shot_loud", "volume": -3.0,
+		"mobility": 0.95, "ads_speed": 0.9,
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser", "gp25"],
+				"magazine": ["standard", "extended", "fast", "ap", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
+	# L96A1: bolt-action sniper rifle with its 10x scope built in
+	"l96a1": {
+		"name": "L96A1", "category": "SNIPER", "kind": "rifle", "model": "l96a1",
+		"mag": 10, "reserve": 40, "rpm": 45, "auto": false, "pellets": 1,
+		"damage": 120.0, "range": 170.0, "falloff_start": 120.0, "pierce": true,
+		"spread_hip": 6.0, "spread_aim": 0.08, "spread_move": 5.0,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
+		"recoil": 2.8, "reload": 3.0, "reload_empty": 3.6,
+		"suppressed": false, "noise_radius": 48.0, "shake": 0.3, "sound": "shot_sniper", "volume": -1.0,
+		"mobility": 0.86, "ads_speed": 0.75, "cycle": "bolt",
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["builtin_10x"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "ap", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "builtin_10x", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
+	# Mosin-Nagant 91/30: bolt action on iron sights, five rounds by stripper clip
+	"mosin": {
+		"name": "MOSIN-NAGANT", "category": "BOLT-ACTION", "kind": "rifle", "model": "mosin",
+		"mag": 5, "reserve": 30, "rpm": 40, "auto": false, "pellets": 1,
+		"damage": 95.0, "range": 130.0, "falloff_start": 80.0, "pierce": true,
+		"spread_hip": 4.5, "spread_aim": 0.2, "spread_move": 3.6,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
+		"recoil": 2.6, "reload": 3.2, "reload_empty": 3.6,
+		"suppressed": false, "noise_radius": 46.0, "shake": 0.28, "sound": "shot_sniper", "volume": -1.0,
+		"mobility": 0.93, "ads_speed": 0.9, "cycle": "bolt",
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "ap", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
 	# ---- knives (melee slot). Starting values: damage per slash, swings per minute,
 	# reach in metres, damage multiplier for a hit from behind.
 	"knife_combat": {
@@ -257,9 +314,9 @@ const WEAPONS := {
 	},
 }
 
-const PRIMARIES := ["hk33", "aug_a1", "as_val", "uar10", "marlin"]
+const PRIMARIES := ["hk33", "aug_a1", "scar_h", "as_val", "uar10", "l96a1", "mosin", "marlin"]
 ## The middle slot: submachine guns.
-const SMGS := ["mgp7", "gepard"]
+const SMGS := ["mgp7", "gepard", "p90"]
 const SECONDARIES := ["g17", "zc57", "vp9"]
 const KNIVES := ["knife_combat", "karambit", "butterfly"]
 

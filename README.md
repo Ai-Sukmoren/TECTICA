@@ -386,7 +386,7 @@ multi-computer multiplayer session still needs manual playtesting.
 
 - **Licence not yet verified** — these came as Sketchfab-style downloads without a licence file. Check each model's
   page and add its author and licence here before a public release (all are kept outside the repository):
-  - Guns: low-poly HK33, AUG A1, UAR-10, AS VAL, Gepard SMG, Glock 17 Gen 6, B&T VP9, Marlin 1895.
+  - Guns: low-poly HK33, AUG A1, UAR-10, AS VAL, Gepard SMG, Glock 17 Gen 6, B&T VP9, Marlin 1895, FN P90, FN SCAR-H, L96A1, Mosin-Nagant 91/30.
   - Attachments: low-poly collimator set (Aimpoint Comp M4, EOTech EXPS3, Holosun 403R, Holosun 510C, Vortex AMG UH-1),
     AN/PEQ-2, muzzle device set, AK hexagon handguard (hex tube and rail), GP-25 launcher and VOG-25 round, SureFire X300U.
   - Knives: karambit, PS1-style butterfly knife.

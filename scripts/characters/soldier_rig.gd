@@ -298,10 +298,15 @@ func build(p: Dictionary) -> void:
 		# forearm: a sleeve that tapers to the wrist, bunched cloth at the elbow,
 		# a rolled cuff and the glove's wrist strap
 		_mesh(el, ML.sphere(0.057, false, 12), camo, Vector3(0, -0.012, 0))
-		_mesh(el, ML.cylinder(0.041, 0.056, 0.25, 14), camo, Vector3(0, -0.135, 0))
-		for k in 3:
-			_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
-		_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
+		if String(p.get("sleeves", "")) == "rolled":
+			# sleeve rolled to just below the elbow, bare forearm to the glove
+			_mesh(el, ML.cylinder(0.039, 0.05, 0.25, 14), p.skin, Vector3(0, -0.135, 0))
+			_mesh(el, ML.cylinder(0.058, 0.06, 0.05, 14), camo, Vector3(0, -0.045, 0))
+		else:
+			_mesh(el, ML.cylinder(0.041, 0.056, 0.25, 14), camo, Vector3(0, -0.135, 0))
+			for k in 3:
+				_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
+			_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
 		_mesh(el, ML.cylinder(0.039, 0.041, 0.032, 14), p.gloves, Vector3(0, -0.272, 0))
 		_mesh(el, ML.cylinder(0.042, 0.042, 0.012, 14), detail, Vector3(0, -0.264, 0))
 		_mesh(el, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -0.01, -0.05))
@@ -340,6 +345,7 @@ func _build_details(p: Dictionary) -> void:
 	var vest: Material = p.vest
 	var gear: Material = p.gear
 	var detail: Material = p.detail
+	var pads: Material = p.get("pads", detail)   # knee and elbow pads
 	var strap := M.fabric("webbing_strap", Color(0.13, 0.13, 0.11), 9.0)
 	# plate carrier: MOLLE webbing on the cummerbund, padded shoulder straps, drag handle
 	for side in [-1, 1]:
@@ -356,7 +362,7 @@ func _build_details(p: Dictionary) -> void:
 	_mesh(chest, ML.sphere(0.06, false, 10), wrap, Vector3(0.0, 0.285, -0.075), Vector3.ZERO, Vector3(1.5, 0.75, 0.7))
 	# arms: rounded elbow pads, glove cuffs, wrist GPS on the support arm
 	for i in 2:
-		_mesh(elbows[i], ML.sphere(0.052, false, 10), detail, Vector3(0, -0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
+		_mesh(elbows[i], ML.sphere(0.052, false, 10), pads, Vector3(0, -0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
 		_mesh(elbows[i], ML.cylinder(0.06, 0.064, 0.055, 12), p.gloves, Vector3(0, -FOREARM + 0.035, 0))
 		_mesh(hands[i], ML.rbox(Vector3(0.076, 0.03, 0.06)), detail, Vector3(0, -0.02, -0.03))
 	_mesh(elbows[0], ML.rbox(Vector3(0.052, 0.04, 0.016)), M.solid(Color(0.05, 0.06, 0.06), 0.25, 0.4), Vector3(0, -0.2, -0.058))
@@ -364,7 +370,7 @@ func _build_details(p: Dictionary) -> void:
 	# legs: knee caps, pocket flaps, boot collars and toe caps
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0
-		_mesh(shins[i], ML.sphere(0.07, false, 10), detail, Vector3(0, -0.035, -0.062), Vector3.ZERO, Vector3(0.95, 1.2, 0.55))
+		_mesh(shins[i], ML.sphere(0.07, false, 10), pads, Vector3(0, -0.035, -0.062), Vector3.ZERO, Vector3(0.95, 1.2, 0.55))
 		_mesh(shins[i], ML.cylinder(0.078, 0.084, 0.07, 12), p.boots, Vector3(0, -SHIN + 0.075, 0))
 		_mesh(thighs[i], ML.rbox(Vector3(0.022, 0.014, 0.125)), strap, Vector3(side * 0.112, -0.185, 0))
 		_mesh(thighs[i], ML.cylinder(0.094, 0.094, 0.02, 12), strap, Vector3(0, -0.11, 0))
@@ -418,7 +424,16 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 			var eye := _mesh(h, ML.sphere(0.012, false, 6), M.emissive("zombie_eye", Color(1.0, 0.75, 0.2), 6.0), Vector3(sx * 0.034, 0.02, -0.093))
 			eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if p.get("goggles", false):
-		_mesh(h, ML.rbox(Vector3(0.16, 0.04, 0.025)), M.solid(Color(0.03, 0.03, 0.03), 0.15, 0.4), Vector3(0, 0.015, -0.097))
+		if p.has("goggle_frame"):
+			# full ballistic goggles: coloured frame, dark lens, strap round the helmet
+			var fr: Material = p.goggle_frame
+			# worn below the helmet rim, over the eyes
+			_mesh(h, ML.rbox(Vector3(0.168, 0.06, 0.03)), fr, Vector3(0, -0.048, -0.098))
+			_mesh(h, ML.rbox(Vector3(0.144, 0.038, 0.012)), M.solid(Color(0.1, 0.11, 0.12), 0.06, 0.6), Vector3(0, -0.048, -0.112))
+			for sx in [-1, 1]:
+				_mesh(h, ML.rbox(Vector3(0.012, 0.026, 0.1)), fr, Vector3(sx * 0.092, -0.044, -0.05))
+		else:
+			_mesh(h, ML.rbox(Vector3(0.16, 0.04, 0.025)), M.solid(Color(0.03, 0.03, 0.03), 0.15, 0.4), Vector3(0, 0.015, -0.097))
 
 
 func _node(parent: Node3D, n: String, pos: Vector3) -> Node3D:
@@ -1260,14 +1275,46 @@ const INSPECT_KEYS := {
 }
 
 
+## Third-person inspect (what other players see): the same right side, left
+## side, underside sequence, but chest-relative and held out in front of the
+## vest at chest height, so the gun never passes through the body or arms.
+const TP_INSPECT_KEYS := {
+	"rifle": [
+		[0.13, Vector3(0.13, 0.02, -0.46), Vector3(0.1, 0.9, -0.3)],
+		[0.3, Vector3(0.14, 0.03, -0.48), Vector3(0.05, 1.0, -0.38)],
+		[0.45, Vector3(-0.03, 0.05, -0.47), Vector3(0.18, -0.85, 0.34)],
+		[0.6, Vector3(-0.05, 0.04, -0.49), Vector3(0.13, -0.95, 0.42)],
+		[0.72, Vector3(0.06, 0.0, -0.48), Vector3(0.12, 0.3, 1.1)],
+		[0.85, Vector3(0.07, 0.0, -0.47), Vector3(0.08, 0.22, 1.0)],
+	],
+	"pistol": [
+		[0.13, Vector3(0.08, 0.04, -0.42), Vector3(0.08, 1.0, -0.25)],
+		[0.3, Vector3(0.09, 0.05, -0.43), Vector3(0.02, 1.12, -0.32)],
+		[0.45, Vector3(-0.01, 0.05, -0.43), Vector3(0.12, -1.0, 0.28)],
+		[0.6, Vector3(-0.02, 0.04, -0.44), Vector3(0.08, -1.1, 0.36)],
+		[0.72, Vector3(0.04, 0.0, -0.4), Vector3(-0.7, 0.1, 1.2)],
+		[0.85, Vector3(0.05, 0.01, -0.4), Vector3(-0.62, 0.05, 1.05)],
+	],
+	# knives: out to the right at arm's length, blade in front of the chest and
+	# neck rather than against the vest or the face (karambit spins and
+	# butterfly flips play out here too)
+	"knife": [
+		[0.14, Vector3(0.19, -0.03, -0.52), Vector3(0.1, 0.95, 0.15)],
+		[0.5, Vector3(0.17, -0.01, -0.54), Vector3(-0.05, 0.6, 0.05)],
+		[0.78, Vector3(0.15, -0.02, -0.52), Vector3(0.15, -0.4, -0.25)],
+		[0.88, Vector3(0.17, -0.03, -0.5), Vector3(0.05, 0.15, -0.15)],
+	],
+}
+
+
 func _inspect_pose(kind: String, base: Transform3D) -> Transform3D:
-	var keys: Array = INSPECT_KEYS.get(kind, INSPECT_KEYS.rifle)
-	var lift := Vector3.ZERO if fp_mode else Vector3(-0.03, 0.15, 0.2)
+	var table: Dictionary = INSPECT_KEYS if fp_mode else TP_INSPECT_KEYS
+	var keys: Array = table.get(kind, table.rifle)
 	var times: Array = [0.0]
 	var poses: Array = [base]
 	for k in keys:
 		times.append(float(k[0]))
-		poses.append(Transform3D(Basis.from_euler(k[2]), (k[1] as Vector3) + lift))
+		poses.append(Transform3D(Basis.from_euler(k[2]), k[1] as Vector3))
 	times.append(1.0)
 	poses.append(base)
 	var t := clampf(inspect_t, 0.0, 1.0)

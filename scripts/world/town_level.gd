@@ -3,7 +3,8 @@ extends "res://scripts/world/level.gd"
 ## and Deathmatch only (the campaign lives in the forest).
 ##   centre      police barricade ring at the intersection (zombie stronghold)
 ##   north-east  gas station canopy + walk-through shop
-##   north-west  three houses with backyard fences
+##   north-west  HOTEL MERIDIAN (5 storeys + roof, stairs to every level),
+##               triage checkpoint on its forecourt, one house behind it
 ##   south-west  diner and parking lot
 ##   south-east  truck yard: shed, containers, crates
 ## Roads run north-south (|x| < 5) and east-west (|z| < 5).
@@ -67,6 +68,7 @@ func build() -> void:
 	_mat_glass_dark = M.solid(Color(0.06, 0.08, 0.1), 0.15, 0.4)
 	_mat_fence = M.wood("fence", Color(0.36, 0.3, 0.22))
 	FX.ground_surface = "stone"
+	Water.clear()
 
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Navigation"
@@ -74,11 +76,13 @@ func build() -> void:
 
 	_build_ground()
 	_build_barricade()
+	_build_hotel()
 	_build_gas_station()
 	_build_houses()
 	_build_diner()
 	_build_truck_yard()
 	_build_street_props()
+	_build_details()
 	_build_lamps()
 	_build_weeds()
 	_build_boundary()
@@ -338,15 +342,11 @@ func _build_house(c: Vector3, w: float, d: float, doors: Dictionary) -> void:
 
 
 func _build_houses() -> void:
-	_build_house(Vector3(-19, 0, -18), 10.0, 9.0, {"s": [1.5, 1.8], "e": [0.0, 1.8]})
-	_build_house(Vector3(-35, 0, -18), 10.0, 9.0, {"s": [0.0, 1.8]})
-	_build_house(Vector3(-21, 0, -40), 12.0, 10.0, {"s": [-2.0, 1.8], "n": [2.0, 1.8]})
-	# backyard fences
-	_fence(Vector3(-14, 0, -27), Vector3(-26, 0, -27))
-	_fence(Vector3(-30, 0, -27), Vector3(-42, 0, -27))
-	_fence(Vector3(-42, 0, -27), Vector3(-42, 0, -46))
-	_fence(Vector3(-30, 0, -10), Vector3(-30, 0, -14))
-	crate(Vector3(-27, 0, -31), Vector3(1.2, 1.0, 1.2), 0.4)
+	# one house survives behind the hotel; the alley between them is tight
+	_build_house(Vector3(-21, 0, -41), 12.0, 10.0, {"s": [-2.0, 1.8], "n": [2.0, 1.8]})
+	_fence(Vector3(-42, 0, -34), Vector3(-42, 0, -48))
+	_fence(Vector3(-42, 0, -48), Vector3(-30, 0, -48))
+	crate(Vector3(-36, 0, -38), Vector3(1.2, 1.0, 1.2), 0.4)
 	barrel(Vector3(-13.5, 0, -30), Color(0.25, 0.3, 0.42))
 	vehicle(Vector3(-11, 0, -33), PI * 0.5)
 
@@ -425,7 +425,9 @@ func _build_barricade() -> void:
 	ammo_crates.append(Vector3(-2.0, 0, 2.6))
 
 
-func _car(p: Vector3, rot: float, paint_col: Color, burning: bool = false) -> void:
+## Returns the car body; anything mounted on it (light bar, fire) is parented
+## to it so it breaks away with the car.
+func _car(p: Vector3, rot: float, paint_col: Color, burning: bool = false) -> StaticBody3D:
 	var b := _body(p, rot, "metal")
 	_box_shape(b, Vector3(1.9, 1.45, 4.3), Vector3(0, 0.72, 0))
 	var paint: Material = M.matte("car_burnt", Color(0.07, 0.065, 0.06), 0.95) if burning else M.car_paint("car_" + paint_col.to_html(), paint_col)
@@ -469,9 +471,10 @@ func _car(p: Vector3, rot: float, paint_col: Color, burning: bool = false) -> vo
 			_mesh(b, ML.cylinder(0.06, 0.06, 0.235, 10), alloy, Vector3(sx, 0.33, sz), Vector3(0, 0, PI * 0.5))
 			_mesh(b, ML.cylinder(0.41, 0.41, 0.012, 24), arch, Vector3(signf(sx) * 0.943, 0.34, sz), Vector3(0, 0, PI * 0.5))
 	_add_cover(p, Vector3(1.9, 1.45, 4.3), rot, b)
-	b.finalize()
 	if burning:
-		_fire(p + Vector3(0, 1.2, 0))
+		_fire(Vector3(0, 1.2, 0), b)
+	b.finalize()
+	return b
 
 
 var _car_mesh_cache := {}
@@ -562,19 +565,22 @@ func _strut(parent: Node3D, a: Vector3, c: Vector3, thick: float, mat: Material)
 
 
 func _police_car(p: Vector3, rot: float) -> void:
-	_car(p, rot, Color(0.08, 0.09, 0.12))
-	var bar := _mesh(self, ML.box(Vector3(1.0, 0.12, 0.25)), M.solid(Color(0.1, 0.1, 0.1)), p + Vector3(0, 1.5, 0.28))
-	bar.rotation.y = rot
+	var b := _car(p, rot, Color(0.08, 0.09, 0.12))
+	# light bar and beacons ride on the car body, so they go when it is destroyed
+	_mesh(b, ML.box(Vector3(1.0, 0.12, 0.25)), M.solid(Color(0.1, 0.1, 0.1)), Vector3(0, 1.47, 0.28))
 	for side in [-1.0, 1.0]:
 		var l := OmniLight3D.new()
-		l.position = p + Basis(Vector3.UP, rot) * Vector3(side * 0.35, 1.75, 0)
+		l.position = Vector3(side * 0.35, 1.75, 0.28)
 		l.light_color = Color(1.0, 0.1, 0.08) if side < 0 else Color(0.1, 0.3, 1.0)
 		l.omni_range = 7.0
-		add_child(l)
+		b.add_child(l)
 		lamp_lights.append({"light": l, "base": 1.6, "group": "beacon"})
 
 
-func _fire(p: Vector3) -> void:
+## Fire at `p`, local to `parent` (the level by default).
+func _fire(p: Vector3, parent: Node3D = null) -> void:
+	if parent == null:
+		parent = self
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -603,12 +609,12 @@ func _fire(p: Vector3) -> void:
 	f.color_ramp = ramp
 	f.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	f.position = p
-	add_child(f)
+	parent.add_child(f)
 	var l := OmniLight3D.new()
 	l.position = p + Vector3(0, 0.6, 0)
 	l.light_color = Color(1.0, 0.5, 0.2)
 	l.omni_range = 10.0
-	add_child(l)
+	parent.add_child(l)
 	lamp_lights.append({"light": l, "base": 2.6, "group": "fire", "flicker": true})
 	lights.append({"light": l, "shadow": true})
 
@@ -748,7 +754,543 @@ func _bake_navigation() -> void:
 	nm.agent_max_climb = 0.25
 	nm.agent_max_slope = 40.0
 	nm.region_min_size = 4.0
-	nm.filter_baking_aabb = AABB(Vector3(-HALF, -2, -HALF), Vector3(HALF * 2.0, 16, HALF * 2.0))
+	nm.filter_baking_aabb = AABB(Vector3(-HALF, -2, -HALF), Vector3(HALF * 2.0, 30, HALF * 2.0))   # up to the hotel roof
 	nav_region.navigation_mesh = nm
 	nav_region.bake_navigation_mesh(false)
 	_nav_cache = nm.duplicate()
+# ================================================================ HOTEL MERIDIAN
+# Five storeys plus a walkable roof, north-west block. Footprint x -36..-14,
+# z -30..-14. A switchback stair in the north-east corner links every level:
+# flight A (west lane) climbs north to a half landing, flight B (east lane)
+# climbs back south to the next floor. Each storey lives in its own node so
+# the levels above the operator can be hidden in the top-down view.
+
+const HOTEL_X0 := -36.0
+const HOTEL_X1 := -14.0
+const HOTEL_Z0 := -30.0
+const HOTEL_Z1 := -14.0
+const HOTEL_FLOORS := 5
+const FLOOR_H := 3.6
+const SLAB := 0.3
+const EXT_T := 0.4
+# stairwell: lanes run z -27.8..-22.8, half landing z -29.6..-27.8
+const STAIR_X0 := -18.0
+const STAIR_Z_TOP := -27.8
+const STAIR_Z_BOT := -22.8
+const LANE_A := -17.15
+const LANE_B := -15.25
+
+var _storeys: Array = []            # Node3D per storey; index HOTEL_FLOORS = roof
+var _hotel_rect := Rect2(HOTEL_X0, HOTEL_Z0, HOTEL_X1 - HOTEL_X0, HOTEL_Z1 - HOTEL_Z0)
+var _mat_hotel: Material
+var _mat_hotel_in: Material
+var _mat_slab: Material
+var _mat_stair: Material
+var _mat_tread: Material
+var _mat_carpet: Material
+
+
+func hotel_roof_y() -> float:
+	return HOTEL_FLOORS * FLOOR_H
+
+
+func _build_hotel() -> void:
+	_blocked.append(_hotel_rect.grow(2.5))
+	_mat_hotel = M.concrete("hotel_ext", Color(0.5, 0.43, 0.36), 0.6)
+	_mat_hotel_in = M.solid(Color(0.6, 0.56, 0.48), 0.9)
+	_mat_slab = M.concrete("hotel_slab", Color(0.36, 0.36, 0.37), 0.5)
+	_mat_stair = M.concrete("hotel_stair", Color(0.3, 0.3, 0.31), 0.7)
+	_mat_tread = M.solid(Color(0.16, 0.16, 0.17), 0.8)
+	_mat_carpet = M.fabric("hotel_carpet", Color(0.34, 0.1, 0.1), 3.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7711
+	for k in HOTEL_FLOORS + 1:
+		var bodies := nav_region.get_child_count()
+		var extras := get_child_count()
+		var rects := map_rects.size()
+		var covers := cover_points.size()
+		if k < HOTEL_FLOORS:
+			_hotel_storey(k, rng)
+		else:
+			_hotel_roof()
+		var moved: Array = nav_region.get_children().slice(bodies) + get_children().slice(extras)
+		var st := Node3D.new()
+		st.name = "HotelStorey%d" % k
+		nav_region.add_child(st)
+		for n in moved:
+			(n as Node).reparent(st, true)
+		_storeys.append(st)
+		if k > 0:
+			# the radar and ground cover only describe street level
+			map_rects.resize(rects)
+			cover_points.resize(covers)
+	_hotel_exterior()
+
+
+## A straight wall from `origin` along +x or +z. gaps = [[from, to]] doorways
+## (lintel above 2.25 m). windows: sill + lintel + pillars with open frames.
+func _wall_run(origin: Vector3, along_x: bool, length: float, h: float, thick: float, mat: Material,
+		gaps: Array = [], windows: bool = false) -> void:
+	var dir := Vector3.RIGHT if along_x else Vector3.BACK
+	var cuts: Array = gaps.duplicate()
+	cuts.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	for seg in _segments(0.0, length, cuts):
+		var a: float = seg[0]
+		var b: float = seg[1]
+		var l := b - a
+		if l < 0.08:
+			continue
+		if windows and l >= 2.8:
+			_wall_piece_at(origin + dir * (a + l * 0.5), along_x, l, 1.0, thick, mat)
+			_wall_piece_at(origin + dir * (a + l * 0.5) + Vector3.UP * 2.3, along_x, l, h - 2.3, thick, mat)
+			var bays := maxi(1, int(l / 3.0))
+			var bay := l / bays
+			var pw := bay - 2.0
+			for i in bays + 1:
+				var c := a + i * bay
+				var lo := maxf(a, c - pw * 0.5)
+				var hi := minf(b, c + pw * 0.5)
+				if hi - lo > 0.05:
+					_wall_piece_at(origin + dir * ((lo + hi) * 0.5) + Vector3.UP * 1.0, along_x, hi - lo, 1.3, thick, mat)
+		else:
+			_wall_piece_at(origin + dir * (a + l * 0.5), along_x, l, h, thick, mat)
+	for g in cuts:
+		var gl: float = float(g[1]) - float(g[0])
+		if h > 2.3:
+			_wall_piece_at(origin + dir * (float(g[0]) + gl * 0.5) + Vector3.UP * 2.25, along_x, gl, h - 2.25, thick, mat)
+
+
+func _wall_piece_at(bottom_centre: Vector3, along_x: bool, l: float, h: float, thick: float, mat: Material) -> void:
+	solid_box(bottom_centre, Vector3(l, h, thick) if along_x else Vector3(thick, h, l), mat)
+
+
+func _hotel_slab(y: float) -> void:
+	# two pieces leave the stairwell open
+	solid_box(Vector3((HOTEL_X0 + STAIR_X0 - 0.2) * 0.5, y - SLAB, (HOTEL_Z0 + HOTEL_Z1) * 0.5),
+			Vector3(STAIR_X0 - 0.2 - HOTEL_X0, SLAB, HOTEL_Z1 - HOTEL_Z0), _mat_slab)
+	solid_box(Vector3((STAIR_X0 - 0.2 + HOTEL_X1) * 0.5, y - SLAB, (STAIR_Z_BOT + HOTEL_Z1) * 0.5),
+			Vector3(HOTEL_X1 - STAIR_X0 + 0.2, SLAB, HOTEL_Z1 - STAIR_Z_BOT), _mat_slab)
+
+
+## One flight: 5 m run, half a storey rise. north = climbs toward -z.
+func _flight(y_bottom: float, lane_x: float, north: bool) -> void:
+	var run := STAIR_Z_BOT - STAIR_Z_TOP
+	var rise := FLOOR_H * 0.5
+	var length := sqrt(run * run + rise * rise)
+	var ang := atan2(rise, run)
+	var b := _body(Vector3(lane_x, y_bottom + rise * 0.5 - 0.125 / cos(ang), (STAIR_Z_TOP + STAIR_Z_BOT) * 0.5))
+	b.rotation.x = ang if north else -ang
+	_box_shape(b, Vector3(1.7, 0.25, length), Vector3.ZERO)
+	_mesh(b, ML.box(Vector3(1.7, 0.25, length)), _mat_stair, Vector3.ZERO)
+	for i in 10:
+		var tread := _mesh(b, ML.box(Vector3(1.7, 0.03, 0.2)), _mat_tread, Vector3(0, 0.14, -length * 0.5 + (i + 0.5) * length / 10.0))
+		tread.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _hotel_stairs(y: float, wall_h: float) -> void:
+	_flight(y, LANE_A, true)
+	_flight(y + FLOOR_H * 0.5, LANE_B, false)
+	# half landing against the north wall
+	solid_box(Vector3((STAIR_X0 + HOTEL_X1 - EXT_T) * 0.5, y + FLOOR_H * 0.5 - 0.25, (HOTEL_Z0 + EXT_T + STAIR_Z_TOP) * 0.5),
+			Vector3(HOTEL_X1 - EXT_T - STAIR_X0, 0.25, STAIR_Z_TOP - HOTEL_Z0 - EXT_T), _mat_stair)
+	# wall between the lanes and the stairwell's west wall
+	_wall_run(Vector3((LANE_A + LANE_B) * 0.5, y, STAIR_Z_TOP), false, STAIR_Z_BOT - STAIR_Z_TOP, wall_h, 0.15, _mat_hotel_in)
+	_wall_run(Vector3(STAIR_X0 - 0.1, y, HOTEL_Z0 + EXT_T), false, STAIR_Z_BOT - HOTEL_Z0 - EXT_T, wall_h, 0.2, _mat_hotel_in)
+
+
+func _hotel_light(pos: Vector3, energy: float, rng_range: float, flicker: bool = false, col: Color = Color(1.0, 0.84, 0.62)) -> void:
+	var l := OmniLight3D.new()
+	l.position = pos
+	l.light_color = col
+	l.omni_range = rng_range
+	l.omni_attenuation = 1.3
+	l.light_volumetric_fog_energy = 0.2
+	add_child(l)
+	lamp_lights.append({"light": l, "base": energy, "group": "interior", "flicker": flicker})
+	lights.append({"light": l, "shadow": false})
+	var fixture := _mesh(self, ML.box(Vector3(0.7, 0.05, 0.22)), M.emissive("hotel_lamp", col, 2.4), pos + Vector3(0, 0.22, 0))
+	fixture.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _hotel_furnish_room(x0: float, x1: float, z0: float, z1: float, y: float, rng: RandomNumberGenerator, low: bool) -> void:
+	var cx := (x0 + x1) * 0.5
+	var back := z0 + 0.9 if z0 < -22.0 else z1 - 0.9     # the wall away from the corridor
+	var wood := Color(0.36, 0.26, 0.18)
+	# bed against the outer wall, wardrobe in a corner, table near the door
+	_furniture(Vector3(cx + rng.randf_range(-0.6, 0.6), y, back), Vector3(2.0, 0.55, 1.5), Color(0.55, 0.5, 0.46), rng.randf_range(-0.08, 0.08), low)
+	if rng.randf() < 0.75:
+		_furniture(Vector3(x0 + 0.75, y, back + (1.6 if z0 < -22.0 else -1.6)), Vector3(1.0, 2.0, 0.55), wood, PI * 0.5, false)
+	if rng.randf() < 0.7:
+		var tz := (z1 - 1.5) if z0 < -22.0 else (z0 + 1.5)
+		_furniture(Vector3(x1 - 1.3, y, tz), Vector3(1.1, 0.76, 0.8), wood, rng.randf_range(-0.5, 0.5), low)
+
+
+func _hotel_storey(k: int, rng: RandomNumberGenerator) -> void:
+	var y := k * FLOOR_H
+	var wall_h := FLOOR_H - SLAB
+	var inner_x0 := HOTEL_X0 + EXT_T
+	var inner_z0 := HOTEL_Z0 + EXT_T
+	var inner_z1 := HOTEL_Z1 - EXT_T
+	var low := k == 0
+	if k > 0:
+		_hotel_slab(y)
+		var carpet := _floor_patch(Vector3((HOTEL_X0 + STAIR_X0) * 0.5, y + 0.012, -22.0), Vector2(STAIR_X0 - HOTEL_X0 - 0.9, 2.2), _mat_carpet)
+		carpet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	else:
+		_floor_patch(Vector3((HOTEL_X0 + HOTEL_X1) * 0.5, 0.02, (HOTEL_Z0 + HOTEL_Z1) * 0.5), Vector2(HOTEL_X1 - HOTEL_X0 - 0.8, HOTEL_Z1 - HOTEL_Z0 - 0.8),
+				M.floor_grid("hotel_lobby", Color(0.3, 0.27, 0.22), Color(0.4, 0.36, 0.28), 0.35))
+		_floor_patch(Vector3(-23.5, 0.03, -17.5), Vector2(3.0, 6.0), _mat_carpet)
+	# outer walls with open window frames; lobby doors on the ground floor
+	_wall_run(Vector3(HOTEL_X0, y, HOTEL_Z1 - EXT_T * 0.5), true, HOTEL_X1 - HOTEL_X0, wall_h, EXT_T, _mat_hotel, [[10.9, 14.1]] if k == 0 else [], true)
+	_wall_run(Vector3(HOTEL_X0, y, HOTEL_Z0 + EXT_T * 0.5), true, HOTEL_X1 - HOTEL_X0, wall_h, EXT_T, _mat_hotel, [], true)
+	_wall_run(Vector3(HOTEL_X0 + EXT_T * 0.5, y, inner_z0), false, inner_z1 - inner_z0, wall_h, EXT_T, _mat_hotel, [], true)
+	_wall_run(Vector3(HOTEL_X1 - EXT_T * 0.5, y, inner_z0), false, inner_z1 - inner_z0, wall_h, EXT_T, _mat_hotel, [[11.2, 13.0]] if k == 0 else [], true)
+	_hotel_stairs(y, wall_h)
+	# rooms north of the corridor (every storey)
+	var n_len := STAIR_X0 - 0.2 - inner_x0
+	_wall_run(Vector3(inner_x0, y, -23.2), true, n_len, wall_h, 0.2, _mat_hotel_in, [[2.3, 3.7], [7.9, 9.3], [13.7, 15.1]])
+	for x in [-30.0, -24.0]:
+		_wall_run(Vector3(x, y, inner_z0), false, -23.3 - inner_z0, wall_h, 0.2, _mat_hotel_in)
+	var north_rooms := [[inner_x0, -30.1], [-29.9, -24.1], [-23.9, STAIR_X0 - 0.3]]
+	for r in north_rooms:
+		_hotel_furnish_room(r[0], r[1], inner_z0, -23.3, y, rng, low)
+	# corridor + stair lights, a few lit rooms
+	_hotel_light(Vector3(-27.5, y + wall_h - 0.35, -22.0), 1.5, 11.0, rng.randf() < 0.35)
+	_hotel_light(Vector3(-16.2, y + wall_h - 0.35, -22.0), 1.3, 8.0, rng.randf() < 0.25)
+	_hotel_light(Vector3(north_rooms[rng.randi() % 3][0] + 2.8, y + wall_h - 0.35, -26.6), 1.2, 7.0)
+	if k == 0:
+		# lobby: reception, seating, luggage
+		solid_box(Vector3(-31.0, 0, -18.4), Vector3(4.4, 1.1, 0.9), M.wood("reception", Color(0.3, 0.2, 0.13)), 0.0, true, "wood").finalize()
+		_furniture(Vector3(-27.0, 0, -15.6), Vector3(2.2, 0.8, 0.9), Color(0.4, 0.12, 0.12))
+		_furniture(Vector3(-18.6, 0, -16.6), Vector3(0.9, 0.8, 2.2), Color(0.4, 0.12, 0.12), 0.0)
+		_furniture(Vector3(-20.6, 0, -19.0), Vector3(1.2, 0.5, 0.8), Color(0.2, 0.16, 0.12), 0.3)
+		crate(Vector3(-34.2, 0, -15.6), Vector3(1.0, 0.8, 1.0), 0.2)
+		_hotel_light(Vector3(-25.0, wall_h - 0.35, -17.5), 1.8, 10.0)
+		var desk_sign := Label3D.new()
+		desk_sign.text = "RECEPTION"
+		desk_sign.font_size = 64
+		desk_sign.pixel_size = 0.005
+		desk_sign.modulate = Color(1.0, 0.82, 0.5)
+		desk_sign.position = Vector3(-31.0, 2.6, -20.65)
+		add_child(desk_sign)
+	elif k == HOTEL_FLOORS - 1:
+		# top floor lounge: open plan with a bar
+		solid_box(Vector3(-31.5, y, -16.2), Vector3(6.0, 1.1, 0.8), M.wood("bar", Color(0.22, 0.14, 0.1)), 0.0, false, "wood").finalize()
+		for i in 4:
+			_furniture(Vector3(-27.0 + i * 3.4, y, -18.4 + (i % 2) * 1.6), Vector3(1.1, 0.76, 1.1), Color(0.3, 0.22, 0.16), i * 0.4, false)
+		_hotel_light(Vector3(-27.0, y + wall_h - 0.35, -17.4), 1.6, 10.0, false, Color(1.0, 0.6, 0.75))
+		_hotel_light(Vector3(-18.0, y + wall_h - 0.35, -17.4), 1.4, 8.0, false, Color(0.6, 0.8, 1.0))
+	else:
+		# guest rooms south of the corridor
+		var s_len := HOTEL_X1 - EXT_T - inner_x0
+		_wall_run(Vector3(inner_x0, y, -20.8), true, s_len, wall_h, 0.2, _mat_hotel_in, [[2.3, 3.7], [7.9, 9.3], [13.4, 14.8], [18.2, 19.6]])
+		for x in [-30.0, -24.0, -19.0]:
+			_wall_run(Vector3(x, y, -20.7), false, inner_z1 + 20.7, wall_h, 0.2, _mat_hotel_in)
+		var south_rooms := [[inner_x0, -30.1], [-29.9, -24.1], [-23.9, -19.1], [-18.9, HOTEL_X1 - EXT_T]]
+		for r in south_rooms:
+			_hotel_furnish_room(r[0], r[1], -20.7, inner_z1, y, rng, false)
+		_hotel_light(Vector3(south_rooms[rng.randi() % 4][0] + 2.5, y + wall_h - 0.35, -17.6), 1.2, 7.0)
+		if rng.randf() < 0.6:
+			# a hasty barricade in the corridor
+			_furniture(Vector3(rng.randf_range(-33.0, -22.0), y, -22.0), Vector3(1.6, 0.9, 0.7), Color(0.32, 0.24, 0.17), rng.randf_range(-0.6, 0.6), false)
+
+
+func _hotel_roof() -> void:
+	var y := hotel_roof_y()
+	_hotel_slab(y)
+	# parapet (the stairhead walls stand in for it in the north-east corner)
+	var p := M.concrete("hotel_parapet", Color(0.42, 0.4, 0.38), 0.6)
+	_wall_run(Vector3(HOTEL_X0, y, HOTEL_Z1 - EXT_T * 0.5), true, HOTEL_X1 - HOTEL_X0, 1.1, EXT_T, p)
+	_wall_run(Vector3(HOTEL_X0 + EXT_T * 0.5, y, HOTEL_Z0), false, HOTEL_Z1 - HOTEL_Z0, 1.1, EXT_T, p)
+	_wall_run(Vector3(HOTEL_X0, y, HOTEL_Z0 + EXT_T * 0.5), true, STAIR_X0 - 0.2 - HOTEL_X0, 1.1, EXT_T, p)
+	_wall_run(Vector3(HOTEL_X1 - EXT_T * 0.5, y, STAIR_Z_BOT), false, HOTEL_Z1 - STAIR_Z_BOT, 1.1, EXT_T, p)
+	# stairhead: three walls and a cap, open to the south
+	var bh := 2.7
+	_wall_run(Vector3(STAIR_X0 - 0.1, y, HOTEL_Z0), false, STAIR_Z_BOT - HOTEL_Z0, bh, 0.2, _mat_hotel)
+	_wall_run(Vector3(STAIR_X0 - 0.2, y, HOTEL_Z0 + EXT_T * 0.5), true, HOTEL_X1 - STAIR_X0 + 0.2, bh, EXT_T, _mat_hotel)
+	_wall_run(Vector3(HOTEL_X1 - EXT_T * 0.5, y, HOTEL_Z0), false, STAIR_Z_BOT - HOTEL_Z0, bh, EXT_T, _mat_hotel)
+	solid_box(Vector3((STAIR_X0 - 0.3 + HOTEL_X1) * 0.5, y + bh, (HOTEL_Z0 + STAIR_Z_BOT + 0.3) * 0.5),
+			Vector3(HOTEL_X1 - STAIR_X0 + 0.3, 0.25, STAIR_Z_BOT + 0.3 - HOTEL_Z0), _mat_slab)
+	_hotel_light(Vector3(-16.2, y + 2.2, -24.0), 1.4, 7.0, true, Color(1.0, 0.5, 0.35))
+	# water tank on a frame
+	var steel := M.painted_metal("roof_steel", Color(0.34, 0.36, 0.38))
+	var tank := solid_box(Vector3(-32.0, y, -26.0), Vector3(2.8, 1.2, 2.8), steel)
+	_mesh(tank, ML.cylinder(1.5, 1.5, 2.6, 18), M.painted_metal("water_tank", Color(0.5, 0.42, 0.34)), Vector3(0, 2.5, 0))
+	_mesh(tank, ML.cylinder(0.2, 1.55, 0.6, 18), M.painted_metal("water_tank", Color(0.5, 0.42, 0.34)), Vector3(0, 4.1, 0))
+	# air conditioning units, vents
+	for a in [Vector3(-26.0, y, -27.6), Vector3(-22.6, y, -27.6), Vector3(-33.6, y, -19.0)]:
+		var ac := solid_box(a, Vector3(1.8, 1.05, 1.1), steel)
+		_mesh(ac, ML.cylinder(0.42, 0.42, 0.06, 14), _mat_tread, Vector3(0, 1.08, 0))
+	# sniper nest over the crossroads + the reward for the climb
+	sandbags(Vector3(-16.2, y, -15.4), 3.0, 0.0)
+	sandbags(Vector3(-14.9, y, -17.0), 2.4, PI * 0.5)
+	crate(Vector3(-20.0, y, -15.6), Vector3(1.0, 0.8, 1.0), 0.3)
+	ammo_crates.append(Vector3(-18.6, y, -18.4))
+	# antenna mast with a beacon
+	_mesh(self, ML.cylinder(0.05, 0.09, 7.0, 8), steel, Vector3(-34.6, y + 3.5, -28.6))
+	for h in [2.2, 4.4]:
+		_mesh(self, ML.box(Vector3(1.6, 0.05, 0.05)), steel, Vector3(-34.6, y + h, -28.6))
+	var beacon := OmniLight3D.new()
+	beacon.position = Vector3(-34.6, y + 7.1, -28.6)
+	beacon.light_color = Color(1.0, 0.1, 0.08)
+	beacon.omni_range = 9.0
+	add_child(beacon)
+	var bulb := _mesh(self, ML.sphere(0.14, false, 8), M.emissive("beacon_red", Color(1.0, 0.1, 0.05), 4.0), Vector3(-34.6, y + 7.05, -28.6))
+	lamp_lights.append({"light": beacon, "base": 3.0, "group": "beacon", "bulb": bulb, "blink": true})
+
+
+func _hotel_exterior() -> void:
+	var top := hotel_roof_y()
+	# entrance awning on posts
+	var red := M.fabric("awning", Color(0.5, 0.08, 0.08), 2.0)
+	var awning := _mesh(self, ML.box(Vector3(4.6, 0.18, 2.6)), red, Vector3(-23.5, 2.95, HOTEL_Z1 + 1.2))
+	awning.rotation.x = 0.08
+	for sx in [-2.1, 2.1]:
+		solid_box(Vector3(-23.5 + sx, 0, HOTEL_Z1 + 2.3), Vector3(0.14, 2.85, 0.14), _mat_wall_trim)
+	# name over the door
+	var board := _mesh(self, ML.box(Vector3(9.0, 1.0, 0.16)), M.solid(Color(0.06, 0.06, 0.07), 0.5), Vector3(-23.5, 4.3, HOTEL_Z1 + 0.1))
+	board.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var name_label := Label3D.new()
+	name_label.text = "HOTEL  MERIDIAN"
+	name_label.font_size = 110
+	name_label.pixel_size = 0.0058
+	name_label.modulate = Color(1.0, 0.25, 0.7)
+	name_label.position = Vector3(-23.5, 4.3, HOTEL_Z1 + 0.2)
+	add_child(name_label)
+	# vertical neon blade on the corner facing the crossroads
+	var blade := _mesh(self, ML.box(Vector3(0.45, 8.5, 1.5)), M.solid(Color(0.06, 0.06, 0.07), 0.5), Vector3(HOTEL_X1 + 0.35, 9.5, HOTEL_Z1 - 1.4))
+	blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var letters := "HOTEL"
+	for i in letters.length():
+		for side in [-1.0, 1.0]:
+			var ch := Label3D.new()
+			ch.text = letters[i]
+			ch.font_size = 150
+			ch.pixel_size = 0.0075
+			ch.modulate = Color(1.0, 0.25, 0.7)
+			ch.position = Vector3(HOTEL_X1 + 0.35, 12.7 - i * 1.55, HOTEL_Z1 - 1.4 + side * 0.77)
+			ch.rotation.y = 0.0 if side > 0 else PI
+			add_child(ch)
+	var neon := OmniLight3D.new()
+	neon.position = Vector3(HOTEL_X1 + 1.6, 9.5, HOTEL_Z1 - 0.2)
+	neon.light_color = Color(1.0, 0.25, 0.7)
+	neon.omni_range = 12.0
+	add_child(neon)
+	lamp_lights.append({"light": neon, "base": 2.2, "group": "street", "flicker": true})
+	# cornice, floor bands, drain pipes, wall-mounted AC boxes
+	var trim := _mat_wall_trim
+	_mesh(self, ML.box(Vector3(HOTEL_X1 - HOTEL_X0 + 0.5, 0.25, HOTEL_Z1 - HOTEL_Z0 + 0.5)), trim, Vector3((HOTEL_X0 + HOTEL_X1) * 0.5, top + 0.02, (HOTEL_Z0 + HOTEL_Z1) * 0.5)).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for k in range(1, HOTEL_FLOORS):
+		var by := k * FLOOR_H - SLAB * 0.5
+		for z in [HOTEL_Z0 - 0.04, HOTEL_Z1 + 0.04]:
+			_mesh(self, ML.box(Vector3(HOTEL_X1 - HOTEL_X0 + 0.1, 0.22, 0.06)), trim, Vector3((HOTEL_X0 + HOTEL_X1) * 0.5, by, z)).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for x in [HOTEL_X0 - 0.04, HOTEL_X1 + 0.04]:
+			_mesh(self, ML.box(Vector3(0.06, 0.22, HOTEL_Z1 - HOTEL_Z0 + 0.1)), trim, Vector3(x, by, (HOTEL_Z0 + HOTEL_Z1) * 0.5)).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pipe := M.painted_metal("drain_pipe", Color(0.2, 0.2, 0.21))
+	for c in [Vector3(HOTEL_X0 - 0.12, 0, HOTEL_Z1 - 0.6), Vector3(HOTEL_X1 + 0.12, 0, HOTEL_Z0 + 0.6), Vector3(HOTEL_X0 + 0.6, 0, HOTEL_Z0 - 0.12)]:
+		_mesh(self, ML.cylinder(0.07, 0.07, top, 8), pipe, c + Vector3(0, top * 0.5, 0))
+	var acm := M.painted_metal("wall_ac", Color(0.6, 0.6, 0.58))
+	for k in range(1, HOTEL_FLOORS):
+		_mesh(self, ML.box(Vector3(0.9, 0.5, 0.4)), acm, Vector3(-33.0 + (k % 3) * 6.0, k * FLOOR_H + 0.45, HOTEL_Z0 - 0.22))
+		_mesh(self, ML.box(Vector3(0.4, 0.5, 0.9)), acm, Vector3(HOTEL_X0 - 0.22, k * FLOOR_H + 0.45, -27.0 + (k % 2) * 7.5))
+
+
+## Top-down view: hide the storeys above the operator while they are inside,
+## and the upper storeys when the building stands between camera and operator.
+func _process(_delta: float) -> void:
+	if _storeys.is_empty():
+		return
+	var main := get_parent()
+	var p = main.get("player") if main != null else null
+	var limit := _storeys.size()
+	var top_down: bool = p != null and is_instance_valid(p) and not bool(p.get("first_person")) \
+			and not (main.has_method("killcam_active") and main.killcam_active())
+	if top_down:
+		var pos: Vector3 = p.global_position
+		var cam := get_viewport().get_camera_3d()
+		if _hotel_rect.grow(0.4).has_point(Vector2(pos.x, pos.z)):
+			limit = clampi(int(floor((pos.y + 0.6) / FLOOR_H)), 0, HOTEL_FLOORS) + 1
+		elif cam != null:
+			var upper := AABB(Vector3(HOTEL_X0, FLOOR_H, HOTEL_Z0), Vector3(HOTEL_X1 - HOTEL_X0, hotel_roof_y() + 3.0 - FLOOR_H, HOTEL_Z1 - HOTEL_Z0))
+			if upper.intersects_segment(cam.global_position, pos + Vector3.UP * 1.2):
+				limit = 1
+	for k in _storeys.size():
+		var show: bool = k < limit
+		if (_storeys[k] as Node3D).visible != show:
+			(_storeys[k] as Node3D).visible = show
+
+
+# ================================================================ street detail
+
+func _dumpster(p: Vector3, rot: float) -> void:
+	var b := solid_box(p, Vector3(2.0, 1.25, 1.1), M.painted_metal("dumpster", Color(0.14, 0.3, 0.2)), rot, true, "metal")
+	_mesh(b, ML.box(Vector3(2.06, 0.08, 1.16)), _mat_wall_trim, Vector3(0, 1.27, 0), Vector3(0.12, 0, 0))
+	b.finalize()
+
+
+func _bench(p: Vector3, rot: float) -> void:
+	var b := solid_box(p, Vector3(1.7, 0.45, 0.5), _mat_fence, rot, false, "wood")
+	_mesh(b, ML.box(Vector3(1.7, 0.5, 0.08)), _mat_fence, Vector3(0, 0.72, -0.22))
+	b.finalize()
+
+
+func _road_sign(p: Vector3, rot: float, text: String, col: Color = Color(0.95, 0.75, 0.1)) -> void:
+	var b := solid_box(p, Vector3(0.1, 2.3, 0.1), _mat_metal, rot)
+	var plate := _mesh(b, ML.box(Vector3(1.25, 1.25, 0.04)), M.solid(col, 0.6), Vector3(0, 2.6, 0), Vector3(0, 0, PI * 0.25))
+	plate.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for side in [-1.0, 1.0]:
+		var label := Label3D.new()
+		label.text = text
+		label.font_size = 56
+		label.pixel_size = 0.0052
+		label.modulate = Color(0.05, 0.05, 0.05)
+		label.outline_size = 0
+		label.position = Vector3(0, 2.6, 0.03 * side)
+		label.rotation.y = 0.0 if side > 0 else PI
+		b.add_child(label)
+
+
+func _traffic_light(p: Vector3, rot: float) -> void:
+	var b := solid_box(p, Vector3(0.16, 4.8, 0.16), _mat_metal, rot)
+	_mesh(b, ML.box(Vector3(0.1, 0.1, 2.6)), _mat_metal, Vector3(0, 4.7, -1.3))
+	var head := _mesh(b, ML.box(Vector3(0.34, 1.0, 0.3)), M.solid(Color(0.07, 0.07, 0.07), 0.6), Vector3(0, 4.3, -2.5))
+	head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var lamp := _mesh(b, ML.sphere(0.1, false, 8), M.emissive("signal_amber", Color(1.0, 0.6, 0.05), 3.0), Vector3(0, 4.3, -2.34))
+	lamp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for dy in [0.3, -0.3]:
+		_mesh(b, ML.sphere(0.1, false, 8), M.solid(Color(0.12, 0.1, 0.1), 0.4), Vector3(0, 4.3 + dy, -2.34)).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _bus(p: Vector3, rot: float) -> void:
+	var b := _body(p, rot)
+	_box_shape(b, Vector3(2.6, 3.0, 11.0), Vector3(0, 1.5, 0))
+	var paint := M.painted_metal("bus", Color(0.62, 0.5, 0.12))
+	_mesh(b, ML.box(Vector3(2.55, 2.5, 10.9)), paint, Vector3(0, 1.75, 0))
+	_mesh(b, ML.box(Vector3(2.6, 0.9, 10.2)), _mat_glass_dark, Vector3(0, 2.25, 0))
+	_mesh(b, ML.box(Vector3(2.3, 1.0, 0.06)), _mat_glass_dark, Vector3(0, 2.2, -5.46))
+	_mesh(b, ML.box(Vector3(2.58, 0.28, 10.95)), M.solid(Color(0.75, 0.75, 0.72), 0.6), Vector3(0, 1.45, 0))
+	var tire := M.solid(Color(0.06, 0.06, 0.06), 0.9)
+	for sz in [-3.6, 3.4]:
+		for sx in [-1.2, 1.2]:
+			_mesh(b, ML.cylinder(0.5, 0.5, 0.3, 14), tire, Vector3(sx, 0.5, sz), Vector3(0, 0, PI * 0.5))
+	var dest := Label3D.new()
+	dest.text = "9  EVACUATION"
+	dest.font_size = 72
+	dest.pixel_size = 0.005
+	dest.modulate = Color(1.0, 0.6, 0.1)
+	dest.position = Vector3(0, 2.85, -5.5)
+	dest.rotation.y = PI
+	b.add_child(dest)
+	_add_cover(p, Vector3(2.6, 3.0, 11.0), rot, b)
+
+
+func _tent(p: Vector3, rot: float) -> void:
+	var canvas := M.fabric("triage_canvas", Color(0.7, 0.7, 0.64), 2.0)
+	var b := _body(p, rot)
+	# two side walls and a back; the front stays open
+	for sx in [-1.9, 1.9]:
+		_box_shape(b, Vector3(0.12, 2.0, 3.6), Vector3(sx, 1.0, 0))
+		_mesh(b, ML.box(Vector3(0.08, 2.0, 3.6)), canvas, Vector3(sx, 1.0, 0))
+	_box_shape(b, Vector3(3.8, 2.0, 0.12), Vector3(0, 1.0, -1.8))
+	_mesh(b, ML.box(Vector3(3.8, 2.0, 0.08)), canvas, Vector3(0, 1.0, -1.8))
+	for sx in [-1.0, 1.0]:
+		_mesh(b, ML.box(Vector3(2.15, 0.07, 3.7)), canvas, Vector3(sx * 0.97, 2.42, 0), Vector3(0, 0, -sx * 0.42))
+	var cross := M.emissive("red_cross", Color(0.85, 0.08, 0.06), 0.8)
+	_mesh(b, ML.box(Vector3(0.9, 0.26, 0.03)), cross, Vector3(0, 1.5, -1.73))
+	_mesh(b, ML.box(Vector3(0.26, 0.9, 0.03)), cross, Vector3(0, 1.5, -1.73))
+	# cot inside
+	_mesh(b, ML.box(Vector3(0.8, 0.35, 1.9)), M.solid(Color(0.3, 0.34, 0.28), 0.9), Vector3(-0.9, 0.2, -0.5))
+
+
+func _build_details() -> void:
+	# crossroads: signals on each corner
+	_traffic_light(Vector3(7.6, 0, 7.6), 0.0)
+	_traffic_light(Vector3(-7.6, 0, -7.6), PI)
+	_traffic_light(Vector3(7.6, 0, -7.6), PI * 0.5)
+	_traffic_light(Vector3(-7.6, 0, 7.6), -PI * 0.5)
+	# wrecked evacuation bus and the stop it never left
+	_bus(Vector3(-35.0, 0, 2.7), PI * 0.5 + 0.1)
+	_blocked.append(Rect2(-41.5, 0.5, 13.0, 5.0))
+	var shelter := solid_box(Vector3(-33.0, 0, 8.6), Vector3(3.4, 2.3, 0.1), _mat_glass_dark)
+	_mesh(shelter, ML.box(Vector3(3.6, 0.1, 1.5)), _mat_metal, Vector3(0, 2.35, -0.6))
+	for sx in [-1.65, 1.65]:
+		_mesh(shelter, ML.box(Vector3(0.08, 2.3, 0.08)), _mat_metal, Vector3(sx, 1.15, -1.25))
+	_bench(Vector3(-33.0, 0, 8.1), 0.0)
+	# benches, dumpsters, hydrants
+	_bench(Vector3(9.5, 0, -8.2), 0.0)
+	_bench(Vector3(-9.2, 0, 30.0), PI * 0.5)
+	_dumpster(Vector3(-30.0, 0, -32.6), 0.05)
+	_dumpster(Vector3(-19.0, 0, -32.8), -0.1)
+	_dumpster(Vector3(-32.4, 0, 22.0), PI * 0.5)
+	_dumpster(Vector3(40.6, 0, -20.0), PI * 0.5)
+	_dumpster(Vector3(8.8, 0, 40.0), 0.2)
+	var hyd := M.painted_metal("hydrant", Color(0.7, 0.1, 0.08))
+	for h in [Vector3(7.7, 0, -10.5), Vector3(-7.7, 0, 11.0), Vector3(-7.7, 0, -34.0), Vector3(7.7, 0, 30.0)]:
+		_mesh(self, ML.cylinder(0.13, 0.16, 0.6, 10), hyd, h + Vector3(0, 0.3, 0))
+		_mesh(self, ML.sphere(0.15, false, 8), hyd, h + Vector3(0, 0.62, 0))
+		_mesh(self, ML.cylinder(0.06, 0.06, 0.42, 8), hyd, h + Vector3(0, 0.42, 0), Vector3(0, 0, PI * 0.5))
+	# trash and debris
+	var bag := M.solid(Color(0.05, 0.05, 0.06), 0.5)
+	for i in 22:
+		var t := Vector3(randf_range(-HALF + 6, HALF - 6), 0, randf_range(-HALF + 6, HALF - 6))
+		if not _free(t, 0.2) or (absf(t.x) < ROAD and absf(t.z) < ROAD):
+			continue
+		_mesh(self, ML.sphere(randf_range(0.22, 0.38), false, 8), bag, t + Vector3(0, 0.2, 0), Vector3.ZERO, Vector3(1.0, 0.75, 1.1)).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# dead-end signs at every roadblock
+	_road_sign(Vector3(5.6, 0, -HALF + 11.5), 0.0, "DEAD\nEND")
+	_road_sign(Vector3(-5.6, 0, HALF - 11.5), PI, "DEAD\nEND")
+	_road_sign(Vector3(-HALF + 11.5, 0, -5.6), PI * 0.5, "DEAD\nEND")
+	_road_sign(Vector3(HALF - 11.5, 0, 5.6), -PI * 0.5, "DEAD\nEND")
+	# billboard over the truck yard
+	for sx in [-3.2, 3.2]:
+		solid_box(Vector3(46.0, 0, 14.0 + sx), Vector3(0.3, 6.0, 0.3), _mat_metal)
+	var panel := _mesh(self, ML.box(Vector3(0.2, 3.6, 8.4)), M.solid(Color(0.82, 0.8, 0.72), 0.7), Vector3(46.0, 6.6, 14.0))
+	panel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var ad := Label3D.new()
+	ad.text = "EVACUATION POINT\nROUTE 9 NORTH  -  STAY CALM"
+	ad.font_size = 96
+	ad.pixel_size = 0.0075
+	ad.modulate = Color(0.1, 0.16, 0.3)
+	ad.outline_size = 0
+	ad.position = Vector3(45.88, 6.9, 14.0)
+	ad.rotation.y = -PI * 0.5
+	add_child(ad)
+	var scrawl := Label3D.new()
+	scrawl.text = "NO ONE CAME"
+	scrawl.font_size = 120
+	scrawl.pixel_size = 0.008
+	scrawl.modulate = Color(0.7, 0.05, 0.04)
+	scrawl.outline_size = 0
+	scrawl.position = Vector3(45.87, 5.7, 14.6)
+	scrawl.rotation = Vector3(0, -PI * 0.5, 0.08)
+	add_child(scrawl)
+	# triage checkpoint in front of the hotel
+	_tent(Vector3(-32.0, 0, -10.6), 0.0)
+	_tent(Vector3(-27.4, 0, -10.6), 0.0)
+	_blocked.append(Rect2(-34.5, -13.0, 9.6, 5.0))
+	sandbags(Vector3(-27.0, 0, -7.9), 2.6, 0.0)
+	sandbags(Vector3(-19.8, 0, -8.6), 2.6, 0.15)
+	barrier(Vector3(-16.0, 0, -9.4), 0.0)
+	crate(Vector3(-20.6, 0, -11.6), Vector3(1.0, 0.8, 1.0), 0.4)
+	var stand := solid_box(Vector3(-17.4, 0, -11.8), Vector3(0.12, 3.2, 0.12), _mat_metal)
+	var flood_head := _mesh(stand, ML.box(Vector3(0.7, 0.4, 0.2)), M.emissive("floodlight", Color(0.85, 0.92, 1.0), 3.5), Vector3(0, 3.3, 0))
+	flood_head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var flood := OmniLight3D.new()
+	flood.position = Vector3(-18.0, 3.2, -11.4)
+	flood.light_color = Color(0.85, 0.92, 1.0)
+	flood.omni_range = 11.0
+	add_child(flood)
+	lamp_lights.append({"light": flood, "base": 2.4, "group": "street", "bulb": flood_head})
+	lights.append({"light": flood, "shadow": true})
+	# power line along the north edge
+	var pole_mat := M.wood("power_pole", Color(0.26, 0.2, 0.15))
+	var prev := Vector3.ZERO
+	for i in 6:
+		var pp := Vector3(-50.0 + i * 20.0, 0, -54.0)
+		solid_box(pp, Vector3(0.3, 8.0, 0.3), pole_mat)
+		_mesh(self, ML.box(Vector3(0.14, 0.14, 2.4)), pole_mat, pp + Vector3(0, 7.5, 0))
+		if i > 0:
+			for off in [-1.0, 1.0]:
+				var wire := _mesh(self, ML.box(Vector3(20.0, 0.03, 0.03)), _mat_tread, (pp + prev) * 0.5 + Vector3(0, 7.45, off))
+				wire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		prev = pp

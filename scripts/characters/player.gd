@@ -1074,6 +1074,8 @@ func _on_footstep(pos: Vector3, intensity: float) -> void:
 		radius = 10.0
 	elif not crouching and not aiming and Vector2(velocity.x, velocity.z).length() > 3.5:
 		radius = 4.5
+	if Water.wading(pos):
+		radius = maxf(radius, 7.0)   # splashing carries
 	if radius > 0.0:
 		get_tree().call_group("enemies", "hear_footstep", pos, radius)
 

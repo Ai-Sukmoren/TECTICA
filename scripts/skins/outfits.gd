@@ -59,6 +59,15 @@ const OUTFITS := {
 		"vest": Color(0.08, 0.085, 0.1), "gear": Color(0.06, 0.06, 0.07), "helmet": Color(0.1, 0.105, 0.12),
 		"face": Color(0.03, 0.03, 0.035), "gloves": Color(0.05, 0.05, 0.055), "boots": Color(0.06, 0.06, 0.065), "headgear": "helmet",
 		"goggles": true, "carbon": true},
+	# built from the operator reference art: faceted olive fatigues with rolled
+	# sleeves, tan plate carrier and pouches, black mask, tan-framed goggles,
+	# tan shemagh, olive knee pads, brown boots. Free for everyone.
+	"recon": {"name": "RECON", "rarity": 0, "price": 0, "desc": "Faceted olive fatigues, tan plate carrier, mask and goggles.",
+		"camo": [Color(0.3, 0.31, 0.21), Color(0.22, 0.23, 0.16), Color(0.37, 0.37, 0.26), Color(0.16, 0.17, 0.12)],
+		"vest": Color(0.5, 0.42, 0.29), "gear": Color(0.56, 0.47, 0.33), "helmet": Color(0.27, 0.28, 0.19),
+		"face": Color(0.05, 0.05, 0.055), "gloves": Color(0.09, 0.09, 0.085), "boots": Color(0.27, 0.2, 0.14), "headgear": "helmet",
+		"goggles": true, "facet": true, "sleeves": "rolled", "wrap": Color(0.58, 0.5, 0.36),
+		"pads": Color(0.27, 0.28, 0.2), "goggle_frame": Color(0.55, 0.47, 0.33)},
 	# one player only: "owners" are that player's account names (any case);
 	# nobody else, admin included, sees or wears it
 	"kitty": {"name": "MYTHIC KITTY", "rarity": 4, "price": 0, "admin": true, "owners": ["turain"],
@@ -129,15 +138,25 @@ static func palette(id: String) -> Dictionary:
 		detail = M.emissive("outfit_trim_" + id, o.trim, 0.55)
 	elif carbon:
 		detail = M.carbon_fiber("outfit_carbon_plate", true, 22.0)
-	return {
-		"camo": M.carbon_fiber("outfit_carbon_suit", false, 28.0) if carbon else M.camo("outfit_camo_" + id, o.camo, 3.5),
+	var extra := {}
+	if o.has("sleeves"):
+		extra["sleeves"] = String(o.sleeves)
+	if o.has("pads"):
+		extra["pads"] = M.matte("outfit_pads_" + id, o.pads, 0.8)
+	if o.has("goggle_frame"):
+		extra["goggle_frame"] = M.matte("outfit_goggle_" + id, o.goggle_frame, 0.75)
+	var camo_mat: Material = M.camo("outfit_camo_" + id, o.camo, 3.5)
+	if bool(o.get("facet", false)):
+		camo_mat = _facet("outfit_facet_" + id, o.camo)
+	var out := {
+		"camo": M.carbon_fiber("outfit_carbon_suit", false, 28.0) if carbon else camo_mat,
 		"vest": M.carbon_fiber("outfit_carbon_plate", true, 22.0) if carbon else (_pearl("outfit_pearl_vest_" + id, o.vest) if pearl else (M.solid(o.vest, 0.3, 0.9) if metal else M.fabric("outfit_vest_" + id, o.vest))),
 		"gear": gear,
 		"helmet": helmet,
 		"detail": detail,
 		"ifak": M.carbon_fiber("outfit_carbon_plate", true, 22.0) if carbon else M.solid(Color(0.45, 0.08, 0.06), 0.8),
 		"bedroll": M.carbon_fiber("outfit_carbon_suit", false, 28.0) if carbon else M.fabric("bedroll", Color(0.25, 0.27, 0.2)),
-		"wrap": M.fabric("outfit_wrap_" + id, Color(0.05, 0.05, 0.06), 7.0) if carbon else M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0),
+		"wrap": M.fabric("outfit_wrap_" + id, Color(0.05, 0.05, 0.06), 7.0) if carbon else (M.fabric("outfit_wrap_" + id, o.wrap, 7.0) if o.has("wrap") else M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0)),
 		"skin": M.solid(Color(0.76, 0.58, 0.47), 0.7),
 		"face": M.fabric("outfit_face_" + id, o.face),
 		"gloves": M.fabric("outfit_gloves_" + id, o.gloves, 12.0),
@@ -146,6 +165,8 @@ static func palette(id: String) -> Dictionary:
 		"goggles": bool(o.get("goggles", true)),
 		"nvg": bool(o.get("nvg", false)),
 	}
+	out.merge(extra)
+	return out
 
 
 static var _pearls: Dictionary = {}
@@ -166,4 +187,53 @@ static func _pearl(key: String, color: Color) -> StandardMaterial3D:
 	m.rim = 0.6
 	m.rim_tint = 0.8
 	_pearls[key] = m
+	return m
+
+
+const FACET_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 c0 : source_color;
+uniform vec3 c1 : source_color;
+uniform vec3 c2 : source_color;
+uniform vec3 c3 : source_color;
+uniform float scale = 9.0;
+varying vec3 lp;
+varying vec3 ln;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+void vertex() { lp = VERTEX; ln = NORMAL; }
+
+void fragment() {
+	// low-poly cloth: a skewed triangle grid on the dominant face of each part,
+	// every triangle one flat tone
+	vec3 an = abs(ln);
+	vec2 uv = (an.x > an.y && an.x > an.z) ? lp.zy : ((an.y > an.z) ? lp.xz : lp.xy);
+	vec2 p = uv * scale;
+	p.x += p.y * 0.5;
+	vec2 cell = floor(p);
+	vec2 f = fract(p);
+	float tri = step(f.x, f.y);
+	float h = hash(cell * 2.0 + vec2(tri, 7.0));
+	vec3 col = h < 0.34 ? c0 : (h < 0.6 ? c1 : (h < 0.84 ? c2 : c3));
+	ALBEDO = col * (0.92 + 0.16 * hash(cell + tri * 3.1));
+	ROUGHNESS = 0.9;
+}
+"""
+
+static var _facets: Dictionary = {}
+
+
+## Faceted, low-poly-look cloth in four tones.
+static func _facet(key: String, colors: Array) -> ShaderMaterial:
+	if _facets.has(key):
+		return _facets[key]
+	var sh := Shader.new()
+	sh.code = FACET_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	for i in 4:
+		m.set_shader_parameter("c%d" % i, colors[i])
+	_facets[key] = m
 	return m

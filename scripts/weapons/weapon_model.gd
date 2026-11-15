@@ -331,8 +331,19 @@ static func _ak(r: Node3D) -> Dictionary:
 	_part(r, WG.machined(Vector3(0.046, 0.068, 0.3)), _black, Vector3(0, 0.052, -0.08))
 	_part(r, ML.cylinder(0.022, 0.022, 0.26, 18), _black, Vector3(0, 0.084, -0.08), X90)
 	_part(r, ML.cylinder(0.011, 0.011, 0.42, 18), _black, Vector3(0, 0.058, -0.43), X90)
-	_part(r, WG.machined(Vector3(0.012, 0.035, 0.012)), _black, Vector3(0, 0.085, -0.6))
+	# iron sights: the line (0.121) runs clear above the dust cover, as on the real
+	# rifle, from the rear leaf's U notch to the tip of the hooded front post
+	# rear: sight block, sloped leaf, notch ears either side of the line
 	_part(r, WG.machined(Vector3(0.02, 0.02, 0.03)), _black, Vector3(0, 0.1, -0.21))
+	_part(r, WG.machined(Vector3(0.028, 0.005, 0.045)), _black, Vector3(0, 0.1125, -0.2), Vector3(0.06, 0, 0))
+	for sx in [-1, 1]:
+		_part(r, WG.machined(Vector3(0.009, 0.014, 0.004)), _black, Vector3(sx * 0.0095, 0.1185, -0.18))
+	# front: collar on the barrel, tower up to the post, protective hood ears
+	_part(r, ML.cylinder(0.016, 0.016, 0.03, 16), _black, Vector3(0, 0.058, -0.6), X90)
+	_part(r, WG.machined(Vector3(0.012, 0.046, 0.014)), _black, Vector3(0, 0.092, -0.6))
+	_part(r, WG.machined(Vector3(0.003, 0.006, 0.004)), _black, Vector3(0, 0.118, -0.6))
+	for sx in [-1, 1]:
+		_part(r, WG.machined(Vector3(0.003, 0.03, 0.012)), _black, Vector3(sx * 0.0095, 0.113, -0.6))
 	_part(r, ML.cylinder(0.013, 0.013, 0.22, 18), _black, Vector3(0, 0.088, -0.33), X90)
 	_part(r, WG.machined(Vector3(0.056, 0.05, 0.2)), wood, Vector3(0, 0.05, -0.31))
 	_part(r, WG.machined(Vector3(0.046, 0.026, 0.17)), wood, Vector3(0, 0.09, -0.32))
@@ -352,7 +363,7 @@ static func _ak(r: Node3D) -> Dictionary:
 		"mag_style": "ak",
 		"stock_at": _marker(r, "StockAt", Vector3(0, 0.05, 0.07), Vector3(-0.1, 0, 0)),
 		"stock_style": "wood",
-		"rail_y": 0.11, "rail_z": -0.06, "iron_builtin": true, "iron_y": 0.105, "iron_rear_z": -0.2, "iron_relief": 0.3,
+		"rail_y": 0.11, "rail_z": -0.06, "iron_builtin": true, "iron_y": 0.121, "iron_rear_z": -0.18, "iron_relief": 0.28,
 	}
 
 

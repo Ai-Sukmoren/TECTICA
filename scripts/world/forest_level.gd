@@ -91,6 +91,8 @@ func build() -> void:
 	_build_heights()
 	_build_ground()
 	_build_creek()
+	# wading: the creek bed is dry only at the bridge, where the road keeps it level
+	Water.set_creek(creek, 2.3, 0.025, [Vector3(bridge.x, bridge.z, 3.2)])
 	_build_lz(lz_south, false)
 	_build_lz(lz_north, true)
 	_build_logging_camp()
@@ -892,6 +894,8 @@ func _build_forest() -> void:
 	_burn_rng(4)   # the old crown mesh drew 4 values; keeps the forest layout unchanged
 	var trunk := Nature.trunk_mesh()
 	var pine_mat := Nature.canopy_material(Color(0.1, 0.21, 0.1), 0.025, Vector3(0, 0.5, 0), 0.45, 3.0, 0.47, 0.19)
+	_pine_set = pine_set
+	_pine_stand_in = pine_mat
 	var bush_mat := Nature.canopy_material(Color(0.09, 0.16, 0.045), 0.06, Vector3(0, 0.3, 0), 0.6, 3.2, 0.0, 0.16)
 	bush_mat.set_shader_parameter("fade_min_h", 100.0)
 	# chunked instance lists
@@ -1217,9 +1221,7 @@ func _build_boundary() -> void:
 		cs.shape = bs
 		cs.position.y = 3.0
 		b.add_child(cs)
-	var crown := Nature.pine_crown_mesh()
-	_burn_rng(4)
-	var mat := Nature.foliage_material(Color(0.13, 0.22, 0.11), 0.02)
+	_burn_rng(4)   # the old solid crown mesh drew 4 values; keeps the layout unchanged
 	var items: Array = []
 	var vary := RandomNumberGenerator.new()   # own RNG: keeps the global layout sequence intact
 	vary.seed = 99
@@ -1233,7 +1235,17 @@ func _build_boundary() -> void:
 		var w := h * vary.randf_range(0.34, 0.5)
 		var tint := Color(randf_range(0.8, 1.0), vary.randf_range(0.85, 1.1), vary.randf_range(0.85, 1.05))
 		items.append([Transform3D(Basis(Vector3.UP, a).scaled(Vector3(w, h, w)), Vector3(p.x, ground_y(p.x, p.y) - 0.5, p.y)), tint])
-	_multimesh(crown, mat, items, false)
+	# same needle pines as inside the map (they used to be plain solid cones that
+	# showed as flat green shapes from the edge), chunked so they cull
+	var chunks := {}
+	for it in items:
+		var o: Vector3 = (it[0] as Transform3D).origin
+		var ck := _cell(o.x, o.z, CHUNK)
+		if not chunks.has(ck):
+			chunks[ck] = []
+		chunks[ck].append(it)
+	for ck in chunks:
+		_leafy_mm(_pine_set, chunks[ck], _pine_stand_in, 0.0)
 	_build_far_hills()
 
 
@@ -1347,6 +1359,9 @@ func concealment(pos: Vector3) -> float:
 
 var _leaf_nodes: Array = []
 var _stand_ins: Array = []
+## The in-map pine set and its stand-in material, reused by the edge tree line.
+var _pine_set: Dictionary = {}
+var _pine_stand_in: Material
 
 func apply_quality(q: int) -> void:
 	for n in _leaf_nodes:
@@ -1359,7 +1374,7 @@ func apply_quality(q: int) -> void:
 		if is_instance_valid(n):
 			n.visible = q >= 1   # dense grass + flowers on HIGH / ULTRA shadows presets
 	for entry in lights:
-		var l: Light3D = entry.light
+		var l = entry.light   # untyped: a destroyed prop's light is a freed instance
 		if is_instance_valid(l):
 			l.shadow_enabled = (q == 2) or (q == 1 and entry.shadow)
 			# far lights keep lighting but stop re-rendering the scene for shadows

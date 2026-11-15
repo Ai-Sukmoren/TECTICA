@@ -561,7 +561,7 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(n):
 			continue
 		var d := Vector2(n.global_position.x - player.global_position.x, n.global_position.z - player.global_position.z).length()
-		if d < 1.2:
+		if d < 1.2 and absf(n.global_position.y - player.global_position.y) < 1.8:
 			for w in player.weapons:
 				w.reserve = maxi(w.reserve, int(w.stats.reserve))
 			player.health = minf(player.health + 35.0, player.max_health)

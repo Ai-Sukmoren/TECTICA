@@ -28,7 +28,11 @@ const PERKS := {
 	"tough": ["JUGGERNAUT VEST", 2500, "+50 MAX HEALTH, FASTER REGEN"],
 	"quick": ["QUICK HANDS", 1500, "RELOAD 40% FASTER"],
 	"rapid": ["RAPID FIRE", 2000, "FIRE RATE +25%"],
+	"mule": ["AMMO BANDOLIER", 1500, "CARRY 60% MORE RESERVE AMMO, FILLED ON PURCHASE"],
 }
+## Reserve ammo multiplier from the AMMO BANDOLIER perk. Every refill (shop,
+## ammo crates) fills up to the raised reserve.
+const MULE_RESERVE := 1.6
 
 var points := START_POINTS
 var earned := 0
@@ -163,6 +167,10 @@ func buy(id: String, p) -> String:
 				apply_mods(p)
 				if id == "perk_tough":
 					p.health = p.max_health
+				elif id == "perk_mule":
+					for w in p.weapons:
+						if not w.is_melee():
+							w.reserve = maxi(w.reserve, int(w.stats.reserve))
 			elif id.begins_with("gun_"):
 				_equip_primary(id.substr(4), p)
 	return "BOUGHT  ·  %s  ·  -%d PTS" % [String(row.label), int(row.price)]
@@ -206,6 +214,8 @@ func apply_mods(p) -> void:
 			w.stats.reload_empty = float(w.stats.reload_empty) * 0.6
 		if perks.has("rapid"):
 			w.stats.rpm = float(w.stats.rpm) * 1.25
+		if perks.has("mule"):
+			w.stats.reserve = int(round(float(w.stats.reserve) * MULE_RESERVE))
 		w.ammo = mini(ammo, int(w.stats.mag))
 	p.max_health = 150.0 if perks.has("tough") else 100.0
 	p.regen_cap = 105.0 if perks.has("tough") else 70.0

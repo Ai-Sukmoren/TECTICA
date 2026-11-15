@@ -151,9 +151,9 @@ func _apply(delta: float) -> void:
 		level.skyline_mat.set_shader_parameter("night", night)
 	var lamp_on := smoothstep(0.25, 0.6, night)
 	for e in level.lamp_lights:
+		if not is_instance_valid(e.light):
+			continue   # its prop was destroyed
 		var l: Light3D = e.light
-		if not is_instance_valid(l):
-			continue
 		var g: String = e.group
 		var on := lamp_on
 		if g in ["interior", "outpost_interior"]:

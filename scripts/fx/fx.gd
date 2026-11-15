@@ -48,6 +48,27 @@ static func _mat(key: String) -> Material:
 			m = b
 		"brass":
 			m = M.solid(Color(0.78, 0.6, 0.25), 0.3, 0.9)
+		"water_drop":
+			var w := StandardMaterial3D.new()
+			w.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			w.albedo_color = Color(0.82, 0.9, 0.95, 0.75)
+			w.roughness = 0.05
+			w.metallic_specular = 0.9
+			m = w
+		"water_mist":
+			var d := StandardMaterial3D.new()
+			d.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			d.vertex_color_use_as_albedo = true
+			d.albedo_color = Color(0.86, 0.92, 0.96, 0.4)
+			d.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			m = d
+		"water_ripple":
+			var r := StandardMaterial3D.new()
+			r.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			r.albedo_color = Color(0.9, 0.95, 1.0, 0.26)
+			r.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			r.cull_mode = BaseMaterial3D.CULL_DISABLED
+			m = r
 	_mats[key] = m
 	return m
 
@@ -423,3 +444,34 @@ static func knife_spray(ctx: Node, pos: Vector3, cut_dir: Vector3, heavy: bool) 
 		return
 	_particles(root, pos, (cut_dir + Vector3.UP * 0.25).normalized(), 26 if heavy else 16, 0.55, 2.5, 6.5, 22.0,
 			ML.sphere(0.02, false, 6), _mat("blood"), Vector3(0, -9.8, 0), 0.5, 1.5)
+
+
+## Wading splash at the water surface: droplets kicked up, a puff of spray and
+## a ripple ring that spreads and fades. `strength` 0..1 (sprinting is bigger).
+static func water_splash(ctx: Node, pos: Vector3, strength: float = 0.7) -> void:
+	var root := _root(ctx)
+	if root == null:
+		return
+	var s := clampf(strength, 0.3, 1.0)
+	_particles(root, pos + Vector3(0, 0.02, 0), Vector3.UP, int(8 + 12 * s), 0.7, 1.2, 2.2 + 1.6 * s, 32.0,
+			ML.sphere(0.022, false, 5), _mat("water_drop"), Vector3(0, -9.8, 0), 0.6, 1.3)
+	var mist := _particles(root, pos + Vector3(0, 0.05, 0), Vector3.UP, 3, 0.6, 0.2, 0.7, 50.0,
+			ML.sphere(0.12, false, 6), _mat("water_mist"), Vector3(0, -0.6, 0), 0.6, 1.4)
+	mist.color = Color(0.9, 0.95, 1.0, 0.45)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.18
+	torus.outer_radius = 0.2
+	torus.rings = 24
+	torus.ring_segments = 4
+	ring.mesh = torus
+	ring.material_override = _mat("water_ripple")
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(ring)
+	ring.global_position = pos + Vector3(0, 0.01, 0)
+	ring.scale = Vector3(1.0, 0.05, 1.0)
+	var grow := 3.5 + 2.5 * s
+	var tw := ring.create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector3(grow, 0.05, grow), 0.9).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(ring, "transparency", 1.0, 0.9).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)

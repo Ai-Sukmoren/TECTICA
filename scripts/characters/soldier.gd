@@ -13,6 +13,7 @@ const Sfx = preload("res://scripts/fx/sfx.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 const Grenade = preload("res://scripts/weapons/grenade.gd")
 const Net = preload("res://scripts/net/net.gd")
+const Water = preload("res://scripts/world/water.gd")
 
 const STAND_HEIGHT := 1.8
 const CROUCH_HEIGHT := 1.15
@@ -455,6 +456,10 @@ func _on_throw_release() -> void:
 
 func _on_footstep(pos: Vector3, intensity: float) -> void:
 	var vol := lerpf(-31.0, -20.0, intensity) - (6.0 if crouching else 0.0)
+	if Water.wading(pos):
+		Sfx.play_foley(self, "splash_step", pos, vol + 5.0, 0.2)
+		FX.water_splash(self, Vector3(pos.x, Water.surface_y, pos.z), intensity)
+		return
 	Sfx.play_foley(self, "footstep", pos, vol, 0.25)
 
 

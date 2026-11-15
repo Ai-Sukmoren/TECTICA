@@ -52,6 +52,9 @@ func setup(main: Node) -> void:
 	shots.append([p + Vector3(16, 10, 16), p + Vector3(9, 8, 21), p, p + Vector3(-2, 0, 0)])
 	# landmark of the map
 	var lm := _landmark(main, p)
+	if String(main.get("map_id")) == "town":
+		# look up at the hotel from across the crossroads
+		shots.append([Vector3(9, 5, 12), Vector3(3, 8, 17), Vector3(-25, 9, -22), Vector3(-25, 11, -22)])
 	shots.append([lm + Vector3(15, 9.5, 13), lm + Vector3(8, 7.5, 18), lm + Vector3(0, 1.0, 0), lm + Vector3(-2, 1.0, 0)])
 	# low dolly past the operator's boots
 	shots.append([chest - fwd * 2.6 + right * 2.2 + Vector3.DOWN * 0.8, chest - fwd * 1.8 + right * 3.2 + Vector3.DOWN * 0.6, chest + fwd * 4.0, chest + fwd * 4.0 + Vector3.UP * 0.6])

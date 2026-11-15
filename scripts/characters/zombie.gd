@@ -155,7 +155,12 @@ func hear_footstep(_pos: Vector3, _radius: float) -> void:
 
 
 func _on_footstep(pos: Vector3, _intensity: float) -> void:
-	if kind != "bat" and randf() < 0.5:
+	if kind == "bat":
+		return
+	if Water.wading(pos):
+		Sfx.play(self, "splash_step", pos, -17.0, 0.25)
+		FX.water_splash(self, Vector3(pos.x, Water.surface_y, pos.z), 0.7)
+	elif randf() < 0.5:
 		Sfx.play(self, "footstep", pos, -21.0, 0.3)
 
 
@@ -506,6 +511,8 @@ func _physics_process(delta: float) -> void:
 	to.y = 0.0
 	var d := to.length()
 	var dir := to / d if d > 0.01 else Vector3.FORWARD
+	# multi-storey maps: a target on another floor is not "in reach"
+	var same_level: bool = absf(player.global_position.y - global_position.y) < 1.7
 	_far = d > FAR_THINK and kind != "boss" and _knock_t <= 0.0 and _attacking <= 0.0
 	if _charge_t <= 0.0 and daze <= 0.0:
 		_turn_to(atan2(-dir.x, -dir.z), delta, 9.0 if kind in ["dog", "bat"] else (6.0 if kind == "runner" else 4.0))
@@ -526,7 +533,7 @@ func _physics_process(delta: float) -> void:
 				die(dir)   # bursts on the target instead of clawing
 				_sync_rig()
 				return
-			if d < HIT_RANGE and not player.is_dead and _clear_melee_path():
+			if d < HIT_RANGE and same_level and not player.is_dead and _clear_melee_path():
 				player.apply_damage(damage * (Types.RAGE_DAMAGE if enraged else 1.0), player.global_position + Vector3(0, 1.25, 0), dir, self)
 		_sync_rig()
 		return
@@ -534,7 +541,7 @@ func _physics_process(delta: float) -> void:
 	_attack_cd -= delta
 	if player.is_dead:
 		move_with(Vector3.ZERO, delta)
-	elif d < ATTACK_RANGE:
+	elif d < ATTACK_RANGE and same_level:
 		move_with(Vector3.ZERO, delta)
 		if _attack_cd <= 0.0 and _clear_melee_path():
 			_attacking = ATTACK_TIME
@@ -549,7 +556,7 @@ func _physics_process(delta: float) -> void:
 			_repath = 0.25
 			nav.target_position = player.global_position
 		var move := dir
-		if d > 2.5 and not nav.is_navigation_finished():
+		if (d > 2.5 or not same_level) and not nav.is_navigation_finished():
 			var next := nav.get_next_path_position() - global_position
 			next.y = 0.0
 			if next.length() > 0.05:
@@ -743,7 +750,7 @@ func _boss_update(delta: float, d: float, dir: Vector3) -> bool:
 		aim_yaw = atan2(-_charge_dir.x, -_charge_dir.z)
 		sprinting = true
 		move_with(_charge_dir * Types.BOSS_CHARGE_SPEED * (1.15 if enraged else 1.0), delta)
-		if not _charge_hit and d < 1.9 and not player.is_dead:
+		if not _charge_hit and d < 1.9 and absf(player.global_position.y - global_position.y) < 1.7 and not player.is_dead:
 			_charge_hit = true
 			_charge_t = 0.0
 			player.apply_damage(damage * 1.6, player.global_position + Vector3(0, 1.25, 0), _charge_dir, self)
@@ -758,7 +765,7 @@ func _boss_update(delta: float, d: float, dir: Vector3) -> bool:
 		return true
 	if player.is_dead:
 		return false
-	if d < Types.BOSS_SLAM_RANGE and _slam_cd <= 0.0 and _clear_melee_path():
+	if d < Types.BOSS_SLAM_RANGE and absf(player.global_position.y - global_position.y) < 1.7 and _slam_cd <= 0.0 and _clear_melee_path():
 		_slam_t = Types.BOSS_SLAM_WINDUP
 		_slam_cd = Types.BOSS_SLAM_CD * rage
 		_attack_cd = maxf(_attack_cd, Types.BOSS_SLAM_WINDUP + 0.5)
@@ -788,7 +795,7 @@ func _slam_impact() -> void:
 		var off: Vector3 = p.global_position - pos
 		off.y = 0.0
 		var dist := off.length()
-		if dist > Types.BOSS_SLAM_RADIUS:
+		if dist > Types.BOSS_SLAM_RADIUS or absf(p.global_position.y - pos.y) > 2.2:
 			continue
 		var out := off / dist if dist > 0.05 else Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
 		var f := 1.0 - 0.6 * dist / Types.BOSS_SLAM_RADIUS

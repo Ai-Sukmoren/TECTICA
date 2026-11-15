@@ -71,6 +71,8 @@ static func play_ui(ctx: Node, sound: String, volume_db: float = 0.0, pitch_var:
 static func _stream_for(sound: String) -> AudioStreamWAV:
 	if sound == "footstep":
 		return _footstep_variant()
+	if sound == "splash_step":
+		return _splash_variant()
 	if _streams.has(sound):
 		return _streams[sound]
 	var s: AudioStreamWAV = null
@@ -551,6 +553,8 @@ static func _explosion() -> AudioStreamWAV:
 ## run never machine-guns the same sample.
 const STEP_VARIANTS := 8
 static var _steps: Array = []
+const SPLASH_VARIANTS := 6
+static var _splashes: Array = []
 
 
 static func _footstep_variant() -> AudioStreamWAV:
@@ -622,4 +626,59 @@ static func _heartbeat() -> AudioStreamWAV:
 				var u: float = t - st
 				v += sin(TAU * 52.0 * u) * exp(-u * 22.0) * (1.0 if st == 0.0 else 0.7)
 		out[i] = v * 0.9
+	return _to_stream(out)
+
+
+static func _splash_variant() -> AudioStreamWAV:
+	if _splashes.is_empty():
+		for v in SPLASH_VARIANTS:
+			_splashes.append(_splash(v))
+	return _splashes[randi() % _splashes.size()]
+
+
+## A foot going into shallow water: a soft slap as it breaks the surface, a
+## slosh of displaced water, a few rising bubble "bloops" and a spray hiss.
+static func _splash(variant: int) -> AudioStreamWAV:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7300 + variant
+	var n := int(0.55 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	# bubbles: start time, start pitch, pitch rise, gain, decay
+	var bubbles: Array = []
+	for b in rng.randi_range(4, 7):
+		bubbles.append([rng.randf_range(0.02, 0.26), rng.randf_range(380.0, 900.0), rng.randf_range(900.0, 2600.0),
+				rng.randf_range(0.12, 0.3), rng.randf_range(28.0, 55.0)])
+	var slosh_t := rng.randf_range(0.07, 0.12)
+	var lp_slap := 0.0
+	var lp_slosh := 0.0
+	var lp_slosh2 := 0.0
+	var hp := 0.0
+	var hp_prev := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var white := rng.randf() * 2.0 - 1.0
+		# slap: a short low-passed burst as the foot breaks the surface
+		lp_slap += (white - lp_slap) * 0.25
+		var slap := lp_slap * 2.4 * smoothstep(0.0, 0.003, t) * exp(-t * 45.0)
+		# slosh: darker, slower body of water moving away, swelling after the slap
+		lp_slosh += (white - lp_slosh) * 0.06
+		lp_slosh2 += (lp_slosh - lp_slosh2) * 0.18
+		var st := t - slosh_t
+		var slosh := 0.0 if st < 0.0 else lp_slosh2 * 9.0 * smoothstep(0.0, 0.04, st) * exp(-st * 9.0)
+		# bubbles: decaying sines that glide up in pitch
+		var bub := 0.0
+		for b in bubbles:
+			var bt: float = t - b[0]
+			if bt > 0.0 and bt < 0.2:
+				# phase of a sine whose pitch rises linearly from b[1] at rate b[2]
+				bub += sin(TAU * (b[1] * bt + 0.5 * b[2] * bt * bt)) * b[3] * exp(-bt * b[4]) * smoothstep(0.0, 0.002, bt)
+		# spray: bright hiss that rides on the slap
+		hp = 0.9 * (hp + white - hp_prev)
+		hp_prev = white
+		var spray := hp * 0.22 * smoothstep(0.0, 0.004, t) * exp(-t * 16.0)
+		out[i] = tanh((slap + slosh + bub + spray) * 1.2) * 0.85
+	var fade := int(0.04 * RATE)
+	for i in fade:
+		out[n - 1 - i] *= float(i) / fade
 	return _to_stream(out)

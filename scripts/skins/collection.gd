@@ -67,6 +67,8 @@ static func has_outfit(id: String) -> bool:
 		return false
 	if Outfits.owner_of(id) != "":
 		return Outfits.is_mine(id)   # reserved for one account
+	if int(Outfits.info(id).price) == 0 and not Outfits.is_admin(id):
+		return true   # free outfits belong to everyone
 	return id == Outfits.DEFAULT or Profile.is_admin() or outfits_owned.has(id)
 
 

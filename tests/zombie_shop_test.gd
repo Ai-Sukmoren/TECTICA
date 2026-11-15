@@ -91,6 +91,12 @@ func run() -> void:
 	var rpm := float(p.weapons[0].stats.rpm)
 	shop.buy("perk_rapid", p)
 	check(is_equal_approx(float(p.weapons[0].stats.rpm), rpm * 1.25), "rapid fire: +25% rpm")
+	var res0 := int(p.weapons[0].stats.reserve)
+	shop.buy("perk_mule", p)
+	check(int(p.weapons[0].stats.reserve) == int(round(res0 * 1.6)), "ammo bandolier: +60% reserve capacity")
+	check(p.weapons[0].reserve >= int(p.weapons[0].stats.reserve), "ammo bandolier fills the bigger reserve")
+	shop.apply_mods(p)
+	check(int(p.weapons[0].stats.reserve) == int(round(res0 * 1.6)), "bandolier does not stack on re-apply")
 
 	# --- supplies
 	p.weapons[0].reserve = 0

@@ -6,6 +6,7 @@ extends Node3D
 const FX = preload("res://scripts/fx/fx.gd")
 const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
+const Water = preload("res://scripts/world/water.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 const Destructible = preload("res://scripts/world/destructible.gd")
 const PP = preload("res://scripts/core/pack_props.gd")
@@ -55,6 +56,7 @@ func build() -> void:
 	_mat_concrete = M.concrete("barrier", Color(0.55, 0.55, 0.53), 0.6)
 	_mat_metal = M.painted_metal("metal_grey", Color(0.3, 0.32, 0.33))
 	FX.ground_surface = "stone"
+	Water.clear()
 
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Navigation"
@@ -676,6 +678,8 @@ func _interior_probe(center: Vector3, size: Vector3, rot: float = 0.0) -> void:
 
 func apply_quality(q: int) -> void:
 	for entry in lights:
+		if not is_instance_valid(entry.light):
+			continue   # its prop was destroyed
 		var l: OmniLight3D = entry.light
 		l.shadow_enabled = (q == 2) or (q == 1 and entry.shadow)
 		if not l.distance_fade_enabled:

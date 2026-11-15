@@ -475,6 +475,11 @@ func _unhandled_input(event: InputEvent) -> void:
 					_menu_activate(i)
 		return
 
+	if gunsmith.is_open:
+		if gunsmith.handle(event):
+			gunsmith.close()
+			_gunsmith_closed_in_match()
+		return
 	if (get_tree().paused or mp_pause) and not main.game_over:
 		_pause_input(event)
 		return
@@ -804,6 +809,8 @@ func _draw_overlay(c: Control) -> void:
 			_text(c, Vector2(0, vp.y * 0.62), msg, 26, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	if settings_open:
 		_draw_settings(c, vp)
+	elif gunsmith.is_open:
+		gunsmith.draw(c, vp)
 	elif (get_tree().paused or mp_pause) and not main.game_over:
 		_draw_pause(c, vp)
 	elif shop_open:
@@ -1519,7 +1526,20 @@ func _draw_blend_space(c: Control, rect: Rect2, rig) -> void:
 
 # ================================================================ pause & settings
 
+## The gunsmith opens mid-match in the campaign, PvP and co-op; Zombie
+## Survival keeps its own supply shop.
+func _gunsmith_in_match() -> bool:
+	return main.mode != "zombie"
+
+
 func _pause_items() -> Array:
+	var its := _pause_items_base()
+	if _gunsmith_in_match():
+		its.insert(2, "GUNSMITH")
+	return its
+
+
+func _pause_items_base() -> Array:
 	if Net.active and Net.is_server() and Net.transport == "ws":
 		return ["RESUME", "SETTINGS", "COPY INVITE LINK  ·  ONLINE", "RESTART MATCH", "LEAVE GAME"]
 	if Net.active and Net.is_server():
@@ -1533,7 +1553,7 @@ func _pause_items() -> Array:
 		return its
 	if Net.active:
 		return ["RESUME", "SETTINGS", "RESTART  (HOST ONLY)", "LEAVE GAME"]
-	return PAUSE_ITEMS
+	return PAUSE_ITEMS.duplicate()
 
 
 func _copy_invite(internet: bool) -> void:
@@ -1717,6 +1737,17 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	_text(c, Vector2(x0, y + 50), "W/S or mouse select  ·  ENTER / click buy  ·  [%s] or ESC close" % Settings.Controls.short("shop"), 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
 
 
+## Back from the gunsmith to the pause menu. Solo the new loadout is issued at
+## once; in multiplayer it waits for the next respawn so nobody swaps guns
+## mid-fight.
+func _gunsmith_closed_in_match() -> void:
+	if Net.active:
+		add_feed("LOADOUT SAVED  ·  YOU DEPLOY WITH IT ON YOUR NEXT RESPAWN", ACCENT)
+	elif player != null and not player.is_dead:
+		player.apply_loadout()
+		add_feed("LOADOUT UPDATED", ACCENT)
+
+
 func _resume() -> void:
 	mp_pause = false
 	get_tree().paused = false
@@ -1733,6 +1764,8 @@ func _pause_activate(i: int) -> void:
 	elif item == "SETTINGS":
 		settings_open = true
 		settings_row = 0
+	elif item == "GUNSMITH":
+		gunsmith.open()
 	elif item.begins_with("COPY JOIN CODE"):
 		var code := String(item.split("  ·  ")[1])
 		DisplayServer.clipboard_set(code)

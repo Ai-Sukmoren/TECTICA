@@ -1093,11 +1093,11 @@ func on_net_kill(victim: Node, killer: String, headshot: bool) -> void:
 ## The local operator's jump kick connected.
 func on_kick_hit(target: Node) -> void:
 	var killed: bool = target.get("is_dead") == true
-	hud.on_hit(killed, false, player.KICK_DAMAGE, (target as Node3D).global_position + Vector3.UP * 1.3, target)
+	hud.on_hit(killed, false, player.kick_damage, (target as Node3D).global_position + Vector3.UP * 1.3, target)
 	if killed:
 		Collection.add_credits(15)
 		Progression.on_kick_kill()
-		hud.add_feed("KICK KILL  ·  +15 CR", Color(1.0, 0.55, 0.45))
+		hud.add_feed(("FLYING KICK KILL" if player.flying_kick else "KICK KILL") + "  ·  +15 CR", Color(1.0, 0.55, 0.45))
 
 
 ## Another peer's shot was replayed here.

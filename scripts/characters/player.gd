@@ -53,7 +53,17 @@ const KICK_SPEED := 10.5
 const KICK_UP := 4.4
 const KICK_DAMAGE := 45.0
 const KICK_KNOCK := 14.5
+# flying kick: sprint, jump, then V in the air. A heavier blow with a
+# shockwave that staggers everyone around the one it lands on.
+const AIR_KICK_DAMAGE := 90.0
+const AIR_KICK_KNOCK := 21.0
+const AIR_KICK_SPEED := 12.5
+const AIR_KICK_MIN_SPEED := 4.5   # horizontal speed needed (a running jump)
+const AIR_KICK_SPLASH := 2.8      # shockwave radius around the target
+const AIR_KICK_SPLASH_KNOCK := 9.0
 var kicking := false
+var flying_kick := false   # the current kick started in the air
+var kick_damage := KICK_DAMAGE   # damage of the kick in progress (read by main / HUD)
 var _kick_t := 0.0
 var _kick_cd := 0.0
 var _kick_dir := Vector3.FORWARD
@@ -595,6 +605,13 @@ func _physics_process(delta: float) -> void:
 		_start_kick(wish.normalized())
 		_sync_rig()
 		return
+	# ---- flying kick (V in the air during a running jump)
+	if Input.is_action_just_pressed("kick") and not is_on_floor() and air_time > 0.04 and not sliding and _kick_cd <= 0.0 \
+			and Vector2(velocity.x, velocity.z).length() >= AIR_KICK_MIN_SPEED:
+		var fdir := wish.normalized() if wish.length() > 0.2 else Vector3(velocity.x, 0, velocity.z).normalized()
+		_start_kick(fdir, true)
+		_sync_rig()
+		return
 
 	# ---- vault over low obstacles (Space / A, or automatically while sprinting)
 	if Input.is_action_just_pressed("vault"):
@@ -918,9 +935,11 @@ func _update_vault(delta: float) -> void:
 
 ## Flying kick: launches forward and up; whatever the leg connects with takes
 ## damage and is thrown back. Committed - no steering or shooting until it lands.
-func _start_kick(dir: Vector3) -> void:
+func _start_kick(dir: Vector3, air: bool = false) -> void:
 	if dir.length() < 0.1:
 		dir = Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	flying_kick = air
+	kick_damage = AIR_KICK_DAMAGE if air else KICK_DAMAGE
 	kicking = true
 	_kick_t = 0.0
 	_kick_dir = dir.normalized()
@@ -935,9 +954,13 @@ func _start_kick(dir: Vector3) -> void:
 	_pad_dir = _kick_dir
 	_peek_off = Vector3.ZERO
 	rig.lean_target = 0.0
-	velocity = _kick_dir * KICK_SPEED + Vector3.UP * KICK_UP
+	if air:
+		# already airborne: drive forward and hold the height a moment longer
+		velocity = _kick_dir * AIR_KICK_SPEED + Vector3.UP * maxf(velocity.y, 2.6)
+	else:
+		velocity = _kick_dir * KICK_SPEED + Vector3.UP * KICK_UP
 	rig.play_kick(KICK_TIME)
-	Sfx.play(self, "swipe", global_position + Vector3.UP, -2.0, 0.1)
+	Sfx.play(self, "swipe", global_position + Vector3.UP, 1.0 if air else -2.0, 0.1)
 	if Net.active and Net.sync:
 		Net.sync.send_event(self, "kick", [KICK_TIME])
 
@@ -945,7 +968,7 @@ func _start_kick(dir: Vector3) -> void:
 func _update_kick(delta: float) -> void:
 	_kick_t += delta
 	var k := clampf(_kick_t / KICK_TIME, 0.0, 1.0)
-	var sp := lerpf(KICK_SPEED, 5.5, k) * (0.45 if _kick_landed else 1.0)
+	var sp := lerpf(AIR_KICK_SPEED if flying_kick else KICK_SPEED, 5.5, k) * (0.45 if _kick_landed else 1.0)
 	velocity.x = _kick_dir.x * sp
 	velocity.z = _kick_dir.z * sp
 	velocity.y -= GRAVITY * delta
@@ -954,7 +977,7 @@ func _update_kick(delta: float) -> void:
 	# the leg is out between ~18 % and ~72 % of the move
 	if k > 0.18 and k < 0.72:
 		var shape := SphereShape3D.new()
-		shape.radius = 0.85
+		shape.radius = 1.0 if flying_kick else 0.85
 		var q := PhysicsShapeQueryParameters3D.new()
 		q.shape = shape
 		q.transform = Transform3D(Basis.IDENTITY, global_position + _kick_dir * 0.95 + Vector3.UP * 0.95)
@@ -969,27 +992,66 @@ func _update_kick(delta: float) -> void:
 			_kick_hit.append(c)
 			_kick_landed = true
 			var at: Vector3 = c.global_position + Vector3.UP * 1.1
-			c.take_kick(KICK_DAMAGE, at, _kick_dir, self, _kick_dir * KICK_KNOCK + Vector3.UP * 4.2)
+			if flying_kick:
+				c.take_kick(AIR_KICK_DAMAGE, at, _kick_dir, self, _kick_dir * AIR_KICK_KNOCK + Vector3.UP * 5.5)
+			else:
+				c.take_kick(KICK_DAMAGE, at, _kick_dir, self, _kick_dir * KICK_KNOCK + Vector3.UP * 4.2)
 			var killed: bool = c.get("is_dead") == true
 			Sfx.play(self, "hit", at, 6.0, 0.1)
 			Sfx.play(self, "impact_wood", at, 2.0, 0.2)
 			# impact burst: dust and grit off the boots, blood on the target
-			FX.chips(self, at, -_kick_dir, Color(0.45, 0.4, 0.33), 14, 0.035, 10, 1.6)
+			FX.chips(self, at, -_kick_dir, Color(0.45, 0.4, 0.33), 26 if flying_kick else 14, 0.035, 18 if flying_kick else 10, 1.6)
 			FX.blood(self, at, _kick_dir)
+			if flying_kick:
+				_air_kick_shockwave(c, at)
 			if camera_rig:
-				camera_rig.add_shake(1.0 if killed else 0.75)
+				camera_rig.add_shake((1.4 if killed else 1.15) if flying_kick else (1.0 if killed else 0.75))
 			if using_pad:
-				Input.start_joy_vibration(0, 0.9, 1.0, 0.3 if killed else 0.2)
+				Input.start_joy_vibration(0, 1.0, 1.0, 0.4 if flying_kick else (0.3 if killed else 0.2))
 			var hud_node = get_tree().current_scene.get_node_or_null("HUD") if get_tree().current_scene else null
 			if hud_node != null and hud_node.has_method("slowmo"):
-				hud_node.slowmo(0.3 if killed else 0.45, 0.35 if killed else 0.18)
+				if flying_kick:
+					hud_node.slowmo(0.22, 0.45)
+				else:
+					hud_node.slowmo(0.3 if killed else 0.45, 0.35 if killed else 0.18)
 			var m = get_tree().current_scene
 			if m != null and m.has_method("on_kick_hit"):
 				m.on_kick_hit(c)
 	if _kick_t >= KICK_TIME and (is_on_floor() or _kick_t > KICK_TIME + 0.3):
 		kicking = false
+		flying_kick = false
 		_kick_cd = 0.55
 		_on_footstep(global_position, 0.9)
+
+
+## Flying kick landed: a shockwave shoves and staggers everyone around the
+## target (no extra damage), with a thump and a ring of dust.
+func _air_kick_shockwave(target: Node, at: Vector3) -> void:
+	Sfx.play(self, "explosion", at, -12.0, 0.15)
+	FX.chips(self, Vector3(at.x, global_position.y + 0.05, at.z), Vector3.UP, Color(0.5, 0.46, 0.38), 0, 0.03, 16, 2.4)
+	var shape := SphereShape3D.new()
+	shape.radius = AIR_KICK_SPLASH
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.transform = Transform3D(Basis.IDENTITY, at)
+	q.collision_mask = Layers.ENEMY | (Layers.PLAYER if Net.is_pvp() else 0)
+	q.exclude = [get_rid()]
+	for hit in get_world_3d().direct_space_state.intersect_shape(q, 16):
+		var o = hit.collider
+		if o == null or o == self or o == target or o in _kick_hit or not o.has_method("apply_knockback"):
+			continue
+		if o.get("is_dead") == true or o.get("team") == team:
+			continue
+		var away: Vector3 = (o as Node3D).global_position - at
+		away.y = 0.0
+		if away.length() < 0.05:
+			away = _kick_dir
+		var near := 1.0 - clampf(away.length() / AIR_KICK_SPLASH, 0.0, 1.0)
+		var push: Vector3 = away.normalized() * AIR_KICK_SPLASH_KNOCK * (0.5 + 0.5 * near) + Vector3.UP * 2.0
+		if Net.owns(o):
+			o.apply_knockback(push, 0.6)
+		elif Net.sync:
+			Net.sync.send_knock(o, push)
 
 
 # ------------------------------------------------------------------ slide

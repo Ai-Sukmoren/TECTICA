@@ -35,7 +35,7 @@ func run() -> void:
 	main.add_child(cam)
 	cam.fov = 35.0
 	var args := OS.get_cmdline_user_args()
-	var specs: Array = [["m4a1", "rifle"], ["mk23", "pistol"], ["knife_combat", "knife"]]
+	var specs: Array = [["hk33", "rifle"], ["g17", "pistol"], ["knife_combat", "knife"]]
 	if args.size() > 1:
 		specs = []
 		for a in args.slice(1):

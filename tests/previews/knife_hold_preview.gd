@@ -24,7 +24,7 @@ func run() -> void:
 	p.global_position = Vector3(0, 0.05, 30)
 	p.aim_yaw = 0.0
 	for knife in ["knife_combat", "karambit", "butterfly"]:
-		p.set_loadout([["m4a1", {}], ["mk23", {}], [knife, {}]])
+		p.set_loadout([["hk33", {}], ["g17", {}], [knife, {}]])
 		p.weapon_index = 2
 		p._equip_current()
 		p.set_first_person(true)

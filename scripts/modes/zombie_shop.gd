@@ -20,8 +20,8 @@ const MAX_UPGRADE := 3
 
 ## Primary weapons for sale, cheapest first.
 const GUNS := [
-	["mp7", 1000], ["m870", 1250], ["mgp7", 1400], ["ak47", 1600],
-	["m4a1", 1800], ["as_val", 2000], ["awp", 2200], ["m249", 3000],
+	["mgp7", 1200], ["marlin", 1500], ["hk33", 1700], ["aug_a1", 1900],
+	["as_val", 2000], ["uar10", 2400],
 ]
 ## id -> [name, price, description]
 const PERKS := {
@@ -48,7 +48,7 @@ var perks := {}
 ## and the knife, no primary.
 static func starting_specs() -> Array:
 	var full: Array = Loadout.weapon_list()
-	return [full[1], full[2]]
+	return [full[2], full[3]]   # [rifle, SMG, pistol, knife] -> pistol and knife
 
 
 func earn(amount: int) -> void:

@@ -109,7 +109,47 @@ static func _combat(r: Node3D, out: Dictionary) -> void:
 	out.muzzle = _marker(r, "Tip", Vector3(0, 0.002, -0.19))
 
 
+## Low-poly knife models (assets/thirdparty/low_poly_knives/, not in the
+## repository), converted with Blender: guard at the origin, blade along -Z.
+## Butterfly handles are separate nodes with their origin on their pin.
+const KNIFE_DIR := "res://assets/thirdparty/low_poly_knives/"
+
+
+## Puts the model's parts under `r`; handles become pivots in `out`. False
+## when the file is missing (the built-in shape is drawn instead).
+static func _knife_glb(r: Node3D, model: String, out: Dictionary) -> bool:
+	var path := KNIFE_DIR + model + ".glb"
+	if not ResourceLoader.exists(path):
+		return false
+	var inst := (load(path) as PackedScene).instantiate()
+	for n in inst.find_children("*", "MeshInstance3D", true, false):
+		var xf := Transform3D.IDENTITY
+		var p: Node = n
+		while p != null and p != inst:
+			xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		var mi := MeshInstance3D.new()
+		mi.mesh = (n as MeshInstance3D).mesh
+		mi.set_meta("pack4", true)   # skins recolour model parts
+		var part := String(n.name)
+		if part.begins_with("Handle"):
+			var bite := part.begins_with("HandleBite")
+			# the two handles sit either side of the tang so they never pass through each other
+			var pivot := _marker(r, "HandleBite" if bite else "HandleSafe", xf.origin + Vector3(0.007 if bite else -0.007, 0, 0))
+			mi.transform = Transform3D(xf.basis, Vector3.ZERO)
+			pivot.add_child(mi)
+			out["handle_bite" if bite else "handle_safe"] = pivot
+		else:
+			mi.transform = xf
+			r.add_child(mi)
+	inst.free()
+	return true
+
+
 static func _karambit(r: Node3D, out: Dictionary) -> void:
+	if _knife_glb(r, "karambit", out):
+		out.muzzle = _marker(r, "Tip", Vector3(0, -0.07, -0.079))
+		return
 	# short grip with a finger ring behind the pommel
 	_part(r, ML.box(Vector3(0.016, 0.026, 0.085)), _g10, Vector3(0, 0, 0.035))
 	for i in 3:
@@ -134,6 +174,9 @@ static func _karambit(r: Node3D, out: Dictionary) -> void:
 
 
 static func _butterfly(r: Node3D, out: Dictionary) -> void:
+	if _knife_glb(r, "butterfly", out):
+		out.muzzle = _marker(r, "Tip", Vector3(0, 0.0, -0.134))
+		return
 	# blade on the pivots (tang at the grip marker)
 	_blade(r, 0.004, [Vector2(-0.012, 0.011), Vector2(-0.11, 0.011), Vector2(-0.135, 0.001), Vector2(-0.11, -0.011),
 			Vector2(-0.012, -0.011)], _steel)

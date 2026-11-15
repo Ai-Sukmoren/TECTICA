@@ -12,6 +12,8 @@ static func setup() -> void:
 		_act("inspect", [KEY_I])
 	if not InputMap.has_action("weapon_3"):
 		_act("weapon_3", [KEY_3])
+	if not InputMap.has_action("weapon_4"):
+		_act("weapon_4", [KEY_4])
 	if InputMap.has_action("flashlight"):
 		return
 	_act("move_forward", [KEY_W, KEY_UP], [], [[JOY_AXIS_LEFT_Y, -1.0]])

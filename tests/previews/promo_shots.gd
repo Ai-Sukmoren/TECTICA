@@ -102,7 +102,7 @@ func run() -> void:
 		rig.override = false
 		p.global_position = Vector3(2.0, 0.05, 30)
 		p.aim_yaw = 0.0
-		p.set_loadout([["rb45", {}], ["knife_combat", {}]])
+		p.set_loadout([["g17", {}], ["knife_combat", {}]])
 		p.set_first_person(true)
 		p.fp_pitch = -0.02
 		await frames(70)

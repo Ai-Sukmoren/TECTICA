@@ -27,19 +27,10 @@ func check(ok: bool, label: String) -> void:
 func _b(model: String, r: Node3D) -> Dictionary:
 	Model._mats()
 	match model:
-		"m4": return Model._m4(r)
-		"akm": return Model._ak(r)
-		"as_val": return Model._val(r)
-		"mp7": return Model._mp7(r)
-		"awp": return Model._awp(r)
-		"m870": return Model._m870(r)
-		"m249": return Model._m249(r)
-		"g18": return Model._pistol(r, M.solid(Color(0.13, 0.12, 0.1), 0.7), true)
 		"mgp7": return Model._mgp7(r)
 		"zc57": return Model._zc57(r)
-		"rolling": return Model._rolling(r)
-		"sawed": return Model._sawed(r)
-	return Model._pistol(r, Model._poly, false)
+		"marlin": return Model._marlin(r)
+	return Model._low_poly(r, model)
 
 ## Collision for every non-attachment mesh of the gun under `root`.
 func _collide(root: Node3D) -> void:
@@ -93,7 +84,10 @@ func run() -> void:
 		var s := 0.75 if b.get("mini", false) else 1.0
 		var base: float = float(b.rail_y) - 0.002 * s
 		var top_from := o + Vector3(0, float(b.rail_y) + 0.06, float(b.rail_z))
-		var d := _ray(top_from, Vector3.DOWN, 0.2)
+		var opts: Dictionary = Data.WEAPONS[id].options
+		var takes_optic: bool = (opts.optic as Array).any(func(o): return o in ["reddot", "holo", "prism", "acog", "scope", "minidot"])
+		var takes_under: bool = (opts.underbarrel as Array).any(func(o): return o != "none")
+		var d := _ray(top_from, Vector3.DOWN, 0.2) if takes_optic else INF
 		if d < INF:
 			var rail_top: float = top_from.y - d - o.y
 			var gap := base - rail_top
@@ -102,7 +96,7 @@ func run() -> void:
 		# underbarrel: the mount's top face is the anchor height
 		var ua := _local(b.under_at, root)
 		var under_from := o + Vector3(0, ua.y - 0.05, ua.z)
-		d = _ray(under_from, Vector3.UP, 0.12)
+		d = _ray(under_from, Vector3.UP, 0.12) if takes_under else INF
 		if d < INF:
 			var bottom: float = under_from.y + d - o.y
 			var gap := bottom - ua.y   # > 0: mount hangs below the handguard

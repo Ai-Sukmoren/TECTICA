@@ -79,6 +79,11 @@ var _chem_glow: OmniLight3D
 var flashlight_manual := false
 var _torch: Node3D
 var _torch_lens: MeshInstance3D
+## The Surefire X300U model inside the torch mount (null: built-in housing).
+var _torch_model: Node3D
+## Weapon light model (local only); its origin is the rail clamp on the lens
+## axis, lens 0.0466 m ahead of it and 0.0198 m below.
+const TORCH_GLB := "res://assets/thirdparty/low_poly_attachments/flashlight.glb"
 
 ## Set by the HUD while an in-game menu is open in multiplayer (the world keeps running).
 static var input_blocked := false
@@ -248,6 +253,18 @@ func _build_torch() -> void:
 	_torch = Node3D.new()
 	_torch.name = "Torch"
 	rig.weapon_anchor.add_child(_torch)
+	if ResourceLoader.exists(TORCH_GLB):
+		_torch_model = (load(TORCH_GLB) as PackedScene).instantiate() as Node3D
+		_torch.add_child(_torch_model)
+		for n in _torch_model.find_children("*", "MeshInstance3D", true, false):
+			if String(n.name).begins_with("SM_Lamp"):
+				_torch_lens = n as MeshInstance3D
+			elif String(n.name).begins_with("SM_Glass"):
+				(n as MeshInstance3D).material_override = M.solid(Color(0.85, 0.9, 0.95, 0.15), 0.05, 0.2)
+				((n as MeshInstance3D).material_override as BaseMaterial3D).transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_place_torch()
+		_update_torch_lens()
+		return
 	var body := MeshInstance3D.new()
 	body.mesh = ML.cylinder(0.017, 0.017, 0.11, 12)
 	body.material_override = M.painted_metal("torch_body", Color(0.09, 0.09, 0.08))
@@ -274,6 +291,8 @@ func _place_torch() -> void:
 	# right side of the handguard (long guns) or under the frame (pistols),
 	# measured on the gun's own mesh so it sits on every model
 	var w := current_weapon()
+	if _torch_model != null:
+		_torch_model.visible = not w.is_melee()
 	if w.is_melee():
 		_torch.position = Vector3(0.0, -0.035, 0.03)   # knives: a small light by the grip
 		if flashlight:
@@ -284,6 +303,17 @@ func _place_torch() -> void:
 	var mount: Vector3 = w.get_meta("torch_mount")
 	_torch.position = mount
 	_torch.scale = Vector3.ONE * (PISTOL_LIGHT if w.is_pistol() else 1.0)
+	if _torch_model != null:
+		# the X300U clamps to the gun: under a pistol's frame (clamp up), on the
+		# right of a rifle's handguard (turned so the clamp faces the gun), with
+		# its lens where the built-in housing's lens was
+		var lens_z := -0.081 + 0.0466
+		if w.is_pistol():
+			_torch_model.rotation = Vector3.ZERO
+			_torch_model.position = Vector3(0.0136, 0.017 + 0.0014, lens_z)   # body centred under the frame (the switch paddle sits to one side)
+		else:
+			_torch_model.rotation = Vector3(0, 0, PI * 0.5)
+			_torch_model.position = Vector3(-0.017, 0, lens_z)
 	if flashlight:
 		# the beam starts just ahead of the muzzle, in line with the lens
 		var mz: float = (w.global_transform.affine_inverse() * w.muzzle.global_position).z if w.muzzle else mount.z - 0.3
@@ -404,6 +434,9 @@ func _slot(role: String) -> int:
 			"primary":
 				if not w.is_pistol() and not w.is_melee():
 					return i
+			"smg":
+				if String(w.stats.category) == "SMG" and i > 0:
+					return i
 			"pistol":
 				if w.is_pistol():
 					return i
@@ -493,6 +526,13 @@ func set_first_person(on: bool) -> void:
 		fp_pitch = -0.08
 	if not get_tree().paused:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if first_person else Input.MOUSE_MODE_CONFINED_HIDDEN
+
+
+## The operator's shots stay on the crosshair while walking: moving opens the
+## cone a little from the hip and barely at all aiming down sights; a full
+## sprint-speed hip shot still scatters.
+func _move_spread(hv: float) -> float:
+	return clampf(hv / 6.0, 0.0, 1.2) * lerpf(0.6, 0.15, rig.aim_amt)
 
 
 func get_fire_origin() -> Vector3:
@@ -681,8 +721,10 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("weapon_1"):
 		switch_to(_slot("primary"))
 	if Input.is_action_just_pressed("weapon_2"):
-		switch_to(_slot("pistol"))
+		switch_to(_slot("smg"))
 	if Input.is_action_just_pressed("weapon_3"):
+		switch_to(_slot("pistol"))
+	if Input.is_action_just_pressed("weapon_4"):
 		switch_to(_slot("knife"))
 	if Input.is_action_just_pressed("switch_weapon"):
 		switch_to((weapon_index + 1) % weapons.size())

@@ -133,6 +133,21 @@ func solid_box(pos: Vector3, size: Vector3, mat: Material, rot_y: float = 0.0, l
 	return b
 
 
+## A model prop from assets/thirdparty/props/ (local only) standing on the
+## floor at `pos`: solid, low cover around it. `size` is its box (x long,
+## y high, z wide). False when the file is missing, so the caller can build
+## its own stand-in.
+func model_prop(file: String, pos: Vector3, rot_y: float, size: Vector3) -> bool:
+	var path := "res://assets/thirdparty/props/" + file
+	if not ResourceLoader.exists(path):
+		return false
+	var b := _body(pos, rot_y)
+	b.add_child((load(path) as PackedScene).instantiate())
+	_box_shape(b, size, Vector3(0, size.y * 0.5, 0))
+	_add_cover(pos, size, rot_y, b)
+	return true
+
+
 func crate(pos: Vector3, size: Vector3, rot_y: float = 0.0, stacked: bool = false) -> StaticBody3D:
 	var b := solid_box(pos, size, _mat_crate, rot_y, not stacked and size.y <= 1.25, "wood")
 	var t := 0.05

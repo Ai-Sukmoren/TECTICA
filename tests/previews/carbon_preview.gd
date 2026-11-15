@@ -48,7 +48,7 @@ func run() -> void:
 	p.health = 100000.0
 	main.director.timer = 9999.0
 	main.hud.visible = false
-	p.set_loadout([["m4a1", {"optic": "reddot"}, "carbon_mythic"], ["mk23", {}, "carbon_mythic"], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"optic": "reddot"}, "carbon_mythic"], ["g17", {}, "carbon_mythic"], ["knife_combat", {}]])
 	p.global_position = Vector3(2.0, 0.05, 30)
 	p.aim_yaw = 0.0
 	for hour in [13.5, 19.2]:

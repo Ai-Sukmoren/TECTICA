@@ -34,7 +34,7 @@ func run() -> void:
 	main.tod.set("hour", 13.0)
 	p.global_position = Vector3(2.0, 0.05, 30)
 	p.aim_yaw = 0.0
-	for gun in ["mgp7", "zc57", "mp7"]:
+	for gun in ["mgp7", "zc57", "mgp7"]:
 		for skin in ["woodland", "gilded_royale"]:
 			p.set_loadout([[gun, {}, skin], ["knife_combat", {}]])
 			p.set_first_person(true)

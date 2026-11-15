@@ -48,7 +48,7 @@ func run() -> void:
 	main.hud.visible = false
 	main.tod.set("running", false)
 	main.tod.set("hour", 15.0)
-	p.set_loadout([["m4a1", {"optic": "reddot"}], ["mk23", {}], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"optic": "reddot"}], ["g17", {}], ["knife_combat", {}]])
 	p.set_first_person(false)
 	p.using_pad = true
 	main.camera_rig.override = true

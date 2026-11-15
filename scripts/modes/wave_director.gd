@@ -162,6 +162,8 @@ func _announce_wave() -> void:
 		main.hud.wave_banner("WAVE %d  ·  BOSS" % wave)
 		main.hud.add_feed("%s INBOUND  ·  AIM HIGH  ·  BAIT ITS CHARGE INTO A WALL" % boss_name, Color(1.0, 0.25, 0.2))
 		Sfx.play(main, "groan", main.player.global_position + Vector3(0, 6, 0), 2.0, 0.05)
+		if main.level != null and main.level.has_method("test_flash"):
+			main.level.test_flash()   # ATOMIC ACRES: the test shot goes off
 
 
 func _end_wave() -> void:

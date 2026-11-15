@@ -17,7 +17,7 @@ func frames(n: int) -> void:
 func run() -> void:
 	var a := OS.get_cmdline_user_args()
 	var out: String = a[0] if a.size() > 0 else "user://"
-	var guns: Array = a.slice(1) if a.size() > 1 else ["mgp7", "zc57", "mp7", "mk23"]
+	var guns: Array = a.slice(1) if a.size() > 1 else ["mgp7", "zc57", "mgp7", "g17"]
 	root.size = Vector2i(1600, 900)
 	var world := Node3D.new()
 	root.add_child(world)

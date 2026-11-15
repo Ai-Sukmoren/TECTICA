@@ -42,7 +42,7 @@ func run() -> void:
 	var p = main.player
 	p.health = 100000.0
 	main.director.timer = 9999.0
-	p.set_loadout([["m4a1", {"optic": "iron"}], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"optic": "iron"}], ["knife_combat", {}]])
 	p.global_position = Vector3(0, 0.05, 40)
 	main.director._spawn_one("walker")
 	var z = main.enemies[main.enemies.size() - 1]

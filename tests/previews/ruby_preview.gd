@@ -49,7 +49,7 @@ func run() -> void:
 	# --- 1: ruby AK with the sticker, right side to camera
 	var guns: Array = []
 	var y := 0.42
-	for id in ["awp", "ak47", "mk23"]:
+	for id in ["uar10", "aug_a1", "g17"]:
 		var gun := Weapon.new()
 		gun.setup(id, {})
 		scene.add_child(gun)
@@ -101,7 +101,7 @@ func run() -> void:
 	var p := Player.new()
 	scene.add_child(p)
 	p.position = Vector3(3.6, 0, 0.5)
-	p.setup_player(PI * 0.8, [["m4a1", {}]], false, "")
+	p.setup_player(PI * 0.8, [["hk33", {}]], false, "")
 	p.set_physics_process(false)
 	cam.position = Vector3(0.6, 2.2, 5.6)
 	cam.look_at(Vector3(0.6, 0.8, 0))

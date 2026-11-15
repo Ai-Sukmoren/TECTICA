@@ -3,7 +3,7 @@ extends SceneTree
 ## shows; needs a window).
 ##   godot --path . -s res://tests/previews/kitty_gun_preview.gd -- <out_dir> [finish]
 const Weapon = preload("res://scripts/weapons/weapon.gd")
-const GUNS := ["m4a1", "ak47", "awp", "mk23", "knife_combat", "karambit", "butterfly", "m870"]
+const GUNS := ["hk33", "aug_a1", "uar10", "g17", "knife_combat", "karambit", "butterfly", "marlin"]
 
 func frames(n: int) -> void:
 	for i in n:

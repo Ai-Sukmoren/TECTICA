@@ -30,13 +30,13 @@ func run() -> void:
 	# signed-out / non-admin: no ruby, no dashboard data
 	Profile.current = ""
 	Collection._loaded = true
-	check(not Collection.has_skin("m4a1", "ruby"), "Non-admin can't own Ruby")
+	check(not Collection.has_skin("hk33", "ruby"), "Non-admin can't own Ruby")
 	check(Profile.dashboard_rows().is_empty() and Profile.login_log().is_empty(), "Dashboard data is admin-only")
 	# simulate an admin session through the cache (no file writes)
 	Profile.current = "test_admin"
 	Profile._admin_for = "test_admin"
 	Profile._admin_val = true
-	check(Collection.has_skin("awp", "ruby") and Collection.has_skin("ak47", "aurora"), "Admin has every skin")
+	check(Collection.has_skin("uar10", "ruby") and Collection.has_skin("aug_a1", "aurora"), "Admin has every skin")
 	Profile.current = ""
 	Profile._admin_for = "?"
 
@@ -72,7 +72,7 @@ func run() -> void:
 	check(Sticker.clamp_cfg({}).v < 0.0, "Default sticker height is auto")
 	# a non-sticker finish never gets a sticker
 	var plain := Weapon.new()
-	plain.setup("m4a1", {})
+	plain.setup("hk33", {})
 	scene.add_child(plain)
 	plain.apply_skin("aurora")
 	plain.apply_sticker({})

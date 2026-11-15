@@ -453,6 +453,20 @@ static func material(finish: String, furniture: bool) -> ShaderMaterial:
 
 
 ## Recolours a built weapon model. Glass, glowing parts and lenses stay as they are.
+## Paints every surface of a model part with the finish except see-through
+## glass and glowing reticles, so optics stay clear and lit under any skin.
+static func _skin_surfaces(mi: MeshInstance3D, fm: Material) -> void:
+	for s in mi.mesh.get_surface_count():
+		var cur := mi.get_surface_override_material(s)
+		if cur == null:
+			cur = mi.mesh.surface_get_material(s)
+		if cur is BaseMaterial3D:
+			var bm := cur as BaseMaterial3D
+			if bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or bm.emission_enabled:
+				continue
+		mi.set_surface_override_material(s, fm)
+
+
 static func apply(model_root: Node, finish: String, metal_mats: Array) -> void:
 	if not FINISHES.has(finish) or model_root == null:
 		return
@@ -468,8 +482,8 @@ static func apply(model_root: Node, finish: String, metal_mats: Array) -> void:
 		var mi := n as MeshInstance3D
 		var mat := mi.material_override
 		if mat == null:
-			if mi.has_meta("pack4"):   # textured asset-pack-4 gun parts
-				mi.material_override = fm
+			if mi.has_meta("pack4"):   # textured model parts (guns and attachments)
+				_skin_surfaces(mi, fm)
 			continue
 		if mat is StandardMaterial3D:
 			var sm := mat as StandardMaterial3D

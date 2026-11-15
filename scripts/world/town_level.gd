@@ -383,6 +383,7 @@ func _build_diner() -> void:
 	_car(Vector3(-33, 0, 36), 0.05, Color(0.2, 0.25, 0.45))
 	_car(Vector3(-24.5, 0, 36.4), -0.08, Color(0.6, 0.58, 0.55))
 	_car(Vector3(-15.8, 0, 35.6), 0.12, Color(0.5, 0.1, 0.08))
+	model_prop("corolla.glb", Vector3(-28.6, 0, 36.2), PI * 0.5 - 0.06, Vector3(4.14, 1.38, 1.82))
 	sandbags(Vector3(-11, 0, 28), 3.0, PI * 0.5)
 
 

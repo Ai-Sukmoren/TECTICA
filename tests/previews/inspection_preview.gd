@@ -36,7 +36,7 @@ func _build() -> void:
 	scene.add_child(rig)
 	rig.build(load("res://scripts/core/palettes.gd").player())
 	var weapon = load("res://scripts/weapons/weapon.gd").new()
-	weapon.setup("m4a1")
+	weapon.setup("hk33")
 	rig.set_weapon(weapon, [])
 	rig.set_first_person(true)
 	rig.set_process(false)

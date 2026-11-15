@@ -36,7 +36,7 @@ func run() -> void:
 	for who in [["", false], ["turian", false], ["lilin", false], ["test_admin", true]]:
 		as_user(who[0], who[1])
 		check(not ("kitty_mythic" in Skins.finish_ids(true)), "Kitty finish hidden from '%s'" % who[0])
-		check(not Collection.has_skin("m4a1", "kitty_mythic"), "'%s' can't use Kitty finish" % who[0])
+		check(not Collection.has_skin("hk33", "kitty_mythic"), "'%s' can't use Kitty finish" % who[0])
 		check(not ("kitty" in Outfits.ids()), "Kitty outfit hidden from '%s'" % who[0])
 		check(not Collection.has_outfit("kitty"), "'%s' can't wear Kitty outfit" % who[0])
 		check(Collection.buy_outfit("kitty") != "", "'%s' can't buy Kitty outfit" % who[0])

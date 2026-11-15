@@ -1,5 +1,5 @@
 extends RefCounted
-## Player loadouts: one editable primary + secondary per class, persisted to
+## Player loadouts: one editable primary, SMG and pistol (secondary) per class, persisted to
 ## user://loadout.cfg so customisations survive restarts.
 
 const Data = preload("res://scripts/weapons/weapon_data.gd")
@@ -29,12 +29,12 @@ static func ensure() -> void:
 	var kn := String(cfg.get_value("main", "knife", "knife_combat"))
 	knife = kn if kn in Data.KNIVES else "knife_combat"
 	for i in classes.size():
-		for slot in ["primary", "secondary"]:
+		for slot in SLOTS:
 			var sec := "class%d_%s" % [i, slot]
 			if not cfg.has_section(sec):
 				continue
 			var id := String(cfg.get_value(sec, "id", ""))
-			var allowed: Array = Data.PRIMARIES if slot == "primary" else Data.SECONDARIES
+			var allowed: Array = list_for(slot)
 			if id in allowed:
 				var att = cfg.get_value(sec, "att", {})
 				classes[i][slot] = {"id": id, "att": Data.sanitize(id, att if att is Dictionary else {}),
@@ -45,8 +45,23 @@ static func _preset(i: int) -> Dictionary:
 	var c: Dictionary = Data.CLASSES[i]
 	return {
 		"primary": {"id": c.primary[0], "att": Data.sanitize(c.primary[0], c.primary[1]), "charm": ""},
+		"smg": {"id": c.smg[0], "att": Data.sanitize(c.smg[0], c.smg[1]), "charm": ""},
 		"secondary": {"id": c.secondary[0], "att": Data.sanitize(c.secondary[0], c.secondary[1]), "charm": ""},
 	}
+
+
+## The carried gun slots in order: rifle, SMG, pistol.
+const SLOTS := ["primary", "smg", "secondary"]
+
+
+## Which guns a slot can hold.
+static func list_for(slot: String) -> Array:
+	match slot:
+		"primary":
+			return Data.PRIMARIES
+		"smg":
+			return Data.SMGS
+	return Data.SECONDARIES
 
 
 static func save() -> void:
@@ -55,7 +70,7 @@ static func save() -> void:
 	cfg.set_value("main", "class", class_index)
 	cfg.set_value("main", "knife", knife)
 	for i in classes.size():
-		for slot in ["primary", "secondary"]:
+		for slot in SLOTS:
 			var e: Dictionary = classes[i][slot]
 			cfg.set_value("class%d_%s" % [i, slot], "id", e.id)
 			cfg.set_value("class%d_%s" % [i, slot], "att", e.att)
@@ -95,7 +110,7 @@ static func cycle_knife(dir: int) -> void:
 
 
 static func cycle_weapon(slot: String, dir: int) -> void:
-	var list: Array = Data.PRIMARIES if slot == "primary" else Data.SECONDARIES
+	var list: Array = list_for(slot)
 	var e: Dictionary = entry(slot)
 	var idx := list.find(e.id)
 	var id: String = list[posmod(idx + dir, list.size())]
@@ -124,6 +139,9 @@ static func reset_class() -> void:
 ## part of the spec so other multiplayer peers see them too).
 static func weapon_list() -> Array:
 	var c := current()
-	return [[c.primary.id, c.primary.att, Collection.skin_for(String(c.primary.id)), Collection.sticker_for(String(c.primary.id)), Charm.sanitize(String(c.primary.get("charm", "")))],
-			[c.secondary.id, c.secondary.att, Collection.skin_for(String(c.secondary.id)), Collection.sticker_for(String(c.secondary.id)), Charm.sanitize(String(c.secondary.get("charm", "")))],
-			[knife, Data.sanitize(knife, {}), Collection.skin_for(knife), {}, ""]]
+	var out: Array = []
+	for slot in SLOTS:
+		var e: Dictionary = c[slot]
+		out.append([e.id, e.att, Collection.skin_for(String(e.id)), Collection.sticker_for(String(e.id)), Charm.sanitize(String(e.get("charm", "")))])
+	out.append([knife, Data.sanitize(knife, {}), Collection.skin_for(knife), {}, ""])
+	return out

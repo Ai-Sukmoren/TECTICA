@@ -20,7 +20,7 @@ func run() -> void:
 	var a := OS.get_cmdline_user_args()
 	var out: String = a[0] if a.size() > 0 else "user://"
 	var tag: String = a[1] if a.size() > 1 else "now"
-	var gun: String = a[2] if a.size() > 2 else "m4a1"
+	var gun: String = a[2] if a.size() > 2 else "hk33"
 	root.size = TILE
 	load("res://scripts/core/profile.gd").current = "lilin"
 	Main.saved_mode = "zombie"
@@ -36,7 +36,7 @@ func run() -> void:
 	main.hud.visible = false
 	main.tod.set("running", false)
 	main.tod.set("hour", 13.0)
-	p.set_loadout([[gun, {}], ["mk23", {}], ["knife_combat", {}]])
+	p.set_loadout([[gun, {}], ["g17", {}], ["knife_combat", {}]])
 	p.set_first_person(false)
 	p.using_pad = true            # no mouse aim: face where we run
 	main.camera_rig.override = true

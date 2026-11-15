@@ -57,7 +57,7 @@ func run():
 	shooter.init_zombie(target, "walker", 100.0, 2.0, 10.0, 0)
 	shooter.set_physics_process(false)
 	shooter.team = 0
-	shooter.set_loadout([["m4a1", {"magazine": "ap"}]])
+	shooter.set_loadout([["hk33", {"magazine": "ap"}]])
 	check(bool(shooter.current_weapon().stats.pierce), "AP rounds should pierce")
 	var ap_target = spawn("armored")
 	ap_target.apply_damage(28, Vector3(0,1.8,0), Vector3.BACK, shooter)

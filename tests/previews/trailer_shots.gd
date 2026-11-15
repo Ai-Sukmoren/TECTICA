@@ -137,7 +137,7 @@ func run() -> void:
 		"zombie_td":
 			main.tod.set("hour", 15.5)
 			p.global_position = Vector3(0.5, 0.05, 1.0)
-			p.set_loadout([["m4a1", {"optic": "reddot"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_loadout([["hk33", {"optic": "reddot"}], ["g17", {}], ["knife_combat", {}]])
 			p.set_first_person(false)
 			main.director.timer = 0.5
 			await wait(5.0)
@@ -171,7 +171,7 @@ func run() -> void:
 		"zombie_fp":
 			main.tod.set("hour", 18.4)
 			p.global_position = Vector3(0.5, 0.05, 1.0)
-			p.set_loadout([["m249", {"optic": "holo"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_loadout([["hk33", {"optic": "holo"}], ["g17", {}], ["knife_combat", {}]])
 			p.set_first_person(true)
 			main.director.timer = 0.5
 			await wait(6.0)
@@ -222,10 +222,10 @@ func run() -> void:
 			p.aim_yaw = 0.0
 			p.fp_pitch = -0.01
 			p.set_first_person(true)
-			for g in [["awp", {"optic": "scope"}, 2, 1.2, true], ["m870", {"optic": "reddot"}, 3, 0.75, false],
-					["as_val", {"optic": "holo"}, 14, 0.07, false], ["mp7", {"optic": "reddot"}, 16, 0.065, false],
-					["ak47", {"optic": "acog"}, 10, 0.1, true]]:
-				p.set_loadout([[g[0], g[1]], ["mk23", {}], ["knife_combat", {}]])
+			for g in [["uar10", {"optic": "scope"}, 2, 1.2, true], ["marlin", {"optic": "reddot"}, 3, 0.75, false],
+					["as_val", {"optic": "holo"}, 14, 0.07, false], ["mgp7", {"optic": "reddot"}, 16, 0.065, false],
+					["aug_a1", {"optic": "acog"}, 10, 0.1, true]]:
+				p.set_loadout([[g[0], g[1]], ["g17", {}], ["knife_combat", {}]])
 				p.set_first_person(true)
 				await wait(0.9)
 				if g[4]:
@@ -241,7 +241,7 @@ func run() -> void:
 			p.global_position = Vector3(2.0, 0.05, 30)
 			p.aim_yaw = 0.0
 			p.fp_pitch = -0.02
-			for g in ["rb45", "db2"]:
+			for g in ["g17", "vp9"]:
 				p.set_loadout([[g, {}], ["knife_combat", {}]])
 				p.set_first_person(true)
 				await wait(1.0)
@@ -253,7 +253,7 @@ func run() -> void:
 			main.tod.set("hour", 17.6)
 			p.global_position = Vector3(0, 0.05, 38)
 			p.aim_yaw = 0.0
-			p.set_loadout([["m4a1", {}], ["mk23", {}], ["butterfly", {}]])
+			p.set_loadout([["hk33", {}], ["g17", {}], ["butterfly", {}]])
 			p.weapon_index = 2
 			p._equip_current()
 			p.set_first_person(true)
@@ -322,7 +322,7 @@ func run() -> void:
 			# hold the corner of a house, lean out, shoot, get back in
 			main.tod.set("hour", 16.6)
 			lvl.zombie_spawns = [Vector3(-12.5, 0, -40), Vector3(-11, 0, -36), Vector3(-13, 0, -33), Vector3(-10.5, 0, -44)]
-			p.set_loadout([["m4a1", {"optic": "reddot", "underbarrel": "vgrip"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_loadout([["hk33", {"optic": "reddot", "underbarrel": "vgrip"}], ["g17", {}], ["knife_combat", {}]])
 			p.set_first_person(true)
 			p.global_position = Vector3(-14.45, 0.05, -12.75)
 			p.aim_yaw = 0.0
@@ -358,7 +358,7 @@ func run() -> void:
 			# advance up the road, sights up, bursts into the wave ahead
 			main.tod.set("hour", 17.2)
 			lvl.zombie_spawns = [Vector3(1, 0, 6), Vector3(-2, 0, 2), Vector3(3, 0, 0), Vector3(0, 0, -4), Vector3(-3, 0, 9)]
-			p.set_loadout([["m4a1", {"optic": "holo", "underbarrel": "vgrip"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_loadout([["hk33", {"optic": "holo", "underbarrel": "vgrip"}], ["g17", {}], ["knife_combat", {}]])
 			p.set_first_person(true)
 			p.global_position = Vector3(1.5, 0.05, 40)
 			p.aim_yaw = 0.0
@@ -418,7 +418,7 @@ func run() -> void:
 			await wait(0.3)
 		"campaign2":
 			main.tod.set("hour", 9.5)
-			p.set_loadout([["m4a1", {"optic": "reddot"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_loadout([["hk33", {"optic": "reddot"}], ["g17", {}], ["knife_combat", {}]])
 			p.set_first_person(true)
 			await wait(0.5)
 			var e := nearest("enemies", p.global_position)
@@ -445,10 +445,10 @@ func run() -> void:
 			p.global_position = Vector3(2.0, 0.05, 30)
 			p.aim_yaw = 0.0
 			p.fp_pitch = -0.01
-			p.set_loadout([["ak47", {"optic": "reddot"}], ["mk23", {}], ["knife_combat", {}]])
+			p.set_loadout([["aug_a1", {"optic": "reddot"}], ["g17", {}], ["knife_combat", {}]])
 			p.set_first_person(true)
 			await wait(0.9)
-			mark("ak47")
+			mark("aug_a1")
 			await fire_forward(5, 0.1)
 			Input.action_press("aim")
 			await wait(0.5)

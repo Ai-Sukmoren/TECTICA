@@ -86,6 +86,11 @@ func _build_rows() -> void:
 	for a in Data.SLOTS:
 		_rows.append({"t": "att", "s": "primary", "a": a})
 	_rows.append({"t": "charm", "s": "primary"})
+	_rows.append({"t": "weapon", "s": "smg"})
+	for a in Data.SLOTS:
+		if a != "stock":
+			_rows.append({"t": "att", "s": "smg", "a": a})
+	_rows.append({"t": "charm", "s": "smg"})
 	_rows.append({"t": "weapon", "s": "secondary"})
 	for a in Data.SLOTS:
 		if a != "stock":
@@ -194,7 +199,7 @@ func _process(delta: float) -> void:
 		_pivot.add_child(w)
 		var pistol := w.is_pistol() or w.is_melee()
 		w.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
-		var dist := (0.55 if w.is_melee() else 0.75) if pistol else (1.75 if e.id == "awp" else 1.4)
+		var dist := (0.55 if w.is_melee() else 0.75) if pistol else (1.75 if e.id == "uar10" else 1.4)
 		_cam.position = Vector3(0, 0.12, dist)
 		_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
 	if not _manual_rotation and not _dragging_preview:
@@ -227,7 +232,7 @@ func draw(c: Control, vp: Vector2) -> void:
 				head = true
 			"weapon":
 				var e: Dictionary = Loadout.entry(r.s)
-				label = "PRIMARY" if r.s == "primary" else "SECONDARY"
+				label = {"primary": "PRIMARY", "smg": "SMG"}.get(r.s, "PISTOL")
 				value = "%s   %s" % [Data.WEAPONS[e.id].name, Data.WEAPONS[e.id].category]
 				head = true
 				y += 10.0
@@ -316,7 +321,7 @@ func draw(c: Control, vp: Vector2) -> void:
 		elif cur < ref - 0.005:
 			c.draw_rect(Rect2(track.position + Vector2(bw * cur, 0), Vector2(bw * (ref - cur), 6)), hud.DANGER)
 	var iy := sy + 4 * 40.0 + 14.0
-	hud._text(c, Vector2(bx, iy), "MAGAZINE  %d / %d      RELOAD  %.1f s      %s" % [int(st.mag), int(st.reserve), float(st.reload), "AUTO" if st.auto else ("BOLT-ACTION" if st.cycle == "bolt" else ("PUMP-ACTION" if st.cycle == "pump" else "SEMI-AUTO"))],
+	hud._text(c, Vector2(bx, iy), "MAGAZINE  %d / %d      RELOAD  %.1f s      %s" % [int(st.mag), int(st.reserve), float(st.reload), "AUTO" if st.auto else ("BOLT-ACTION" if st.cycle == "bolt" else ("PUMP-ACTION" if st.cycle == "pump" else ("LEVER-ACTION" if st.cycle == "lever" else "SEMI-AUTO")))],
 			13, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(bx, iy + 22), "Green = better than stock, red = worse.", 11, hud.DIM)
 	hud._text(c, Vector2(0, vp.y - 30), "W/S select   ·   A/D or click change   ·   Esc / B save & back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)

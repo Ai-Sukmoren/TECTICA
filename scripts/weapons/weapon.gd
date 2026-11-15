@@ -46,6 +46,13 @@ var bolt: Node3D
 ## Rolling-block action: breech block and hammer pivots (null on other guns).
 var roll: Node3D
 var hammer: Node3D
+## Lever-action: the finger lever's front pin (null on other guns).
+var lever: Node3D
+## How far the slide / bolt runs back on each shot (metres), and the stroke in
+## progress (0..1, -1 idle). A pistol's slide stays locked back on an empty mag.
+var blowback := 0.0
+var _blow_t := -1.0
+var _slide_locked := false
 ## Trigger-guard pivot of a gun that is spun around the finger after a shot.
 var twirl: Node3D
 var laser: Node3D
@@ -78,6 +85,8 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	roll = parts.get("roll")
 	hammer = parts.get("hammer")
 	twirl = parts.get("twirl")
+	lever = parts.get("lever")
+	blowback = float(parts.get("blowback", 0.0))
 	laser = parts.laser
 	var sight: Dictionary = parts.sight
 	set_meta("iron_info", sight)   # sight line / rear / front positions, for fit checks
@@ -270,8 +279,39 @@ func display_name() -> String:
 func _process(delta: float) -> void:
 	cooldown = maxf(cooldown - delta, 0.0)
 	bloom = move_toward(bloom, 0.0, float(stats.bloom_recover) * delta)
+	_update_blowback(delta)
 	if laser != null and is_inside_tree():
 		_update_laser()
+
+
+## Starts the slide / bolt stroke for a shot (semi and full auto; manual
+## actions are cycled by the rig instead).
+func _kick_action() -> void:
+	if bolt != null and stats.cycle == "" and blowback > 0.0:
+		_blow_t = 0.0
+
+
+## Snaps back fast, returns a little slower; holds open on a pistol's last round.
+func _update_blowback(delta: float) -> void:
+	if bolt == null or stats.cycle != "":
+		return
+	if _blow_t >= 0.0:
+		var dur := clampf(60.0 / float(stats.rpm) * 0.85, 0.045, 0.11)
+		_blow_t += delta / dur
+		var back := smoothstep(0.0, 0.25, _blow_t) * (1.0 - smoothstep(0.35, 1.0, _blow_t))
+		if _blow_t >= 0.3 and ammo <= 0 and is_pistol():
+			_slide_locked = true
+			_blow_t = -1.0
+		elif _blow_t >= 1.0:
+			_blow_t = -1.0
+			back = 0.0
+		bolt.position.z = blowback * back
+	if _slide_locked:
+		if ammo > 0:
+			_slide_locked = false
+			bolt.position.z = 0.0
+		else:
+			bolt.position.z = blowback
 
 
 func ready_to_fire() -> bool:
@@ -298,6 +338,7 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 		_charm.kick()
 	cooldown = 60.0 / float(stats.rpm)
 	ammo -= 1
+	_kick_action()
 	var total_spread := spread_deg + bloom
 	bloom = minf(bloom + float(stats.bloom_add), float(stats.bloom_max))
 
@@ -396,6 +437,7 @@ func fire_fx(ends: Array) -> void:
 		return
 	if muzzle == null or not is_inside_tree():
 		return
+	_kick_action()
 	var from := muzzle.global_position
 	for i in ends.size():
 		var e: Array = ends[i]

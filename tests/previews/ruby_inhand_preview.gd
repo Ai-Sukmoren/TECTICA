@@ -20,7 +20,7 @@ func snap(path: String) -> void:
 func run() -> void:
 	var a := OS.get_cmdline_user_args()
 	var out: String = a[0] if a.size() > 0 else "user://"
-	var gun: String = a[1] if a.size() > 1 else "ak47"
+	var gun: String = a[1] if a.size() > 1 else "aug_a1"
 	Settings.ensure()
 	Settings.v.window_mode = 0
 	root.size = Vector2i(1280, 720)

@@ -28,7 +28,7 @@ func run() -> void:
 	p.global_position = Vector3(0, 0.05, 30)
 	p.aim_yaw = 0.0
 	for knife in ["knife_combat", "karambit", "butterfly"]:
-		p.set_loadout([["m4a1", {}], ["mk23", {}], [knife, {}]])
+		p.set_loadout([["hk33", {}], ["g17", {}], [knife, {}]])
 		for i in 20: await physics_frame
 		var slots := [2] if knife != "knife_combat" else [0, 1, 2]
 		for slot in slots:

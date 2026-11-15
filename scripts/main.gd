@@ -5,8 +5,10 @@ extends Node3D
 const InputSetup = preload("res://scripts/core/input_setup.gd")
 const Level = preload("res://scripts/world/forest_level.gd")
 const TownLevel = preload("res://scripts/world/town_level.gd")
+const DesertLevel = preload("res://scripts/world/desert_level.gd")
+const CityLevel = preload("res://scripts/world/city_level.gd")
 ## Maps for Zombie Survival / Deathmatch (the campaign is always the forest).
-const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END"}
+const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES", "city": "NEIGHBOURHOOD"}
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
 const Nature = preload("res://scripts/world/nature.gd")
@@ -44,13 +46,15 @@ static var saved_first_person := false
 static var saved_muted := false
 ## "ch1", "ch2" (campaign chapters) or "zombie"
 static var saved_mode := "ch1"
-## "forest" or "town"; only used by zombie and pvp modes.
+## "forest", "town" or "desert"; only used by zombie and pvp modes.
 static var saved_map := "forest"
+static var saved_tdm := false
+static var saved_bots := 0
 ## Skip the title screen once (used by restart).
 static var quick_restart := false
 static var _launch_checked := false
 
-var level   # forest_level.gd or town_level.gd
+var level   # forest_level.gd, town_level.gd or desert_level.gd
 var map_id := "forest"
 var player: Player
 var camera_rig: CameraRig
@@ -91,6 +95,8 @@ var net: Node
 var pvp_scores: Dictionary = {}
 var pvp_time_left := PVP_TIME
 var pvp_winner := -1
+var team_scores := [0, 0]
+var team_assignments: Dictionary = {}
 ## seconds until the local operator gets back up (multiplayer), < 0 = not scheduled
 var respawn_t := -1.0
 var _initial_spawns_done := false
@@ -128,7 +134,7 @@ func _ready() -> void:
 	net.setup(self)
 
 	map_id = saved_map if mode in ["zombie", "pvp"] and MAPS.has(saved_map) else "forest"
-	level = TownLevel.new() if map_id == "town" else Level.new()
+	level = TownLevel.new() if map_id == "town" else (DesertLevel.new() if map_id == "desert" else (CityLevel.new() if map_id == "city" else Level.new()))
 	level.name = "Level"
 	level.mode = mode
 	add_child(level)
@@ -158,7 +164,7 @@ func _ready() -> void:
 	player.died.connect(_on_player_died)
 	players[my_id] = player
 	if Net.active and Net.is_server():
-		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout()}
+		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout(), "team": player.team}
 		_pvp_entry(1)
 
 	camera_rig = CameraRig.new()
@@ -171,7 +177,8 @@ func _ready() -> void:
 
 	var spawns: Array = level.enemy_spawns if is_campaign() else []
 	if mode == "pvp":
-		pass   # players only
+		if saved_tdm and Net.is_server():
+			call_deferred("_spawn_tdm_bots")
 	elif mode == "zombie":
 		director = WaveDirector.new()
 		director.name = "WaveDirector"
@@ -255,6 +262,16 @@ func spawn_enemy(data: Dictionary, net_name: String = "", variant: int = -1):
 	add_child(e)
 	e.global_position = data.pos
 	e.init_enemy(player, level, data, v)
+	if String(data.get("group", "")).begins_with("tdm_bot:"):
+		var bot_id := int(String(data.group).split(":")[1])
+		e.net_owner = bot_id
+		var bot_parts := String(data.group).split(":")
+		if bot_parts.size() > 2:
+			team_assignments[bot_id] = int(bot_parts[2])
+		e.team = _team_for(bot_id)
+		e.set_meta("tdm_bot", bot_id)
+		e.add_to_group("player")
+		pvp_scores.get_or_add(bot_id, ["BOT %d" % (bot_id - 1000), 0, 0])
 	e.set_meta("group", String(data.get("group", "")))
 	e.fired.connect(_on_fired)
 	e.died.connect(_on_enemy_died)
@@ -327,7 +344,7 @@ func on_deploy() -> void:
 	if director != null:
 		director.shop.apply_mods(player)
 	if Net.active and Net.is_server():
-		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout()}
+		Net.roster[1] = {"name": Net.default_name(), "loadout": Player.net_loadout(), "team": player.team}
 	player.grenades = 2
 	player.flashbangs = 2
 	if director != null:
@@ -743,6 +760,12 @@ func killcam_active() -> bool:
 
 
 func _on_enemy_died(e: Node) -> void:
+	if e.has_meta("tdm_bot"):
+		if Net.is_server():
+			_pvp_on_death(e)
+			_respawn_tdm_bot(int(e.get_meta("tdm_bot")))
+		e.remove_from_group("player")
+		return
 	# host: headshot bonus for kills made by other operators
 	if Net.active and Net.is_server() and director != null and e.last_headshot \
 			and e.last_attacker_name != "" and e.last_attacker_name != String(player.name):
@@ -770,6 +793,13 @@ func _grade_mission() -> void:
 # ================================================================ multiplayer
 
 func _team_for(id: int) -> int:
+	if mode == "pvp" and saved_tdm:
+		if not team_assignments.has(id):
+			var counts := [0, 0]
+			for t in team_assignments.values():
+				counts[int(t)] += 1
+			team_assignments[id] = 0 if counts[0] <= counts[1] else 1
+		return int(team_assignments[id])
 	return 100 + id if mode == "pvp" else 0
 
 
@@ -779,7 +809,7 @@ func _net_reload(m: String) -> bool:
 		return false
 	if Net.is_server():
 		if Net.sync:
-			Net.sync.game_event("reload", [m + ("@" + saved_map if saved_map != "forest" else "")])
+			Net.sync.game_event("reload", [("tdm%d" % saved_bots if m == "pvp" and saved_tdm else m) + ("@" + saved_map if saved_map != "forest" else "")])
 		saved_mode = m
 		quick_restart = true
 		saved_first_person = player.first_person or start_first_person
@@ -790,7 +820,7 @@ func _net_reload(m: String) -> bool:
 
 ## Mode plus map as sent to clients: "zombie" or "zombie@town".
 func mode_token() -> String:
-	return mode + ("@" + map_id if map_id != "forest" else "")
+	return ("tdm%d" % saved_bots if mode == "pvp" and saved_tdm else mode) + ("@" + map_id if map_id != "forest" else "")
 
 
 ## Switches the Zombie / Deathmatch map and reloads into it.
@@ -805,6 +835,10 @@ func set_map(id: String) -> void:
 func net_enter_world(m: String) -> void:
 	var parts := m.split("@")
 	m = parts[0]
+	saved_tdm = m.begins_with("tdm")
+	saved_bots = clampi(int(m.substr(3)), 0, 8) if saved_tdm else 0
+	if saved_tdm:
+		m = "pvp"
 	saved_map = parts[1] if parts.size() > 1 and MAPS.has(parts[1]) else "forest"
 	saved_mode = m
 	quick_restart = true
@@ -860,7 +894,7 @@ func _make_operator(id: int, info: Dictionary, pos: Vector3, yaw: float, remote:
 func add_remote_player(id: int, info: Dictionary, pos: Vector3, yaw: float, dead: bool = false) -> Node:
 	remove_remote_player(id)
 	var p = _make_operator(id, info, pos, yaw, true)
-	p.set_tag_style(mode != "pvp")
+	p.set_tag_style(mode != "pvp" or (saved_tdm and p.team == player.team))
 	p.died.connect(_on_remote_player_died)
 	players[id] = p
 	if Net.is_server():
@@ -1018,7 +1052,7 @@ func _net_over(args: Array) -> void:
 	game_over = true
 	if String(args[0]) == "pvp":
 		pvp_winner = int(args[1])
-		victory = pvp_winner == Net.my_id()
+		victory = pvp_winner == (_team_for(Net.my_id()) if saved_tdm else Net.my_id())
 		var reward := 300 if victory else 100
 		Collection.add_credits(reward)
 		hud.add_feed("MATCH OVER  ·  +%d CR" % reward, Color(1.0, 0.85, 0.4))
@@ -1039,21 +1073,29 @@ func _pvp_on_death(victim: Node) -> void:
 	var vid := int(victim.net_owner)
 	_pvp_entry(vid)
 	var killer: Node = get_node_or_null(victim.last_attacker_name) if victim.last_attacker_name != "" else null
-	var kid := int(killer.net_owner) if killer != null and killer.get("net_owner") != null and killer is Player else -1
+	var kid := int(killer.net_owner) if killer != null and killer.get("net_owner") != null and (killer is Player or killer.has_meta("tdm_bot")) else -1
 	pvp_scores[vid][2] += 1
 	var text := "%s  WENT DOWN" % pvp_scores[vid][0]
-	if kid > 0 and kid != vid:
+	if kid > 0 and kid != vid and (not saved_tdm or _team_for(kid) != _team_for(vid)):
 		_pvp_entry(kid)
 		pvp_scores[kid][1] += 1
+		if saved_tdm:
+			team_scores[_team_for(kid)] += 1
 		text = "%s  >>  %s%s" % [pvp_scores[kid][0], pvp_scores[vid][0], "  (HEADSHOT)" if victim.last_headshot else ""]
 	feed(text, "bad")
 	if Net.sync:
 		Net.sync.game_event("feed", [text])
+	if saved_tdm:
+		if team_scores.max() >= PVP_KILL_LIMIT:
+			_pvp_end(_pvp_leader())
+		return
 	if kid > 0 and int(pvp_scores[kid][1]) >= PVP_KILL_LIMIT:
 		_pvp_end(kid)
 
 
 func _pvp_leader() -> int:
+	if saved_tdm:
+		return -1 if team_scores[0] == team_scores[1] else (0 if team_scores[0] > team_scores[1] else 1)
 	var best := -1
 	var best_k := -1
 	for id in pvp_scores:
@@ -1142,13 +1184,16 @@ func net_world_state() -> Dictionary:
 		"props": level.destroyed_ids.duplicate(),
 		"camp": campaign.net_state() if campaign != null else {},
 		"dir": director.net_state() if director != null else [],
-		"pvp": [pvp_scores, pvp_time_left],
+		"pvp": [pvp_scores, pvp_time_left, team_scores],
 		"ammo": _ammo_taken.duplicate(),
 		"over": [game_over, "pvp" if mode == "pvp" else "down", pvp_winner],
 	}
 
 
 func net_apply_world(data: Dictionary) -> void:
+	if saved_tdm and data.has("team"):
+		team_assignments[Net.my_id()] = int(data.team)
+		player.team = int(data.team)
 	var sp: Array = data.get("spawn", [])
 	if sp.size() == 2:
 		player.global_position = sp[0]
@@ -1185,6 +1230,8 @@ func net_apply_world(data: Dictionary) -> void:
 	if pv.size() == 2:
 		pvp_scores = pv[0]
 		pvp_time_left = float(pv[1])
+		if pv.size() > 2:
+			team_scores = pv[2]
 	for key in st.get("ammo", []):
 		_remove_ammo(String(key))
 	var ov: Array = st.get("over", [false])
@@ -1198,7 +1245,7 @@ func net_slow_state() -> Dictionary:
 		"tod": tod.hour, "el": elapsed,
 		"dir": director.net_state() if director != null else [],
 		"camp": campaign.net_slow() if campaign != null else [],
-		"pvp": [pvp_scores, pvp_time_left] if mode == "pvp" else [],
+		"pvp": [pvp_scores, pvp_time_left, team_scores] if mode == "pvp" else [],
 	}
 
 
@@ -1215,6 +1262,8 @@ func net_apply_slow(st: Dictionary) -> void:
 	if pv.size() == 2:
 		pvp_scores = pv[0]
 		pvp_time_left = float(pv[1])
+		if pv.size() > 2:
+			team_scores = pv[2]
 
 
 ## Host -> client game events.
@@ -1248,3 +1297,21 @@ func net_client_game(id: int, kind: String, args: Array) -> void:
 			_ammo_taken.append(key)
 			if Net.sync:
 				Net.sync.game_event("ammo", [key])
+
+
+func _spawn_tdm_bots() -> void:
+	for i in saved_bots:
+		_spawn_tdm_bot(1001 + i)
+
+
+func _spawn_tdm_bot(id: int) -> void:
+	if game_over:
+		return
+	var sp := net_pvp_spawn()
+	spawn_enemy({"pos": sp[0], "yaw": sp[1], "patrol": [], "group": "tdm_bot:%d:%d" % [id, _team_for(id)]})
+
+
+func _respawn_tdm_bot(id: int) -> void:
+	await get_tree().create_timer(PVP_RESPAWN).timeout
+	if not game_over and saved_tdm:
+		_spawn_tdm_bot(id)

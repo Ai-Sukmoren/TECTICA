@@ -20,7 +20,7 @@ func run() -> void:
 	var ground := MeshInstance3D.new(); ground.mesh = PlaneMesh.new(); ground.mesh.size = Vector2(20, 20); scene.add_child(ground)
 	var p := Player.new()
 	scene.add_child(p)
-	p.setup_player(0.0, [["m4a1", {}]], false, "")
+	p.setup_player(0.0, [["hk33", {}]], false, "")
 	p.set_physics_process(false)
 	p.set_process(false)
 	p.set_process_input(false)

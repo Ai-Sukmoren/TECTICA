@@ -125,7 +125,7 @@ func run() -> void:
 			main.tod.set("hour", 17.6)
 			p.global_position = Vector3(0, 0.05, 38)
 			p.aim_yaw = 0.0
-			p.set_loadout([["m4a1", {}], ["mk23", {}], ["karambit", {}]])
+			p.set_loadout([["hk33", {}], ["g17", {}], ["karambit", {}]])
 			p.weapon_index = 2
 			p._equip_current()
 			p.set_first_person(true)

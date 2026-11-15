@@ -51,7 +51,7 @@ func run() -> void:
 	main.hud.visible = false
 	main.tod.set("running", false)
 	main.tod.set("hour", 14.0)
-	p.set_loadout([["m4a1", {"optic": "reddot"}], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"optic": "reddot"}], ["knife_combat", {}]])
 	p.global_position = Vector3(1.0, 0.05, 44)
 	p.aim_yaw = 0.0
 	p.set_first_person(true)

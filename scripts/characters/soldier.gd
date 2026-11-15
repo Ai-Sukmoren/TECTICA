@@ -300,10 +300,15 @@ func get_spread() -> float:
 	var s := current_weapon().stats
 	var base := lerpf(float(s.spread_hip), float(s.spread_aim), rig.aim_amt)
 	var hv := Vector2(velocity.x, velocity.z).length()
-	base += float(s.spread_move) * clampf(hv / 4.5, 0.0, 1.5)
+	base += float(s.spread_move) * _move_spread(hv)
 	if crouching:
 		base *= 0.7
 	return base
+
+
+## How much of the weapon's moving spread applies at horizontal speed `hv`.
+func _move_spread(hv: float) -> float:
+	return clampf(hv / 4.5, 0.0, 1.5)
 
 
 func current_spread() -> float:

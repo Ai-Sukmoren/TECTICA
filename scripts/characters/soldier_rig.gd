@@ -202,6 +202,8 @@ var elbows: Array = []
 var hands: Array = []
 var weapon_anchor: Node3D
 var back_slot: Node3D
+## The second long gun (rifle + SMG) is slung crossed over the first.
+var back_slot_b: Node3D
 var thigh_slot: Node3D
 var hand_mag: Node3D
 var weapon: Weapon
@@ -333,6 +335,8 @@ func build(p: Dictionary) -> void:
 	weapon_anchor = _node(chest, "WeaponAnchor", Vector3.ZERO)
 	back_slot = _node(chest, "BackSlot", Vector3(0.0, 0.12, 0.36))
 	back_slot.basis = Basis(Vector3.BACK, 0.65) * Basis(Vector3.RIGHT, PI * 0.5)
+	back_slot_b = _node(chest, "BackSlotB", Vector3(0.0, 0.1, 0.39))
+	back_slot_b.basis = Basis(Vector3.BACK, -0.65) * Basis(Vector3.RIGHT, PI * 0.5)
 	hand_mag = _node(hands[0], "HandMag", Vector3(0, -0.04, 0))
 	_grenade_mesh = _mesh(hands[1], ML.sphere(0.042, false, 10), M.painted_metal("grenade", Color(0.25, 0.3, 0.2)), Vector3(0, -0.05, -0.03))
 	_grenade_mesh.visible = false
@@ -696,8 +700,15 @@ func set_weapon(active: Weapon, others: Array) -> void:
 	cycle_t = -1.0
 	_pump_base = active.pump.position if active.pump != null else Vector3.ZERO
 	_attach(active, weapon_anchor)
+	var backs := 0
 	for w in others:
-		_attach(w, _knife_slot() if w.is_melee() else (thigh_slot if w.is_pistol() else back_slot))
+		if w.is_melee():
+			_attach(w, _knife_slot())
+		elif w.is_pistol():
+			_attach(w, thigh_slot)
+		else:
+			_attach(w, back_slot if backs == 0 else back_slot_b)
+			backs += 1
 	for c in hand_mag.get_children():
 		c.queue_free()
 	if active.mag_node:
@@ -1649,7 +1660,10 @@ func _reach_shoulder(i: int, target: Vector3, tp_limit: float) -> void:
 	sh.global_position += to.normalized() * move
 
 
-## Bolt-action / pump-action cycling after each shot.
+## How far a lever-action's lever swings open (radians).
+const LEVER_OPEN := 0.9
+
+## Bolt-action / pump-action / lever-action cycling after each shot.
 func _update_cycle(delta: float) -> void:
 	if weapon.cycle_pending > 0.0:
 		weapon.cycle_pending -= delta
@@ -1668,6 +1682,8 @@ func _update_cycle(delta: float) -> void:
 		weapon.bolt.position = Vector3(0, 0, 0.075 * w)
 	if weapon.pump != null:
 		weapon.pump.position = _pump_base + Vector3(0, 0, 0.09 * w)
+	if weapon.lever != null:
+		weapon.lever.rotation.x = LEVER_OPEN * w   # swings down and forward, then back
 	if weapon.roll != null:
 		# hammer falls at the shot, is thumbed back to full cock, then the block
 		# rolls open (case out, round in) and is rolled shut again
@@ -1684,6 +1700,8 @@ func _update_cycle(delta: float) -> void:
 			weapon.bolt.position = Vector3.ZERO
 		if weapon.pump != null:
 			weapon.pump.position = _pump_base
+		if weapon.lever != null:
+			weapon.lever.rotation.x = 0.0
 		if weapon.roll != null:
 			weapon.roll.rotation.x = 0.0
 			weapon.hammer.rotation.x = ROLL_HAMMER_COCKED

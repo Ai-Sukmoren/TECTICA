@@ -20,7 +20,7 @@ const TAB_NAMES := ["SUPPLY PACKS", "COLLECTION", "OUTFITS"]
 const OPEN_TIME := 1.35
 const FLIP_SPEED := 3.2
 ## showcase gun + finish shown on each pack's preview
-const PACK_SHOWCASE := [["m4a1", "woodland"], ["ak47", "damascus"], ["awp", "aurora"]]
+const PACK_SHOWCASE := [["hk33", "woodland"], ["aug_a1", "damascus"], ["uar10", "aurora"]]
 
 var hud
 var is_open := false
@@ -453,7 +453,7 @@ func _set_preview(weapon: String, finish: String) -> void:
 	_pivot.add_child(gun)
 	var pistol := gun.is_pistol()
 	gun.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
-	var dist := 0.8 if pistol else (1.9 if weapon == "awp" else 1.5)
+	var dist := 0.8 if pistol else (1.9 if weapon == "uar10" else 1.5)
 	_cam.position = Vector3(0, 0.1, dist)
 	_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
 

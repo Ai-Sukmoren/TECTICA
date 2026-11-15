@@ -24,7 +24,7 @@ func run() -> void:
 	p.health = 100000.0
 	main.director.timer = 999.0
 	main.hud.visible = false
-	for spec in [["mgp7", "zc57"], ["mp7", "mk23"]]:
+	for spec in [["mgp7", "zc57"], ["mgp7", "g17"]]:
 		p.set_loadout([[spec[0], {}], [spec[1], {}]])
 		for slot in 2:
 			var id: String = spec[slot]

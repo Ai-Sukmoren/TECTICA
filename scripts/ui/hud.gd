@@ -78,6 +78,9 @@ var _shop_msg_t := 0.0
 var _mp_rects: Array = []
 var _mp_coop_mode := "ch1"
 var _mp_pvp_map := "forest"
+var _mp_tdm_bots := 0
+## Bots in a solo team deathmatch (split evenly between both teams).
+var _solo_tdm_bots := 6
 var _mp_port_text := ""
 var _mp_replace_join_text := true
 ## host online through Tailscale Funnel (WebSocket) instead of direct UDP
@@ -306,6 +309,7 @@ func _menu_entries() -> Array:
 		{"id": "deploy", "sec": "PLAY", "label": "DEPLOY", "big": true},
 		{"id": "mode", "sec": "PLAY", "label": "MISSION", "value": _mode_label(main.mode), "arrow": true},
 		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode in ["zombie", "pvp"] else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode in ["zombie", "pvp"]},
+		{"id": "tdm", "sec": "PLAY", "label": "TEAM DEATHMATCH", "value": "VS AI  ·  %d BOTS" % _solo_tdm_bots, "arrow": true},
 		{"id": "mp", "sec": "PLAY", "label": "MULTIPLAYER", "value": "CO-OP  /  PVP"},
 		{"id": "rooms", "sec": "PLAY", "label": "OPEN ROOMS", "value": "CLICK TO JOIN"},
 		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
@@ -363,6 +367,15 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 			_deploy()
 		"mp":
 			_mp_open()
+		"tdm":
+			# solo team deathmatch: a local match (no network) on the chosen map,
+			# AI bots split between the operator's team and the other side
+			if dir != 0:
+				last_menu_index = i
+				_solo_tdm_bots = clampi(_solo_tdm_bots + 2 * dir, 2, 8)
+				return
+			if Net.host("pvp", Net.port, false) == OK:
+				main.net_enter_world("tdm%d@%s" % [_solo_tdm_bots, main.map_id])
 		"map":
 			if main.mode in ["zombie", "pvp"]:
 				last_menu_index = i
@@ -705,7 +718,7 @@ func _draw_overlay(c: Control) -> void:
 			for i in pips:
 				var x: float = vp.x - 30 - (pips - i) * pip_w
 				c.draw_rect(Rect2(x, 96, pip_w - 2.0, 6), TEXT if i < w.ammo else Color(DIM, 0.25))
-		var mode := ("AUTO" if bool(w.stats.auto) else ("BOLT" if w.stats.cycle == "bolt" else ("PUMP" if w.stats.cycle == "pump" else "SEMI")))
+		var mode := ("AUTO" if bool(w.stats.auto) else ("BOLT" if w.stats.cycle == "bolt" else ("PUMP" if w.stats.cycle == "pump" else ("LEVER" if w.stats.cycle == "lever" else "SEMI"))))
 		var att: Dictionary = w.attachments
 		for slot in ["optic", "muzzle", "underbarrel"]:
 			if att.get(slot, "none") not in ["none", "iron", "integral"]:
@@ -737,6 +750,8 @@ func _draw_overlay(c: Control) -> void:
 		var lead_s := ""
 		if lead > 0 and main.pvp_scores.has(lead):
 			lead_s = "   ·   LEADER  %s  %d" % [main.pvp_scores[lead][0], int(main.pvp_scores[lead][1])]
+		if main.saved_tdm:
+			lead_s = "   ·   BLUE %d : %d RED   ·   YOU: %s" % [main.team_scores[0], main.team_scores[1], "BLUE" if player.team == 0 else "RED"]
 		var tl := maxf(main.pvp_time_left, 0.0)
 		_text(c, Vector2(0, 92), "DEATHMATCH  ·  FIRST TO %d   ·   YOU  %d / %d%s" % [main.PVP_KILL_LIMIT, int(mine[1]), int(mine[2]), lead_s], 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		_text(c, Vector2(0, 110), "%d:%02d LEFT   ·   %s" % [int(tl) / 60, int(tl) % 60, main.tod.clock_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -1089,6 +1104,7 @@ func _mission_lines() -> Array:
 func _operator_lines() -> Array:
 	var cur := Loadout.current()
 	var pri := String(WData.WEAPONS[cur.primary.id].name)
+	var smg := String(WData.WEAPONS[cur.smg.id].name)
 	var sec := String(WData.WEAPONS[cur.secondary.id].name)
 	var lvl := Progression.level()
 	var lp: Array = Progression.level_progress()
@@ -1098,7 +1114,8 @@ func _operator_lines() -> Array:
 		["LV %d  ·  %s  ·  %s" % [lvl, Progression.rank_name(lvl), xp_line], 12, WARN],
 		[Loadout.class_label() + "  ·  " + Loadout.class_desc(), 12, Color(TEXT, 0.75)],
 		["PRIMARY     " + pri, 13, TEXT],
-		["SECONDARY   " + sec, 13, TEXT],
+		["SMG         " + smg, 13, TEXT],
+		["PISTOL      " + sec, 13, TEXT],
 		["CREDITS  %d     SKINS  %d" % [Collection.credits, Collection.total_owned()], 13, ACCENT],
 	]
 
@@ -1129,8 +1146,8 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(0, vp.y - bar_h, vp.x, bar_h), Color(0, 0, 0, 0.85))
 	var lines := [
 		["TECTICA  //  ZOMBIE SURVIVAL", RED, 20],
-		["LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN" if main.map_id == "town" else "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN", TEXT, 14],
-		["SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET" if main.map_id == "town" else "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES", TEXT, 14],
+		[String({"town": "LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN", "desert": "LOCATION   ATOMIC ACRES - TEST TOWN CUL-DE-SAC, OVERRUN", "city": "LOCATION   NEIGHBOURHOOD - APARTMENT BLOCKS, OVERRUN"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
+		[String({"town": "SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET", "desert": "SITREP     THE TEST SHOT IS LIVE. EVERY BOSS WAVE, LOOK AWAY FROM THE FLASH", "city": "SITREP     THEY COME DOWN EVERY STREET AND ALLEY BETWEEN THE BLOCKS"}.get(main.map_id, "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES")), TEXT, 14],
 		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
 		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("shop") + "] SHOP BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
 		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
@@ -2180,11 +2197,19 @@ func _mp_items() -> Array:
 		"PORT:  " + _mp_port_text + (cur if mp_row == 4 else ""),
 		"CONNECTION:  " + ("ONLINE  ·  TAILSCALE FUNNEL" if mp_online else "DIRECT  ·  LAN / UDP"),
 		"BACK",
+		"HOST TEAM DEATHMATCH",
+		"AI BOTS:  " + ("OFF" if _mp_tdm_bots == 0 else str(_mp_tdm_bots)),
 	]
 
 
 func _mp_activate(i: int, dir: int = 0) -> void:
 	match i:
+		7:
+			_mp_save()
+			if Net.host("pvp", Net.port, mp_online) == OK:
+				main.net_enter_world("tdm%d@%s" % [_mp_tdm_bots, _mp_pvp_map])
+		8:
+			_mp_tdm_bots = posmod(_mp_tdm_bots + (2 * dir if dir != 0 else 2), 10)
 		0:
 			mp_row = 1
 		1:
@@ -2270,14 +2295,14 @@ func _mp_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
 		_mp_activate(6)
 	elif event.is_action_pressed("ui_up"):
-		mp_row = posmod(mp_row - 1, 7)
+		mp_row = posmod(mp_row - 1, _mp_items().size())
 	elif event.is_action_pressed("ui_down"):
-		mp_row = posmod(mp_row + 1, 7)
+		mp_row = posmod(mp_row + 1, _mp_items().size())
 	elif (event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right")) and mp_row == 5:
 		_mp_activate(5)
-	elif event.is_action_pressed("ui_left") and mp_row in [1, 2]:
+	elif event.is_action_pressed("ui_left") and mp_row in [1, 2, 8]:
 		_mp_activate(mp_row, -1)
-	elif event.is_action_pressed("ui_right") and mp_row in [1, 2]:
+	elif event.is_action_pressed("ui_right") and mp_row in [1, 2, 8]:
 		_mp_activate(mp_row, 1)
 	elif event.is_action_pressed("ui_accept"):
 		_mp_activate(mp_row)
@@ -2303,9 +2328,9 @@ func _draw_mp(c: Control, vp: Vector2) -> void:
 	_text(c, Vector2(0, vp.y * 0.36 + 24), "CO-OP: CAMPAIGN CHAPTERS OR ZOMBIE SURVIVAL TOGETHER   ·   PVP: FREE-FOR-ALL, FIRST TO %d" % main.PVP_KILL_LIMIT, 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	var items := _mp_items()
 	_mp_rects.clear()
-	var top := vp.y * 0.46
+	var top := vp.y * 0.40
 	for i in items.size():
-		var r := Rect2(vp.x * 0.5 - 230, top + i * 46 - 28, 460, 38)
+		var r := Rect2(vp.x * 0.5 - 230, top + i * 34 - 28, 460, 30)
 		_mp_rects.append(r)
 		var sel := i == mp_row
 		if sel:
@@ -2317,7 +2342,7 @@ func _draw_mp(c: Control, vp: Vector2) -> void:
 		_text(c, Vector2(r.position.x, r.position.y + 26), label, 17, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 	var st := Net.status
 	if st != "":
-		_text(c, Vector2(0, top + items.size() * 46 + 6), st, 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+		_text(c, Vector2(0, top + items.size() * 34 + 6), st, 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	# what the host will tell friends, shown before they even start
 	var cy := vp.y - 104.0
 	var preview: Array = [] if mp_online else Net.host_addresses()
@@ -2388,6 +2413,9 @@ func _draw_pvp_over(c: Control, vp: Vector2) -> void:
 	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.22), minf(vp.x * 0.34, 520.0), 0.9)
 	var w: int = main.pvp_winner
 	var head := "VICTORY" if w == Net.my_id() else ("%s WINS" % main.pvp_scores[w][0] if main.pvp_scores.has(w) else "MATCH OVER")
+
+	if main.saved_tdm:
+		head = "DRAW" if w < 0 else ("BLUE TEAM WINS" if w == 0 else "RED TEAM WINS")
 	_text(c, Vector2(0, vp.y * 0.42), head, 44, ACCENT if w == Net.my_id() else DANGER, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	var ids: Array = main.pvp_scores.keys()
 	ids.sort_custom(func(a, b): return int(main.pvp_scores[a][1]) > int(main.pvp_scores[b][1]))

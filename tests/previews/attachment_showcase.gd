@@ -5,11 +5,11 @@ const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Data = preload("res://scripts/weapons/weapon_data.gd")
 
 const BUILDS := [
-	["m4a1", {"optic": "prism", "muzzle": "heavy_suppressor", "underbarrel": "stubby", "magazine": "dual", "stock": "folding"}],
-	["ak47", {"optic": "prism", "muzzle": "booster", "underbarrel": "handstop", "magazine": "hollow", "stock": "standard"}],
+	["hk33", {"optic": "prism", "muzzle": "heavy_suppressor", "underbarrel": "stubby", "magazine": "dual", "stock": "folding"}],
+	["aug_a1", {"optic": "prism", "muzzle": "booster", "underbarrel": "handstop", "magazine": "hollow", "stock": "standard"}],
 	["mgp7", {"optic": "prism", "muzzle": "booster", "underbarrel": "handstop", "magazine": "dual"}],
-	["mp7", {"optic": "holo", "muzzle": "heavy_suppressor", "underbarrel": "stubby", "magazine": "dual", "stock": "folding"}],
-	["mk23", {"optic": "minidot", "muzzle": "heavy_suppressor", "magazine": "dual"}],
+	["mgp7", {"optic": "holo", "muzzle": "heavy_suppressor", "underbarrel": "stubby", "magazine": "dual", "stock": "folding"}],
+	["g17", {"optic": "minidot", "muzzle": "heavy_suppressor", "magazine": "dual"}],
 	["zc57", {"optic": "minidot", "muzzle": "compensator", "magazine": "hollow"}],
 ]
 

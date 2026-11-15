@@ -64,10 +64,12 @@ func setup(main: Node) -> void:
 	make_current()
 
 
-## Logging camp (forest), gas station (DEAD END), else a spot near spawn.
+## Logging camp (forest), gas station (DEAD END), cafe (ATOMIC ACRES), else a spot near spawn.
 func _landmark(main: Node, fallback: Vector3) -> Vector3:
 	if String(main.get("map_id")) == "town":
 		return Vector3(18, 0, -16)
+	if String(main.get("map_id")) == "desert":
+		return Vector3(14, 0, 22)
 	var camp = main.level.get("camp")
 	if camp is Vector3 and (camp as Vector3).distance_to(fallback) > 12.0:
 		return camp

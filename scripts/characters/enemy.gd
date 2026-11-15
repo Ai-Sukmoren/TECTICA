@@ -173,7 +173,7 @@ func _pick_target() -> bool:
 	var best_d := INF
 	var best_vis := false
 	for p in get_tree().get_nodes_in_group("player"):
-		if p.is_dead:
+		if p.is_dead or p == self or p.team == team:
 			continue
 		var vis := _can_see(p)
 		var d: float = global_position.distance_to(p.global_position)
@@ -406,6 +406,9 @@ func _do_patrol(delta: float) -> void:
 	aiming = false
 	sprinting = false
 	set_crouch(false)
+	if has_meta("tdm_bot"):
+		_tdm_roam(delta)
+		return
 	if patrol.size() >= 2:
 		if wait_timer > 0.0:
 			wait_timer -= delta
@@ -425,6 +428,62 @@ func _do_patrol(delta: float) -> void:
 			move_with(Vector3.ZERO, delta)
 			_scan_t += delta
 			_turn_to(home_yaw + sin(_scan_t * 0.35) * 0.7, delta, 1.5)
+
+
+# ================================================================ team deathmatch
+
+var _hunt_goal := Vector3.INF
+var _hunt_t := 0.0
+
+
+## A deathmatch bot with nobody in sight goes looking: usually toward where
+## the other team is (a little off, so it does not beeline), sometimes along a
+## different lane through the map; a bot on a human's team often moves up with
+## that player instead. Combat, cover and flanking take over once it sees someone.
+func _tdm_roam(delta: float) -> void:
+	_hunt_t -= delta
+	if _hunt_goal == Vector3.INF or _hunt_t <= 0.0 or global_position.distance_to(_hunt_goal) < 2.5:
+		_hunt_goal = _pick_hunt_goal()
+		_hunt_t = randf_range(8.0, 14.0)
+	var far := global_position.distance_to(_hunt_goal) > 12.0
+	sprinting = far
+	if _nav_to(_hunt_goal, RUN_SPEED if far else RUN_SPEED * 0.6, delta):
+		_hunt_goal = Vector3.INF
+	else:
+		_face_velocity(delta)
+
+
+func _pick_hunt_goal() -> Vector3:
+	var foes: Array = []
+	var lead = null
+	for p in get_tree().get_nodes_in_group("player"):
+		if p == self or p.is_dead:
+			continue
+		if p.team != team:
+			foes.append(p)
+		elif not p.has_meta("tdm_bot"):
+			lead = p   # a human on this bot's team
+	var r := randf()
+	var goal := global_position
+	if lead != null and r < 0.35:
+		var a := randf() * TAU
+		goal = lead.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(3.5, 7.0)
+	elif not foes.is_empty() and r < 0.85:
+		var near = foes[0]
+		for f in foes:
+			if global_position.distance_to(f.global_position) < global_position.distance_to(near.global_position):
+				near = f
+		var a2 := randf() * TAU
+		goal = near.global_position + Vector3(cos(a2), 0, sin(a2)) * randf_range(2.0, 7.0)
+	else:
+		var main := get_tree().current_scene
+		var lanes: Array = main.level.get("pvp_spawns") if main != null and main.get("level") != null else []
+		if not lanes.is_empty():
+			goal = lanes[randi() % lanes.size()]
+	var map := get_world_3d().navigation_map
+	if NavigationServer3D.map_get_iteration_id(map) == 0:
+		return goal   # navigation not ready on the first frame: path to it next time
+	return NavigationServer3D.map_get_closest_point(map, goal)
 
 
 func _do_suspicious(delta: float) -> void:

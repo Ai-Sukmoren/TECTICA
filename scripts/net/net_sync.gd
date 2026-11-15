@@ -156,7 +156,7 @@ func c_ready(pname: String, loadout: Array) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
-	var info := {"name": _clean_name(pname, id), "loadout": loadout}
+	var info := {"name": _clean_name(pname, id), "loadout": loadout, "team": main._team_for(id)}
 	Net.roster[id] = info
 	var spawn: Array
 	if ready_peers.has(id) and main.players.has(id) and is_instance_valid(main.players[id]):
@@ -174,7 +174,7 @@ func c_ready(pname: String, loadout: Array) -> void:
 		if pid == id or not is_instance_valid(p):
 			continue
 		players.append([pid, Net.roster.get(pid, {"name": "PLAYER", "loadout": []}), p.global_position, p.aim_yaw, p.is_dead])
-	s_world.rpc_id(id, {"spawn": spawn, "players": players, "state": main.net_world_state()})
+	s_world.rpc_id(id, {"spawn": spawn, "players": players, "state": main.net_world_state(), "team": main._team_for(id)})
 	ready_peers[id] = true
 
 

@@ -27,7 +27,7 @@ func run() -> void:
 	p.health = 100000.0
 	main.director.timer = 999.0
 	main.hud.visible = false
-	p.set_loadout([["m4a1", {}], ["mk23", {}]])
+	p.set_loadout([["hk33", {}], ["g17", {}]])
 	for i in 30: await physics_frame
 	for kind in ["rifle", "pistol"]:
 		if kind == "pistol":

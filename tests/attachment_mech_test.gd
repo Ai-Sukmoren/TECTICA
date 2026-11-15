@@ -19,29 +19,19 @@ func ticks(n: int) -> void:
 		await physics_frame
 
 func run() -> void:
-	var base := Data.compute("m4a1", {})
-	var t := {
-		"prism": Data.compute("m4a1", {"optic": "prism"}),
-		"heavy": Data.compute("m4a1", {"muzzle": "heavy_suppressor"}),
-		"boost": Data.compute("m4a1", {"muzzle": "booster"}),
-		"stubby": Data.compute("m4a1", {"underbarrel": "stubby"}),
-		"nogrip": Data.compute("m4a1", {"underbarrel": "none"}),
-		"hand": Data.compute("m4a1", {"underbarrel": "handstop"}),
-		"hollow": Data.compute("m4a1", {"magazine": "hollow"}),
-		"fold": Data.compute("m4a1", {"stock": "folding"}),
-	}
-	var holo := Data.compute("m4a1", {"optic": "holo"})
-	var acog := Data.compute("m4a1", {"optic": "acog"})
-	check(float(t.prism.zoom) > float(holo.zoom) and float(t.prism.zoom) < float(acog.zoom), "prism zoom sits between holo and ACOG")
-	check(bool(t.heavy.suppressed) and float(t.heavy.noise_radius) < float(Data.compute("m4a1", {"muzzle": "suppressor"}).noise_radius), "heavy suppressor is quieter than the suppressor")
-	check(float(t.boost.rpm) > float(base.rpm) and float(t.boost.recoil) > float(base.recoil), "booster: faster, more recoil")
-	check(float(t.stubby.recoil) < float(t.nogrip.recoil) and float(t.stubby.ads_speed) > float(base.ads_speed), "stubby grip: less recoil than no grip, faster aim than the vertical grip")
-	check(float(t.hand.ads_speed) > float(base.ads_speed) and float(t.hand.spread_move) < float(base.spread_move), "handstop: faster ADS, steadier moving")
-	check(float(t.hollow.damage) > float(base.damage) and bool(t.hollow.get("hollow", false)), "hollow points hit harder")
-	check(float(t.fold.ads_speed) > float(base.ads_speed) and float(t.fold.mobility) > float(base.mobility) and float(t.fold.recoil) > float(base.recoil), "folding stock: fast, mobile, kicks")
-	var mini := Data.compute("mk23", {"optic": "minidot"})
-	check(String(mini.attachments.optic) == "minidot", "pistols take the mini red dot")
-	check(Data.sanitize("mgp7", {"optic": "acog"}).optic == "acog", "MGP7 now takes an ACOG")
+	var base := Data.compute("mgp7", {})
+	var sup := Data.compute("mgp7", {"muzzle": "suppressor"})
+	var heavy := Data.compute("mgp7", {"muzzle": "heavy_suppressor"})
+	var hollow := Data.compute("mgp7", {"magazine": "hollow"})
+	var holo := Data.compute("mgp7", {"optic": "holo"})
+	var dot := Data.compute("mgp7", {"optic": "reddot"})
+	check(float(holo.zoom) > float(dot.zoom) and float(dot.zoom) > float(base.zoom), "holo zooms more than the red dot, which zooms more than irons")
+	check(bool(heavy.suppressed) and float(heavy.noise_radius) < float(sup.noise_radius), "heavy suppressor is quieter than the suppressor")
+	check(float(Data.compute("mgp7", {"muzzle": "flash_hider"}).flash) < float(base.flash), "flash hider dims the flash")
+	check(float(hollow.damage) > float(base.damage) and bool(hollow.get("hollow", false)), "hollow points hit harder")
+	check(bool(Data.compute("as_val", {"underbarrel": "laser"}).laser), "the AS VAL takes the PEQ-2 laser")
+	check(Data.sanitize("mgp7", {"optic": "acog"}).optic == "iron", "removed attachments fall back to the default")
+	check(bool(Data.compute("g17", {"muzzle": "suppressor"}).suppressed), "the Glock takes a suppressor")
 
 	# live: dual mag reload times alternate
 	load("res://scripts/core/profile.gd").current = "lilin"
@@ -54,7 +44,7 @@ func run() -> void:
 	var p = main.player
 	p.health = 100000.0
 	main.director.timer = 9999.0
-	p.set_loadout([["m4a1", {"magazine": "dual"}], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"magazine": "dual"}], ["knife_combat", {}]])
 	await ticks(30)
 	var durs: Array = []
 	for n in 4:
@@ -76,12 +66,12 @@ func run() -> void:
 	await ticks(2)
 	var hit: Vector3 = z.global_position + Vector3(0, 1.0, 0.2)
 	var dir := Vector3(0, 0, -1)
-	p.set_loadout([["m4a1", {"magazine": "standard"}], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"magazine": "standard"}], ["knife_combat", {}]])
 	z.max_health = 10000.0
 	z.health = 10000.0
 	z.apply_damage(100.0, hit, dir, p)
 	var plain: float = 10000.0 - z.health
-	p.set_loadout([["m4a1", {"magazine": "hollow"}], ["knife_combat", {}]])
+	p.set_loadout([["hk33", {"magazine": "hollow"}], ["knife_combat", {}]])
 	z.health = 10000.0
 	z.apply_damage(100.0, hit, dir, p)
 	var hp: float = 10000.0 - z.health

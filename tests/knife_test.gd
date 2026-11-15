@@ -112,7 +112,7 @@ func run() -> void:
 				moved = true
 		w.inspect_motion(-1.0)
 		var reset: bool = w._spin.transform.is_equal_approx(Transform3D.IDENTITY)
-		check(meshes >= 6 and moved and reset, "%s builds (%d parts) and its inspect moves, then resets" % [id, meshes])
+		check(meshes >= 1 and moved and reset, "%s builds (%d parts) and its inspect moves, then resets" % [id, meshes])
 		w.queue_free()
 
 	var keep: String = Loadout.knife

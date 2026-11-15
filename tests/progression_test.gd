@@ -59,10 +59,10 @@ func run() -> void:
 			{"id": "boss", "tier": 2, "goal": 1, "progress": 0, "done": false}]
 	cr0 = Collection.credits
 	for i in 3:
-		Progression.on_kill("m4a1", "M4A1", false, i < 2)
+		Progression.on_kill("hk33", "M4A1", false, i < 2)
 	check(bool(Progression.daily[0].done) and bool(Progression.daily[1].done), "kill + headshot challenges complete")
 	check(Collection.credits >= cr0 + Progression.REWARD_CR[0] + Progression.REWARD_CR[1], "challenge rewards paid")
-	Progression.on_kill("m4a1", "M4A1", false, false)
+	Progression.on_kill("hk33", "M4A1", false, false)
 	check(int(Progression.daily[0].progress) == 3, "finished challenge stops counting")
 	Progression.on_boss_kill()
 	check(bool(Progression.daily[2].done), "boss challenge completes")
@@ -71,17 +71,17 @@ func run() -> void:
 	check(Progression.day == Progression.today() and not bool(Progression.daily[0].done), "challenges reset on a new day")
 
 	# weapon levels
-	var before := Progression.weapon_level("ak47")
+	var before := Progression.weapon_level("aug_a1")
 	for i in 5:
-		Progression.on_kill("ak47", "AK-47", false, false)
-	check(Progression.weapon_level("ak47") == before + 1, "5 kills level the AK-47 to %d" % Progression.weapon_level("ak47"))
+		Progression.on_kill("aug_a1", "AK-47", false, false)
+	check(Progression.weapon_level("aug_a1") == before + 1, "5 kills level the AK-47 to %d" % Progression.weapon_level("aug_a1"))
 	check(Progression.pending.any(func(e): return String(e[1]) == "weapon"), "weapon level pop-up queued")
 
 	# saved per account
 	var xp_now := Progression.xp
 	Progression.reset_cache()
 	Progression.ensure()
-	check(Progression.xp == xp_now and Progression.weapon_level("ak47") == before + 1, "progress is saved and reloads")
+	check(Progression.xp == xp_now and Progression.weapon_level("aug_a1") == before + 1, "progress is saved and reloads")
 
 	# real gameplay hook: shoot a zombie dead
 	Main.saved_mode = "zombie"

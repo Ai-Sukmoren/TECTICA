@@ -49,7 +49,7 @@ func run() -> void:
 	var shooter := Player.new()
 	scene.add_child(shooter)
 	shooter.position = Vector3(5, 0, 5)
-	shooter.setup_player(0.0, [["m4a1", {}]], false, "")
+	shooter.setup_player(0.0, [["hk33", {}]], false, "")
 	shooter.set_physics_process(false)
 
 	var z := Zombie.new()
@@ -59,13 +59,13 @@ func run() -> void:
 	await physics_frame
 	await physics_frame
 	check(z.helmet_on, "armored zombie spawns with a helmet")
-	var res: Dictionary = await _shoot(shooter, "m4a1", z)
+	var res: Dictionary = await _shoot(shooter, "hk33", z)
 	check(res.hit == z, "M4 shot hits the zombie")
 	check(not z.helmet_on, "M4 headshot knocks the helmet off")
 	check(not z.is_dead and z.health > 90.0, "helmet saved it (hp %.1f)" % z.health)
 	check(_flying_helmets(scene) == 1, "helmet flies off as debris")
 	check(z.rig.helmet_node == null and z.rig.head.find_child("Helmet", true, false) == null, "helmet gone from the head")
-	res = await _shoot(shooter, "m4a1", z)
+	res = await _shoot(shooter, "hk33", z)
 	check(res.headshot, "second shot is a real headshot")
 
 	var z2 := Zombie.new()
@@ -75,7 +75,7 @@ func run() -> void:
 	z2.set_physics_process(false)
 	await physics_frame
 	await physics_frame
-	res = await _shoot(shooter, "awp", z2)
+	res = await _shoot(shooter, "uar10", z2)
 	check(z2.is_dead, "AWP headshot kills through the helmet")
 	check(not z2.helmet_on and _flying_helmets(scene) == 2, "pierced helmet still flies off")
 	print("HELMET: failures=", failures)

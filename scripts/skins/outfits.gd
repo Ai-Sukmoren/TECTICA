@@ -159,6 +159,7 @@ static func palette(id: String) -> Dictionary:
 		"wrap": M.fabric("outfit_wrap_" + id, Color(0.05, 0.05, 0.06), 7.0) if carbon else (M.fabric("outfit_wrap_" + id, o.wrap, 7.0) if o.has("wrap") else M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0)),
 		"skin": M.solid(Color(0.76, 0.58, 0.47), 0.7),
 		"face": M.fabric("outfit_face_" + id, o.face),
+		"mask": true,   # every outfit wears a balaclava in its face colour
 		"gloves": M.fabric("outfit_gloves_" + id, o.gloves, 12.0),
 		"boots": M.leather("outfit_boots_" + id, o.boots),
 		"headgear": String(o.get("headgear", "helmet")),

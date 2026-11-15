@@ -1,5 +1,5 @@
 extends SceneTree
-## Polyart zombies walking, running and attacking: a strip of frames across
+## Zombies walking, running and attacking: a strip of frames across
 ## each cycle, seen from the side. Needs a window.
 ##   godot --path . -s res://tests/previews/zombie_anim_preview.gd -- <out_dir>
 const Zombie = preload("res://scripts/characters/zombie.gd")
@@ -31,7 +31,7 @@ func run() -> void:
 	var modes := ["walk", "run", "attack"]
 	for i in 3:
 		var z := Zombie.new()
-		z.skin_id = "polyart"
+		z.skin_id = ""   # the built-in TECTICA zombie body
 		main.add_child(z)
 		z.global_position = base + Vector3((i - 1) * 2.2, 0, 0)
 		z.init_zombie(main.player, "walker", 100000, 2, 0, i)

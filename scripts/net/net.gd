@@ -42,6 +42,10 @@ static func is_pvp() -> bool:
 static func owns(node: Object) -> bool:
 	if not active or node == null:
 		return true
+	if node is Node and (node as Node).has_meta("tdm_bot"):
+		# a TDM bot's net_owner is its scoreboard id (1001+), not a peer: the host
+		# simulates it (else every hit on a bot was sent to a peer that does not exist)
+		return is_server()
 	var o = node.get("net_owner")
 	return int(o if o != null else 1) == my_id()
 

@@ -1,8 +1,7 @@
 extends "res://scripts/world/town_level.gd"
 ## A Zombie Survival / Deathmatch map built from one third-party model (local
-## only, not in the repository): WAREHOUSE, BACKROOMS. (WALLED VILLAGE and UNDERGROUND LAB
-## were converted too and kept in assets/thirdparty/village and underground_lab
-## for later; add a CONFIGS entry and a MAPS name to bring one back.)
+## only, not in the repository): WAREHOUSE, BACKROOMS. To add a map, convert
+## its model into assets/thirdparty/ and add a CONFIGS entry and a MAPS name.
 ## The model is converted with Blender, centred on the origin with its lowest
 ## point at 0. Collision comes from its own meshes; spawns from the largest
 ## connected walkable area of the baked navigation mesh, so nobody spawns on a

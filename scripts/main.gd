@@ -1011,17 +1011,27 @@ func net_spawn_for(_id: int) -> Array:
 
 
 ## Deathmatch spawn farthest from every other living operator.
-func net_pvp_spawn() -> Array:
+## `exclude`: the fighter being placed (it should not keep away from itself);
+## a new bot passes null so it also keeps clear of the local operator.
+func net_pvp_spawn(exclude: Node = player) -> Array:
 	var spots: Array = level.get("pvp_spawns") if level.get("pvp_spawns") != null else []
 	if spots.is_empty():
 		return [level.player_spawn, level.player_yaw]
+	# keep away from every other fighter, TDM bots included: with nobody to
+	# measure from every spot scored INF, so all bots spawned on spot 0 and
+	# piled up on top of each other
+	var others: Array = []
+	for p in alive_players():
+		if p != exclude:
+			others.append(p)
+	for e in enemies:
+		if is_instance_valid(e) and not e.is_dead and e.has_meta("tdm_bot"):
+			others.append(e)
 	var best: Vector3 = spots[randi() % spots.size()]
 	var best_d := -1.0
 	for s in spots:
-		var d := INF
-		for p in alive_players():
-			if p == player:
-				continue
+		var d := 1000.0 if others.is_empty() else INF
+		for p in others:
 			d = minf(d, (s as Vector3).distance_to(p.global_position))
 		d += randf() * 6.0   # a little variety when nobody is around
 		if d > best_d:
@@ -1314,7 +1324,7 @@ func _spawn_tdm_bots() -> void:
 func _spawn_tdm_bot(id: int) -> void:
 	if game_over:
 		return
-	var sp := net_pvp_spawn()
+	var sp := net_pvp_spawn(null)
 	spawn_enemy({"pos": sp[0], "yaw": sp[1], "patrol": [], "group": "tdm_bot:%d:%d" % [id, _team_for(id)]})
 
 

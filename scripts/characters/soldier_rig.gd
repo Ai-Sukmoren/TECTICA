@@ -22,6 +22,7 @@ const Layers = preload("res://scripts/core/layers.gd")
 const ROLL_HAMMER_COCKED := 0.75   # matches WeaponModel.ROLL_HAMMER_COCKED
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const ModelSkin = preload("res://scripts/characters/model_skin.gd")
+const Body = preload("res://scripts/characters/body_mesh.gd")
 
 signal footstep(pos: Vector3, intensity: float)
 signal throw_release
@@ -34,6 +35,10 @@ const ANKLE_H := 0.088
 const UPPER_ARM := 0.3
 const FOREARM := 0.285
 const HIP_HALF := 0.1
+## Eye line on the head joint (face features, goggles, glasses).
+const EYE_Y := -0.008
+## The helmet rides this far above the head joint, its rim over the brows.
+const HELMET_LIFT := 0.04
 
 ## Weapon poses relative to the chest: [position, euler(pitch, yaw, roll)].
 const POSES := {
@@ -228,7 +233,7 @@ func build(p: Dictionary) -> void:
 	hips = _node(pivot, "Hips", Vector3(0, HIP_STAND, 0))
 
 	# --- pelvis & belt ---
-	_mesh(hips, ML.capsule(0.125, 0.36), camo, Vector3(0, -0.02, 0), Vector3(0, 0, PI * 0.5), Vector3(1, 1, 0.8))
+	_mesh(hips, Body.pelvis(), camo, Vector3.ZERO)
 	_mesh(hips, ML.rbox(Vector3(0.37, 0.07, 0.26)), gear, Vector3(0, 0.06, 0))
 	_mesh(hips, ML.rbox(Vector3(0.05, 0.045, 0.02)), detail, Vector3(0, 0.06, -0.135))
 	_mesh(hips, ML.rbox(Vector3(0.15, 0.12, 0.08)), gear, Vector3(0.06, -0.01, 0.16))
@@ -237,10 +242,11 @@ func build(p: Dictionary) -> void:
 	# --- legs ---
 	for side in [-1, 1]:
 		var thigh := _node(hips, "Thigh", Vector3(side * HIP_HALF, -0.03, 0))
-		_mesh(thigh, ML.capsule(0.09, 0.52), camo, Vector3(0, -THIGH * 0.5, 0))
+		_mesh(thigh, Body.thigh(THIGH), camo, Vector3.ZERO)
 		_mesh(thigh, ML.rbox(Vector3(0.05, 0.15, 0.12)), camo, Vector3(side * 0.085, -0.25, 0))
 		var shin := _node(thigh, "Shin", Vector3(0, -THIGH, 0))
-		_mesh(shin, ML.capsule(0.07, 0.46), camo, Vector3(0, -SHIN * 0.5, 0))
+		_mesh(shin, Body.shin(SHIN), camo, Vector3.ZERO)
+		_mesh(shin, Body.joint(0.058), camo, Vector3(0, 0.0, 0.004))   # knee: no gap when it bends
 		_mesh(shin, ML.rbox(Vector3(0.115, 0.13, 0.06)), detail, Vector3(0, -0.035, -0.07))
 		var foot := _node(shin, "Foot", Vector3(0, -SHIN, 0))
 		_mesh(foot, ML.rbox(Vector3(0.115, 0.1, 0.28)), p.boots, Vector3(0, -0.035, -0.055))
@@ -257,9 +263,9 @@ func build(p: Dictionary) -> void:
 
 	# --- spine / torso ---
 	spine = _node(hips, "Spine", Vector3(0, 0.08, 0))
-	_mesh(spine, ML.capsule(0.135, 0.34), camo, Vector3(0, 0.09, 0), Vector3.ZERO, Vector3(1.15, 1, 0.8))
+	_mesh(spine, Body.abdomen(), camo, Vector3.ZERO)
 	chest = _node(spine, "Chest", Vector3(0, 0.22, 0))
-	_mesh(chest, ML.capsule(0.165, 0.46), camo, Vector3(0, 0.08, 0), Vector3.ZERO, Vector3(1.2, 1, 0.78))
+	_mesh(chest, Body.chest_body(), camo, Vector3.ZERO)
 
 	# plate carrier: front/back plates, cummerbund, shoulder straps
 	_mesh(chest, ML.rbox(Vector3(0.36, 0.34, 0.08)), vest, Vector3(0, 0.07, -0.125))
@@ -285,27 +291,27 @@ func build(p: Dictionary) -> void:
 		_mesh(chest, ML.rbox(Vector3(0.06, 0.18, 0.11)), vest, Vector3(side * 0.185, 0.06, 0.25))
 
 	# --- neck & head ---
-	_mesh(chest, ML.cylinder(0.055, 0.06, 0.12, 12), p.face, Vector3(0, 0.33, 0))
+	_mesh(chest, Body.neck(), p.face, Vector3.ZERO)
 	head = _node(chest, "Head", Vector3(0, 0.42, 0))
-	_mesh(head, ML.sphere(0.105), p.face, Vector3.ZERO, Vector3.ZERO, Vector3(0.88, 1.05, 0.98))
+	_mesh(head, Body.head(), p.face, Vector3.ZERO)
+	_build_face(head, p)
 	_build_headgear(head, p)
 
 	# --- arms ---
 	for side in [-1, 1]:
 		var sh := _node(chest, "Shoulder", Vector3(side * 0.2, 0.21, 0))
-		_mesh(sh, ML.sphere(0.078, false, 12), camo, Vector3.ZERO)
-		_mesh(sh, ML.capsule(0.063, 0.34), camo, Vector3(0, -UPPER_ARM * 0.5, 0))
+		_mesh(sh, Body.upper_arm(UPPER_ARM), camo, Vector3.ZERO)
 		_mesh(sh, ML.rbox(Vector3(0.012, 0.07, 0.07)), gear, Vector3(side * 0.06, -0.09, 0))
 		var el := _node(sh, "Elbow", Vector3(0, -UPPER_ARM, 0))
 		# forearm: a sleeve that tapers to the wrist, bunched cloth at the elbow,
 		# a rolled cuff and the glove's wrist strap
-		_mesh(el, ML.sphere(0.057, false, 12), camo, Vector3(0, -0.012, 0))
+		_mesh(el, Body.joint(0.05), camo, Vector3(0, -0.006, 0))   # elbow: no gap when it bends
 		if String(p.get("sleeves", "")) == "rolled":
 			# sleeve rolled to just below the elbow, bare forearm to the glove
-			_mesh(el, ML.cylinder(0.039, 0.05, 0.25, 14), p.skin, Vector3(0, -0.135, 0))
+			_mesh(el, Body.forearm(FOREARM, true), p.skin, Vector3.ZERO)
 			_mesh(el, ML.cylinder(0.058, 0.06, 0.05, 14), camo, Vector3(0, -0.045, 0))
 		else:
-			_mesh(el, ML.cylinder(0.041, 0.056, 0.25, 14), camo, Vector3(0, -0.135, 0))
+			_mesh(el, Body.forearm(FOREARM), camo, Vector3.ZERO)
 			for k in 3:
 				_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
 			_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
@@ -385,6 +391,57 @@ func _build_details(p: Dictionary) -> void:
 	_mesh(hips, ML.rbox(Vector3(0.03, 0.17, 0.028)), detail, Vector3(0.195, -0.075, 0.02))
 	_mesh(hips, ML.rbox(Vector3(0.022, 0.05, 0.022)), M.solid(Color(0.3, 0.3, 0.3), 0.3, 0.8), Vector3(0.195, 0.03, 0.02))
 	_mesh(hips, ML.rbox(Vector3(0.06, 0.11, 0.035)), gear, Vector3(0.1, -0.01, -0.145))
+	_build_kit_detail(p)
+
+
+## Third pass, the small things that make kit read as real: seams round the
+## plate bag, side-release buckles, pouch snaps, a radio with its PTT cord,
+## an ID patch, a steel belt buckle, boot laces and knee-pad straps. Torso
+## parts hang straight off the chest (first person hides them there). Most
+## are tiny, so AI bodies fade them out with distance (Soldier.optimize_detail).
+func _build_kit_detail(p: Dictionary) -> void:
+	var seam := _seam_mat()
+	var buckle := _buckle_mat()
+	var steel := _steel_mat()
+	var web := M.fabric("webbing_strap", Color(0.13, 0.13, 0.11), 9.0)
+	# plate bag: stitched edges round the front plate
+	_mesh(chest, ML.rbox(Vector3(0.34, 0.004, 0.004)), seam, Vector3(0, 0.226, -0.166))
+	_mesh(chest, ML.rbox(Vector3(0.34, 0.004, 0.004)), seam, Vector3(0, -0.086, -0.166))
+	for side in [-1, 1]:
+		_mesh(chest, ML.rbox(Vector3(0.004, 0.3, 0.004)), seam, Vector3(side * 0.168, 0.07, -0.166))
+		# cummerbund closes with a side-release buckle, shoulder straps adjust at the chest
+		_mesh(chest, ML.rbox(Vector3(0.034, 0.026, 0.01)), buckle, Vector3(side * 0.16, -0.06, -0.14))
+		_mesh(chest, ML.rbox(Vector3(0.012, 0.03, 0.012)), buckle, Vector3(side * 0.181, -0.06, -0.14))
+		_mesh(chest, ML.rbox(Vector3(0.036, 0.02, 0.009)), buckle, Vector3(side * 0.12, 0.2, -0.18))
+	# magazine pouches: snap on each flap, stitched bottom, bungee pull tab
+	for i in 3:
+		var x := -0.09 + i * 0.09
+		_mesh(chest, ML.rbox(Vector3(0.018, 0.012, 0.005)), buckle, Vector3(x, 0.06, -0.222))
+		_mesh(chest, ML.rbox(Vector3(0.07, 0.004, 0.004)), seam, Vector3(x, -0.056, -0.218))
+		_mesh(chest, ML.rbox(Vector3(0.012, 0.022, 0.004)), web, Vector3(x, 0.042, -0.222))
+	# ID patch on the admin pouch
+	_mesh(chest, ML.rbox(Vector3(0.08, 0.042, 0.004)), M.fabric("id_patch", Color(0.3, 0.31, 0.24), 14.0), Vector3(0.045, 0.17, -0.194))
+	# radio: control knobs, PTT cord up to a button on the left shoulder strap
+	_mesh(chest, ML.cylinder(0.009, 0.009, 0.022, 8), buckle, Vector3(-0.214, 0.085, 0.066))
+	_mesh(chest, ML.cylinder(0.007, 0.007, 0.016, 8), buckle, Vector3(-0.196, 0.082, 0.094))
+	_rod(chest, Vector3(-0.2, 0.08, 0.05), Vector3(-0.15, 0.2, -0.12), 0.005, buckle)
+	_rod(chest, Vector3(-0.15, 0.2, -0.12), Vector3(-0.122, 0.17, -0.18), 0.005, buckle)
+	_mesh(chest, ML.rbox(Vector3(0.034, 0.042, 0.016)), buckle, Vector3(-0.12, 0.15, -0.186))
+	# belt: steel cobra buckle, stitched edges
+	_mesh(hips, ML.rbox(Vector3(0.056, 0.036, 0.008)), steel, Vector3(0, 0.06, -0.148))
+	_mesh(hips, ML.rbox(Vector3(0.012, 0.03, 0.01)), buckle, Vector3(0, 0.06, -0.152))
+	for y in [0.088, 0.032]:
+		_mesh(hips, ML.rbox(Vector3(0.3, 0.003, 0.004)), seam, Vector3(0, y, -0.131))
+	# legs: knee-pad strap behind the calf, laces and a heel counter on each boot
+	var lace := M.solid(Color(0.16, 0.14, 0.11), 0.9)
+	for i in 2:
+		_mesh(shins[i], ML.cylinder(0.064, 0.064, 0.012, 12), web, Vector3(0, -0.095, 0.012), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
+		for k in 3:
+			_mesh(feet[i], ML.rbox(Vector3(0.07, 0.005, 0.006)), lace, Vector3(0, 0.026 - k * 0.006, -0.045 - k * 0.026), Vector3(0.25, 0, 0))
+		_mesh(feet[i], ML.rbox(Vector3(0.105, 0.05, 0.02)), _rubber_mat(), Vector3(0, -0.045, 0.085))
+		# sleeve pocket seam on the upper arm
+		var side := -1.0 if i == 0 else 1.0
+		_mesh(shoulders[i], ML.rbox(Vector3(0.004, 0.004, 0.07)), seam, Vector3(side * 0.067, -0.056, 0))
 
 
 func _build_headgear(h: Node3D, p: Dictionary) -> void:
@@ -393,7 +450,7 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 		"helmet":
 			var hm: Material = p.helmet
 			var hg := h
-			h = _node(hg, "Helmet", Vector3.ZERO)
+			h = _node(hg, "Helmet", Vector3(0, HELMET_LIFT, 0))
 			helmet_node = h
 			_mesh(h, ML.sphere(0.145, true, 20), hm, Vector3(0, 0.015, 0.0), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
 			_mesh(h, ML.cylinder(0.147, 0.15, 0.04, 20), hm, Vector3(0, 0.0, 0.0), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
@@ -406,11 +463,15 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 			# chin strap + cup, boom microphone, side velcro patches
 			var web := M.fabric("webbing_strap", Color(0.13, 0.13, 0.11), 9.0)
 			for side in [-1, 1]:
-				_mesh(h, ML.rbox(Vector3(0.01, 0.115, 0.018)), web, Vector3(side * 0.092, -0.065, -0.035), Vector3(-0.35, 0, 0))
+				_mesh(h, ML.rbox(Vector3(0.01, 0.145, 0.018)), web, Vector3(side * 0.092, -0.08, -0.04), Vector3(-0.35, 0, 0))
+				_mesh(h, ML.rbox(Vector3(0.014, 0.022, 0.024)), _buckle_mat(), Vector3(side * 0.094, -0.11, -0.055), Vector3(-0.35, 0, 0))
 				_mesh(h, ML.rbox(Vector3(0.006, 0.04, 0.05)), M.solid(Color(0.25, 0.27, 0.2), 0.9), Vector3(side * 0.148, 0.075, 0.045))
-			_mesh(h, ML.rbox(Vector3(0.07, 0.018, 0.03)), web, Vector3(0, -0.118, -0.062))
-			_mesh(h, ML.cylinder(0.004, 0.004, 0.11, 6), detail, Vector3(-0.105, -0.06, -0.06), Vector3(1.25, 0, 0.25))
-			_mesh(h, ML.sphere(0.012, false, 8), detail, Vector3(-0.075, -0.075, -0.108))
+			_mesh(h, ML.rbox(Vector3(0.07, 0.018, 0.03)), web, Vector3(0, -0.148, -0.07))
+			_mesh(h, ML.cylinder(0.004, 0.004, 0.11, 6), detail, Vector3(-0.105, -0.085, -0.06), Vector3(1.25, 0, 0.25))
+			_mesh(h, ML.sphere(0.012, false, 8), detail, Vector3(-0.072, -0.088, -0.108))
+			# rubber edge trim on the rim and a bungee round the dome
+			_mesh(h, ML.cylinder(0.152, 0.154, 0.012, 24), _rubber_mat(), Vector3(0, -0.019, 0), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
+			_mesh(h, ML.cylinder(0.142, 0.142, 0.008, 24), web, Vector3(0, 0.048, 0), Vector3.ZERO, Vector3(1.0, 1.0, 1.12))
 			if p.get("nvg", false):
 				# flip-up binocular night vision on the shroud
 				_mesh(h, ML.rbox(Vector3(0.03, 0.06, 0.03)), detail, Vector3(0, 0.115, -0.165))
@@ -422,7 +483,8 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 			_mesh(h, ML.cylinder(0.105, 0.112, 0.08, 16), p.camo, Vector3(0, 0.07, 0))
 			_mesh(h, ML.rbox(Vector3(0.15, 0.012, 0.09)), p.camo, Vector3(0, 0.035, -0.135))
 		"beanie":
-			_mesh(h, ML.sphere(0.113, true, 16), M.fabric("beanie", Color(0.12, 0.13, 0.1)), Vector3(0, 0.015, 0), Vector3.ZERO, Vector3(1, 1.15, 1.02))
+			_mesh(h, ML.sphere(0.113, true, 16), M.fabric("beanie", Color(0.12, 0.13, 0.1)), Vector3(0, 0.035, 0), Vector3.ZERO, Vector3(1, 1.0, 1.02))
+			_mesh(h, ML.cylinder(0.115, 0.115, 0.03, 16), M.fabric("beanie", Color(0.12, 0.13, 0.1)), Vector3(0, 0.045, 0), Vector3.ZERO, Vector3(1, 1.0, 1.02))   # folded cuff
 	if p.get("eyes", false):
 		for sx in [-1, 1]:
 			var eye := _mesh(h, ML.sphere(0.012, false, 6), M.emissive("zombie_eye", Color(1.0, 0.75, 0.2), 6.0), Vector3(sx * 0.034, 0.02, -0.093))
@@ -431,13 +493,150 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 		if p.has("goggle_frame"):
 			# full ballistic goggles: coloured frame, dark lens, strap round the helmet
 			var fr: Material = p.goggle_frame
-			# worn below the helmet rim, over the eyes
-			_mesh(h, ML.rbox(Vector3(0.168, 0.06, 0.03)), fr, Vector3(0, -0.048, -0.098))
-			_mesh(h, ML.rbox(Vector3(0.144, 0.038, 0.012)), M.solid(Color(0.1, 0.11, 0.12), 0.06, 0.6), Vector3(0, -0.048, -0.112))
-			for sx in [-1, 1]:
-				_mesh(h, ML.rbox(Vector3(0.012, 0.026, 0.1)), fr, Vector3(sx * 0.092, -0.044, -0.05))
+			# worn just under the helmet rim, over the eyes
+			_goggles(h, fr, _lens_mat(Color(0.1, 0.11, 0.12)))
 		else:
-			_mesh(h, ML.rbox(Vector3(0.16, 0.04, 0.025)), M.solid(Color(0.03, 0.03, 0.03), 0.15, 0.4), Vector3(0, 0.015, -0.097))
+			_goggles(h, _rubber_mat(), _lens_mat(Color(0.14, 0.16, 0.17)))
+	elif not p.get("eyes", false) and String(p.headgear) != "none":
+		_glasses(h)
+
+
+## Ballistic goggles on the eye line: frame, lens, side vents and the strap
+## running back round the head.
+func _goggles(h: Node3D, frame: Material, lens: Material) -> void:
+	# open frame (top, bottom, ends) round one wide lens
+	for y in [0.022, -0.022]:
+		_mesh(h, ML.rbox(Vector3(0.17, 0.013, 0.03)), frame, Vector3(0, EYE_Y + y, -0.1))
+	for sx in [-1, 1]:
+		_mesh(h, ML.rbox(Vector3(0.014, 0.056, 0.03)), frame, Vector3(sx * 0.079, EYE_Y, -0.1))
+	_mesh(h, ML.rbox(Vector3(0.15, 0.036, 0.004)), lens, Vector3(0, EYE_Y, -0.108))
+	_mesh(h, ML.rbox(Vector3(0.02, 0.016, 0.01)), frame, Vector3(0, EYE_Y - 0.022, -0.118))   # nose bridge
+	var web := M.fabric("webbing_strap", Color(0.13, 0.13, 0.11), 9.0)
+	for sx in [-1, 1]:
+		_mesh(h, ML.rbox(Vector3(0.014, 0.03, 0.06)), frame, Vector3(sx * 0.088, EYE_Y, -0.072))
+		_mesh(h, ML.rbox(Vector3(0.006, 0.006, 0.03)), _rubber_mat(), Vector3(sx * 0.096, EYE_Y + 0.006, -0.072))   # vent
+		_mesh(h, ML.rbox(Vector3(0.008, 0.022, 0.12)), web, Vector3(sx * 0.094, EYE_Y + 0.004, 0.02))
+
+
+## Wrap-around shooting glasses with clear lenses, so the eyes still read.
+func _glasses(h: Node3D) -> void:
+	var frame := M.solid(Color(0.06, 0.06, 0.065), 0.35)
+	var lens := _clear_lens_mat()
+	for sx in [-1, 1]:
+		_mesh(h, ML.rbox(Vector3(0.042, 0.026, 0.004)), lens, Vector3(sx * 0.031, EYE_Y, -0.108), Vector3(0, sx * 0.28, 0))
+		_mesh(h, ML.rbox(Vector3(0.044, 0.005, 0.006)), frame, Vector3(sx * 0.031, EYE_Y + 0.014, -0.108), Vector3(0, sx * 0.28, 0))
+		_rod(h, Vector3(sx * 0.054, EYE_Y + 0.01, -0.098), Vector3(sx * 0.088, EYE_Y + 0.004, -0.004), 0.0028, frame)   # temple arm to the ear
+	_mesh(h, ML.rbox(Vector3(0.016, 0.006, 0.006)), frame, Vector3(0, EYE_Y + 0.008, -0.112))
+
+
+## Face on the head joint: eyes in their sockets, lowered brows and a set mouth
+## (focused, the look of someone under fire), nose and ears. A balaclava
+## (p.mask) shows skin only round the eyes; bare faces can carry a beard.
+func _build_face(h: Node3D, p: Dictionary) -> void:
+	var face: Material = p.face
+	var masked := bool(p.get("mask", false))
+	var skin: Material = p.get("skin", face)
+	var hair := M.fabric("hair", Color(0.17, 0.125, 0.09), 24.0)
+	_mesh(h, Body.nose(), face, Vector3(0, -0.02, -0.098))
+	for side in [-1, 1]:
+		_mesh(h, ML.rbox(Vector3(0.016, 0.048, 0.03)), face, Vector3(side * 0.088, -0.008, 0.008), Vector3(0, side * 0.2, 0))   # ears
+	if p.get("eyes", false):
+		return   # infected: glowing eyes come with the headgear pass
+	if masked:
+		# the balaclava's eye opening
+		_mesh(h, ML.sphere(0.5, false, 16), skin, Vector3(0, EYE_Y, -0.018), Vector3.ZERO, Vector3(0.168, 0.036, 0.18))
+	var ez := -0.093 if masked else -0.089
+	var white := M.solid(Color(0.86, 0.84, 0.8), 0.35)
+	var iris := M.solid(Color(0.2, 0.13, 0.08), 0.15)
+	var pupil := M.solid(Color(0.02, 0.02, 0.02), 0.05)
+	for side in [-1, 1]:
+		var x: float = side * 0.033
+		_mesh(h, ML.sphere(0.0115, false, 10), white, Vector3(x, EYE_Y, ez), Vector3.ZERO, Vector3(1.0, 0.62, 0.7))
+		_mesh(h, ML.sphere(0.0066, false, 10), iris, Vector3(x - side * 0.0015, EYE_Y, ez - 0.0062), Vector3.ZERO, Vector3(1.0, 1.0, 0.45))
+		_mesh(h, ML.sphere(0.0028, false, 6), pupil, Vector3(x - side * 0.0015, EYE_Y, ez - 0.0092), Vector3.ZERO, Vector3(1.0, 1.0, 0.4))
+		# upper lid over the top of the eye, brow drawn down toward the nose
+		_mesh(h, ML.rbox(Vector3(0.028, 0.006, 0.012)), skin if masked else face, Vector3(x, EYE_Y + 0.0062, ez - 0.006), Vector3(0.3, 0, 0))
+		if not masked:
+			_mesh(h, ML.rbox(Vector3(0.032, 0.0055, 0.01)), hair, Vector3(x, EYE_Y + 0.018, -0.099), Vector3(0.2, 0, side * 0.1))
+	if masked:
+		return
+	# short hair at the sides and back, under whatever is worn on top
+	_mesh(h, ML.sphere(0.5, true, 16), hair, Vector3(0, 0.02, 0.012), Vector3.ZERO, Vector3(0.186, 0.18, 0.214))
+	var beard := bool(p.get("beard", false))
+	if beard:
+		_mesh(h, Body.beard(), hair, Vector3.ZERO)
+	var lip_z := -0.107 if beard else -0.099
+	var lip := M.solid(_color_of(skin).darkened(0.18).lerp(Color(0.5, 0.25, 0.22), 0.2), 0.55)
+	_mesh(h, ML.rbox(Vector3(0.032, 0.005, 0.008)), lip, Vector3(0, -0.066, lip_z))
+	_mesh(h, ML.rbox(Vector3(0.026, 0.0065, 0.008)), lip, Vector3(0, -0.073, lip_z + 0.002))
+	for side in [-1, 1]:
+		_mesh(h, ML.rbox(Vector3(0.008, 0.005, 0.007)), lip, Vector3(side * 0.018, -0.069, lip_z + 0.002), Vector3(0, 0, side * 0.4))   # set corners
+
+
+## Albedo colour of a palette material (white when it is not a plain one).
+static func _color_of(m: Material) -> Color:
+	return (m as BaseMaterial3D).albedo_color if m is BaseMaterial3D else Color.WHITE
+
+
+static var _shared_mats := {}
+
+static func _shared(key: String, make: Callable) -> Material:
+	if not _shared_mats.has(key):
+		_shared_mats[key] = make.call()
+	return _shared_mats[key]
+
+
+## Black polymer: side-release buckles, snaps, PTT button.
+static func _buckle_mat() -> Material:
+	return M.solid(Color(0.045, 0.045, 0.045), 0.55)
+
+
+static func _rubber_mat() -> Material:
+	return M.solid(Color(0.06, 0.06, 0.06), 0.85)
+
+
+## Brushed steel: belt buckle, D-rings.
+static func _steel_mat() -> Material:
+	return M.solid(Color(0.42, 0.42, 0.4), 0.35, 0.85)
+
+
+## Dark seam / stitch line on fabric.
+static func _seam_mat() -> Material:
+	return M.solid(Color(0.07, 0.07, 0.06), 0.95)
+
+
+## Smoked, glossy goggle lens; the eyes show through it.
+static func _lens_mat(tint: Color) -> Material:
+	return _shared("lens_%s" % tint.to_html(), func():
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(tint, 0.45)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.metallic = 0.6
+		m.roughness = 0.05
+		m.rim_enabled = true
+		m.rim = 0.4
+		return m)
+
+
+## Clear shooting-glasses lens: lightly tinted, see-through.
+static func _clear_lens_mat() -> Material:
+	return _shared("lens_clear", func():
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color(0.6, 0.62, 0.55, 0.28)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.roughness = 0.04
+		m.metallic = 0.3
+		return m)
+
+
+## A thin cylinder from `a` to `b` (parent space): cables, cords.
+func _rod(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material) -> MeshInstance3D:
+	var d := b - a
+	var mi := _mesh(parent, ML.cylinder(r, r, d.length(), 6), mat, (a + b) * 0.5)
+	var up := d.normalized()
+	var side := up.cross(Vector3.FORWARD if absf(up.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+	mi.basis = Basis(side, up, side.cross(up))
+	return mi
 
 
 func _node(parent: Node3D, n: String, pos: Vector3) -> Node3D:

@@ -85,7 +85,9 @@ func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
 	health = max_health
 	_scan_t = randf() * 10.0
 	nav = NavigationAgent3D.new()
-	nav.path_desired_distance = 0.5
+	# over 0.5: path points can sit 0.5 m above the feet (desert navmesh), and a
+	# bot right under its first point would never count it as reached
+	nav.path_desired_distance = 0.75
 	nav.target_desired_distance = 0.5
 	nav.radius = 0.45
 	nav.height = 1.8

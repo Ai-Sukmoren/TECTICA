@@ -234,7 +234,7 @@ func apply_net_state(s: Array) -> void:
 ## The model zombies wear: the Polyart zombie pack on every map. ("partygoer",
 ## the Backrooms entity, is still supported by zombie_skin.gd.)
 func skin_for_map() -> String:
-	return "polyart"
+	return ""   # the procedural TECTICA zombie body ("polyart" = the Polyart pack)
 
 
 ## A host-spawned zombie on a client.

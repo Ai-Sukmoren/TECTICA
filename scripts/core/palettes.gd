@@ -21,6 +21,7 @@ static func player() -> Dictionary:
 		"detail": M.solid(Color(0.14, 0.14, 0.12), 0.6, 0.2),
 		"skin": M.solid(Color(0.76, 0.58, 0.47), 0.7),
 		"face": M.fabric("balaclava_olive", Color(0.16, 0.17, 0.13)),
+		"mask": true,
 		"gloves": M.fabric("gloves_player", Color(0.24, 0.21, 0.16), 12.0),
 		"boots": M.leather("boots_player", Color(0.3, 0.24, 0.17)),
 		"headgear": "helmet",
@@ -74,4 +75,5 @@ static func enemy(variant: int) -> Dictionary:
 		"boots": M.leather("boots_enemy", Color(0.2, 0.15, 0.1)),
 		"headgear": heads[variant % heads.size()],
 		"goggles": variant % 2 == 0,
+		"beard": variant % 4 >= 2,
 	}

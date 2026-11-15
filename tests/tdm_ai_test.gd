@@ -40,10 +40,23 @@ func run() -> void:
 	for i in Engine.physics_ticks_per_second * 8: await physics_frame
 	var moved := 0
 	for e in m.enemies:
-		if is_instance_valid(e) and not e.is_dead and e.global_position.distance_to(start[e]) > 4.0:
+		# active: left its spawn, or already fighting (in cover / peeking) near it
+		if is_instance_valid(e) and not e.is_dead and (e.global_position.distance_to(start[e]) > 4.0 or e.is_in_combat()):
 			moved += 1
-	print("  bots that left their spawn in 8 s: %d / 6" % moved)
-	check(moved >= 4, "bots go hunting instead of waiting at spawn")
+	print("  bots hunting or fighting after 8 s: %d / 6" % moved)
+	check(moved >= 5, "bots go hunting instead of waiting at spawn")
+	# the old bug: every bot and the operator piled onto one point, climbing on each other
+	var alive: Array = m.enemies.filter(func(e): return is_instance_valid(e) and not e.is_dead)
+	var stacked := 0
+	var top := -INF
+	for a in alive:
+		top = maxf(top, a.global_position.y - (start[a] as Vector3).y)
+		for b in alive:
+			if a != b and Vector2(a.global_position.x - b.global_position.x, a.global_position.z - b.global_position.z).length() < 0.5:
+				stacked += 1
+	print("  bot pairs closer than 0.5 m: %d, highest climb %.2f m" % [stacked / 2, top])
+	check(stacked == 0, "bots do not pile onto one point")
+	check(top < 2.0, "bots do not climb onto each other")
 	var t_end := Time.get_ticks_msec() + 60000
 	var total := 0
 	while Time.get_ticks_msec() < t_end:

@@ -40,6 +40,24 @@ const BIPED := {
 ## How far back from the rig's palm centre the model's wrist goes, as a share
 ## of the model's wrist-to-knuckle length.
 const PALM_BACK := 0.6
+## The same bones on a Mixamo auto-rig, without its "mixamorig:" prefix (which
+## differs between exports, so _find() matches any prefix).
+const MIXAMO := {
+	"Hips": "Hips", "Abdomen": "Spine", "Chest": "Spine2", "Head": "Head",
+	"UpperArm.L": "LeftArm", "LowerArm.L": "LeftForeArm", "Wrist.L": "LeftHand",
+	"UpperArm.R": "RightArm", "LowerArm.R": "RightForeArm", "Wrist.R": "RightHand",
+	"UpperLeg.L": "LeftUpLeg", "LowerLeg.L": "LeftLeg", "Foot.L": "LeftFoot",
+	"UpperLeg.R": "RightUpLeg", "LowerLeg.R": "RightLeg", "Foot.R": "RightFoot",
+}
+## The same bones on a Character Creator (Reallusion) rig. Exports number
+## every bone ("CC_Base_L_Upperarm_050"), so _find() ignores that suffix.
+const CC := {
+	"Hips": "CC_Base_Hip", "Abdomen": "CC_Base_Waist", "Chest": "CC_Base_Spine02", "Head": "CC_Base_Head",
+	"UpperArm.L": "CC_Base_L_Upperarm", "LowerArm.L": "CC_Base_L_Forearm", "Wrist.L": "CC_Base_L_Hand",
+	"UpperArm.R": "CC_Base_R_Upperarm", "LowerArm.R": "CC_Base_R_Forearm", "Wrist.R": "CC_Base_R_Hand",
+	"UpperLeg.L": "CC_Base_L_Thigh", "LowerLeg.L": "CC_Base_L_Calf", "Foot.L": "CC_Base_L_Foot",
+	"UpperLeg.R": "CC_Base_R_Thigh", "LowerLeg.R": "CC_Base_R_Calf", "Foot.R": "CC_Base_R_Foot",
+}
 ## Height of the rig's foot joint above the sole (SoldierRig.ANKLE_H).
 const RIG_ANKLE := 0.088
 
@@ -79,6 +97,9 @@ const BIPED_FINGERS := [["Finger1", -0.9], ["Finger11", -1.1], ["Finger0", -0.3]
 ## (bots and zombies never need them); empty when the model has no arm bones.
 var fp_arms: Array[MeshInstance3D] = []
 var _fp_arms_built := false
+## Off: first person keeps the rig's own slim arms (for a model whose bulky
+## sleeves would hide the gun from the eye camera).
+var use_fp_arms := true
 
 
 ## `path`: glTF/GLB scene. `tint`: multiplies every albedo (Color.WHITE = as is).
@@ -198,13 +219,17 @@ func _prepare() -> void:
 			if score > best:
 				best = score
 				_axis[i] = d.normalized()
+		if best == -2.0 and incoming.length() > 0.001 and skel.get_bone_parent(i) >= 0 and not kids.is_empty():
+			# only children sitting on the joint (a Character Creator head): carry
+			# on along the line from the parent, not the bone's own +Y
+			_axis[i] = incoming.normalized()
 	for d in DIRECT:
 		var bi := _find(d[0])
 		if bi >= 0:
 			_direct[bi] = d
 	_root = _find("Body")
-	if _root < 0 and skel.find_bone("Hips") < 0:
-		_root = _find("Hips")   # biped: the pelvis is the root
+	if _root < 0 and (skel.find_bone("Hips") < 0 or _mixamo_prefix() != ""):
+		_root = _find("Hips")   # biped / Mixamo: the pelvis is the root
 	for c in CHAINS:
 		var u := _find(c[0])
 		var l := _find(c[1])
@@ -307,6 +332,10 @@ func _build_fp_arms() -> void:
 			if keep.is_empty():
 				continue
 			arrays[Mesh.ARRAY_INDEX] = keep
+			# custom vertex channels would need their packed formats passed along;
+			# the arms draw without them
+			for ch in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_CUSTOM2, Mesh.ARRAY_CUSTOM3]:
+				arrays[ch] = null
 			var flags := Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS if per == 8 else 0
 			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 			out.surface_set_material(out.get_surface_count() - 1, mi.get_active_material(si))
@@ -330,6 +359,10 @@ func _build_fp_arms() -> void:
 ## and renumber the spine ("bip Spine006"), so the spine is found by its place.
 func _find(bone_name: String) -> int:
 	var b := skel.find_bone(bone_name)
+	if b < 0 and MIXAMO.has(bone_name):
+		b = skel.find_bone(_mixamo_prefix() + String(MIXAMO[bone_name]))
+	if b < 0 and CC.has(bone_name):
+		b = _find_numbered(String(CC[bone_name]))
 	if b >= 0 or not BIPED.has(bone_name):
 		return b
 	var bn := String(BIPED[bone_name])
@@ -340,6 +373,27 @@ func _find(bone_name: String) -> int:
 		var spine := _biped_child(_find("Hips"), "bip Spine")
 		b = spine if bn == "bip Spine" else _biped_child(spine, "bip Spine")
 	return b
+
+
+## A bone called `base` or `base` + "_" + a number.
+func _find_numbered(base: String) -> int:
+	var b := skel.find_bone(base)
+	if b >= 0:
+		return b
+	for i in skel.get_bone_count():
+		var nm := skel.get_bone_name(i)
+		if nm.begins_with(base + "_") and nm.substr(base.length() + 1).is_valid_int():
+			return i
+	return -1
+
+
+## "mixamorig:" (or however this export spells it) when the skeleton is a Mixamo rig, else "".
+func _mixamo_prefix() -> String:
+	for i in skel.get_bone_count():
+		var nm := skel.get_bone_name(i)
+		if nm.ends_with("Hips") and nm.to_lower().begins_with("mixamo"):
+			return nm.left(nm.length() - 4)
+	return ""
 
 
 ## The number a biped's bones carry in a multi-character pack ("" for the first).
@@ -362,7 +416,7 @@ func _biped_child(parent: int, prefix: String) -> int:
 
 func set_first_person(on: bool) -> void:
 	_first_person = on
-	if on and not _fp_arms_built and skel != null:
+	if on and use_fp_arms and not _fp_arms_built and skel != null:
 		_build_fp_arms()
 	var mode := GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	for mi in meshes:
@@ -469,7 +523,10 @@ func _solve_chain(c: Dictionary, pg: Transform3D, to_skel: Transform3D, rest_fwd
 	var target: Vector3
 	if is_leg:
 		# the model's foot bone sits _foot_lift above the sole, the rig's foot joint RIG_ANKLE above it
-		target = to_skel * (ne.global_transform * Vector3(0, _foot_lift - RIG_ANKLE, 0))
+		# _foot_lift is in skeleton units (centimetres on some exports): convert
+		# it to the rig foot's own units before offsetting along the foot
+		var lift := _foot_lift * skel.global_transform.basis.get_scale().y / ne.global_transform.basis.get_scale().y
+		target = to_skel * (ne.global_transform * Vector3(0, lift - RIG_ANKLE, 0))
 	else:
 		# the model's wrist sits behind the rig's palm centre, back along the hand
 		target = to_skel * ne.global_position + (tb * (ne.global_transform.basis * Vector3.UP)).normalized() * (float(c.palm) * PALM_BACK)

@@ -140,20 +140,24 @@ func rebuild_rig(palette: Dictionary) -> void:
 	_flash_meshes.clear()
 
 
-## The base character: the casual low-poly male (3ds Max biped rig, local only,
+## The base character: the tactical soldier (Character Creator rig, local only,
 ## not in the repository) drawn over the procedural rig, which keeps doing all
 ## the animation; model_skin.gd copies its pose. Guns come from the rig.
-const CHARACTER_MODEL := "res://assets/thirdparty/casual_male/lpMale_rig_tpose.fbx"
+const CHARACTER_MODEL := "res://assets/thirdparty/tactical_soldier/tactical_soldier.glb"
 
 
 ## On: player, bots and soldiers wear CHARACTER_MODEL (when the file is present).
 ## Off: the original procedural TECTICA operator body.
-const USE_CHARACTER_MODEL := true
+const USE_CHARACTER_MODEL := false
 
 
 func use_character_model(tint: Color) -> void:
 	if USE_CHARACTER_MODEL and rig != null and ResourceLoader.exists(CHARACTER_MODEL):
 		rig.use_model(CHARACTER_MODEL, tint, ["Pistol"])
+		if rig.model_skin != null:
+			# the tactical soldier's padded sleeves hide the gun in first person:
+			# keep the rig's slim arms there
+			rig.model_skin.use_fp_arms = false
 
 
 ## Level of detail for AI bodies (each is ~100 small meshes): small parts stop

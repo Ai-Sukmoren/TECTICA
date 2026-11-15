@@ -1764,6 +1764,12 @@ func _reload_left_target(t: float) -> Vector3:
 #  DEATH
 # =====================================================================
 
+## Turns a limb toward `target` by rotation only, keeping its scale: zombie limbs
+## are scaled, and Basis.slerp on a scaled basis logs an error every call.
+static func _slerp_rot(n: Node3D, target: Basis, k: float) -> void:
+	n.quaternion = n.quaternion.slerp(target.get_rotation_quaternion(), k)
+
+
 func _update_death(delta: float) -> void:
 	death_t += delta
 	var t := death_t
@@ -1782,12 +1788,12 @@ func _update_death(delta: float) -> void:
 		for i in thighs.size():
 			var side := -1.0 if i == 0 else 1.0
 			var thigh_rest := Basis.from_euler(Vector3(0.1 + 0.12 * i, 0.0, side * 0.07))
-			(thighs[i] as Node3D).basis = (thighs[i] as Node3D).basis.slerp(thigh_rest, k)
+			_slerp_rot(thighs[i], thigh_rest, k)
 			var bend := -0.75 if i == _death_knee else -0.1   # one knee stays bent
 			var thigh_lift := 0.45 if i == _death_knee else 0.0
-			(thighs[i] as Node3D).basis = (thighs[i] as Node3D).basis.slerp(Basis.from_euler(Vector3(thigh_lift, 0.0, 0.0)) * thigh_rest, k)
-			(shins[i] as Node3D).basis = (shins[i] as Node3D).basis.slerp(Basis.from_euler(Vector3(bend, 0.0, 0.0)), k)
-			(feet[i] as Node3D).basis = (feet[i] as Node3D).basis.slerp(Basis.from_euler(Vector3(0.35, 0.0, side * 0.2)), k)
+			_slerp_rot(thighs[i], Basis.from_euler(Vector3(thigh_lift, 0.0, 0.0)) * thigh_rest, k)
+			_slerp_rot(shins[i], Basis.from_euler(Vector3(bend, 0.0, 0.0)), k)
+			_slerp_rot(feet[i], Basis.from_euler(Vector3(0.35, 0.0, side * 0.2)), k)
 	# phase 2: body topples in the direction of the killing shot
 	var f := clampf((t - 0.18) / 0.62, 0.0, 1.0)
 	var fall := f * f
@@ -1802,11 +1808,11 @@ func _update_death(delta: float) -> void:
 	var slump_blend := 1.0 - pow(1.0 - slump * 0.15, delta * 60.0)
 	if _death_back:
 		# on its back: torso flat, head lolls to one side
-		spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(0.12, 0.15, 0.1)), slump_blend)
-		head.basis = head.basis.slerp(Basis.from_euler(Vector3(0.2, 0.7 * signf(_death_roll), 0.25)), slump_blend)
+		_slerp_rot(spine, Basis.from_euler(Vector3(0.12, 0.15, 0.1)), slump_blend)
+		_slerp_rot(head, Basis.from_euler(Vector3(0.2, 0.7 * signf(_death_roll), 0.25)), slump_blend)
 	else:
-		spine.basis = spine.basis.slerp(Basis.from_euler(Vector3(-0.35, 0.2, 0.15)), slump_blend)
-		head.basis = head.basis.slerp(Basis.from_euler(Vector3(-0.5, 0.4, 0.3)), slump_blend)
+		_slerp_rot(spine, Basis.from_euler(Vector3(-0.35, 0.2, 0.15)), slump_blend)
+		_slerp_rot(head, Basis.from_euler(Vector3(-0.5, 0.4, 0.3)), slump_blend)
 	if t < 1.3:
 		var down := pivot.global_transform.basis * Vector3.DOWN
 		var cb := chest.global_transform.basis

@@ -29,7 +29,7 @@ const BACKGROUND_FPS := 30
 ## Bump when a saved setting must be migrated (2: unlimited FPS default -> 144,
 ## 3: PC freezes on ULTRA -> force V-sync, 60 FPS cap, HIGH preset once,
 ## 4: SAFE preset inserted at index 0 -> saved preset index shifts up by one).
-const SETTINGS_VERSION := 4
+const SETTINGS_VERSION := 5
 
 const ROWS := {
 	"GAME": [
@@ -47,8 +47,8 @@ const ROWS := {
 	],
 	"VIDEO": [
 		["preset", "QUALITY PRESET", PRESETS],
-		["fov", "FIRST-PERSON FOV", 60.0, 110.0, 2.0],
-		["tactical_fov", "TOP-DOWN FOV", 28.0, 60.0, 2.0],
+		["fov", "FIRST-PERSON FOV", 60.0, 120.0, 2.0],
+		["tactical_fov", "TOP-DOWN FOV", 28.0, 75.0, 2.0],
 		["render_scale", "RENDER SCALE", 0.5, 1.0, 0.05],
 		["aa", "ANTI-ALIASING", AA],
 		["shadows", "SHADOWS", SHADOWS],
@@ -86,11 +86,11 @@ const PRESET_VALUES := {
 }
 
 static var v := {
-	"sensitivity": 1.0, "fov": 78.0, "master_volume": 0.9, "music_volume": 0.7, "sfx_volume": 0.9,
+	"sensitivity": 1.0, "fov": 86.0, "master_volume": 0.9, "music_volume": 0.7, "sfx_volume": 0.9,
 	"shake": 1.0, "show_fps": false, "damage_numbers": true, "killcam": true,
 	"crosshair": 0, "crosshair_color": 0, "crosshair_size": 1.0, "crosshair_alpha": 0.92,
 	"crosshair_outline": true, "crosshair_spread": true, "film_grain": true, "vsync": true,
-	"preset": 2, "tactical_fov": 38.0, "render_scale": 1.0, "aa": 2, "shadows": 2,
+	"preset": 2, "tactical_fov": 44.0, "render_scale": 1.0, "aa": 2, "shadows": 2,
 	"ssao": true, "ssr": true, "ssil": false, "gi": false, "fog": true, "bloom": true,
 	"brightness": 1.0, "retro_crt": false, "window_mode": 1, "max_fps": 1,
 	"mp_name": "", "mp_ip": "127.0.0.1", "mp_port": 7777,
@@ -126,6 +126,12 @@ static func ensure() -> void:
 			v.preset = 1    # HIGH (no SDFGI / SSIL) in the old numbering
 		if ver < 4:
 			v.preset = int(v.preset) + 1   # SAFE took slot 0
+		if ver < 5:
+			# wider default views; a FOV the player chose themselves is kept
+			if is_equal_approx(float(v.fov), 78.0):
+				v.fov = 86.0
+			if is_equal_approx(float(v.tactical_fov), 38.0):
+				v.tactical_fov = 44.0
 	if DisplayServer.get_name() != "headless":
 		if FileAccess.file_exists(LOCK):
 			crash_recovered = true

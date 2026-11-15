@@ -25,13 +25,13 @@ func _ready() -> void:
 	process_priority = 100
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	cam = Camera3D.new()
-	cam.fov = 38.0
+	cam.fov = 44.0
 	cam.near = 0.5
 	cam.far = 200.0
 	add_child(cam)
 	cam.current = true
 	fp_cam = Camera3D.new()
-	fp_cam.fov = 78.0
+	fp_cam.fov = 86.0
 	fp_cam.near = 0.04
 	fp_cam.far = 200.0
 	add_child(fp_cam)

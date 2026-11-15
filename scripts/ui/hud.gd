@@ -480,6 +480,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			gunsmith.close()
 			_gunsmith_closed_in_match()
 		return
+	if armory.is_open:
+		if armory.handle(event):
+			armory.close()
+			_apply_armory_skins_in_match()
+		return
 	if (get_tree().paused or mp_pause) and not main.game_over:
 		_pause_input(event)
 		return
@@ -811,6 +816,8 @@ func _draw_overlay(c: Control) -> void:
 		_draw_settings(c, vp)
 	elif gunsmith.is_open:
 		gunsmith.draw(c, vp)
+	elif armory.is_open:
+		armory.draw(c, vp)
 	elif (get_tree().paused or mp_pause) and not main.game_over:
 		_draw_pause(c, vp)
 	elif shop_open:
@@ -1568,6 +1575,7 @@ func _pause_items() -> Array:
 	var its := _pause_items_base()
 	if _gunsmith_in_match():
 		its.insert(2, "GUNSMITH")
+		its.insert(3, "LOADOUT  ·  SKINS")
 	return its
 
 
@@ -1780,6 +1788,33 @@ func _gunsmith_closed_in_match() -> void:
 		add_feed("LOADOUT UPDATED", ACCENT)
 
 
+## Applies equipped finishes without rebuilding the inventory (Zombie Survival
+## weapons may carry run upgrades), then syncs updated specs to teammates.
+func _apply_armory_skins_in_match() -> void:
+	if player == null:
+		return
+	for w in player.weapons:
+		if not is_instance_valid(w):
+			continue
+		var weapon_id := String(w.id)
+		w.apply_skin(Collection.skin_for(weapon_id))
+		w.apply_sticker(Collection.sticker_for(weapon_id))
+	if not PlayerScript.zombie_specs.is_empty():
+		for i in PlayerScript.zombie_specs.size():
+			var spec = PlayerScript.zombie_specs[i]
+			if spec is Array and not spec.is_empty():
+				var spec_weapon_id := String(spec[0])
+				if spec.size() > 2:
+					spec[2] = Collection.skin_for(spec_weapon_id)
+				if spec.size() > 3:
+					spec[3] = Collection.sticker_for(spec_weapon_id)
+		if Net.active and Net.is_server():
+			Net.roster[1] = {"name": Net.default_name(), "loadout": PlayerScript.net_loadout()}
+	if Net.active and Net.sync != null:
+		Net.sync.send_event(player, "loadout", [PlayerScript.net_loadout()])
+	add_feed("EQUIPPED SKINS APPLIED", ACCENT)
+
+
 func _resume() -> void:
 	mp_pause = false
 	get_tree().paused = false
@@ -1798,6 +1833,8 @@ func _pause_activate(i: int) -> void:
 		settings_row = 0
 	elif item == "GUNSMITH":
 		gunsmith.open()
+	elif item == "LOADOUT  ·  SKINS":
+		armory.open()
 	elif item.begins_with("COPY JOIN CODE"):
 		var code := String(item.split("  ·  ")[1])
 		DisplayServer.clipboard_set(code)

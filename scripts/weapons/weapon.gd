@@ -29,6 +29,8 @@ var cycle_pending := 0.0
 ## equipped finish ("" = factory)
 var skin := ""
 var _model_root: Node3D
+var _base_skin_overrides: Dictionary = {}
+var _skin_base_saved := false
 var charm := ""
 var _charm: Node3D
 
@@ -89,8 +91,26 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 
 ## Applies a weapon skin finish (see skins.gd) to the built model.
 func apply_skin(finish: String) -> void:
-	if finish == "" or finish == skin or not Skins.FINISHES.has(finish):
+	if finish == skin:
 		return
+	if finish == "":
+		if _skin_base_saved:
+			for node in _base_skin_overrides:
+				if is_instance_valid(node):
+					(node as MeshInstance3D).material_override = _base_skin_overrides[node]
+		skin = ""
+		return
+	if not Skins.FINISHES.has(finish):
+		return
+	if not _skin_base_saved:
+		_skin_base_saved = true
+		var stack: Array = [_model_root]
+		while not stack.is_empty():
+			var node: Node = stack.pop_back()
+			for child in node.get_children():
+				stack.append(child)
+			if node is MeshInstance3D:
+				_base_skin_overrides[node] = (node as MeshInstance3D).material_override
 	skin = finish
 	Skins.apply(_model_root, finish, [Model._black, Model._worn])
 

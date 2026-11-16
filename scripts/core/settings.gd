@@ -62,6 +62,7 @@ const ROWS := {
 		["retro_crt", "RETRO CRT FILTER", null],
 		["film_grain", "FILM GRAIN & LENS FX", null],
 		["window_mode", "DISPLAY MODE", WINDOW],
+		["ui_scale", "UI SCALE", 0.7, 1.3, 0.05],
 		["max_fps", "FRAME RATE LIMIT", ["30", "60", "120", "144", "240", "300 (MAX)"]],
 		["vsync", "V-SYNC", null],
 	],
@@ -92,7 +93,7 @@ static var v := {
 	"crosshair_outline": true, "crosshair_spread": true, "film_grain": true, "vsync": true,
 	"preset": 2, "tactical_fov": 44.0, "render_scale": 1.0, "aa": 2, "shadows": 2,
 	"ssao": true, "ssr": true, "ssil": false, "gi": false, "fog": true, "bloom": true,
-	"brightness": 1.0, "retro_crt": false, "window_mode": 1, "max_fps": 1,
+	"brightness": 1.0, "retro_crt": false, "window_mode": 1, "max_fps": 1, "ui_scale": 1.0,
 	"mp_name": "", "mp_ip": "127.0.0.1", "mp_port": 7777,
 }
 static var _loaded := false
@@ -220,7 +221,7 @@ static func label_value(row: Array) -> String:
 		return "ON" if bool(val) else "OFF"
 	if is_choice(row):
 		return String(row[2][int(val)])
-	if key.ends_with("volume") or key == "render_scale" or key == "brightness" or key.begins_with("crosshair_"):
+	if key.ends_with("volume") or key == "render_scale" or key == "brightness" or key == "ui_scale" or key.begins_with("crosshair_"):
 		return "%d%%" % int(round(float(val) * 100.0))
 	if key.ends_with("fov"):
 		return "%d°" % int(val)
@@ -250,7 +251,33 @@ static func apply() -> void:
 	# scene-side graphics (environment, lights, cameras) live in main.gd
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree:
+		apply_ui_scale()
+		if not tree.root.size_changed.is_connected(apply_ui_scale):
+			tree.root.size_changed.connect(apply_ui_scale)
 		tree.call_group("graphics_listener", "apply_graphics")
+
+
+## The menus and HUD are laid out for a 1600x900 canvas (the default window).
+## 100% fits that layout to the window (1080p -> 1.2x, 1440p -> 1.6x, 4K -> 2.4x,
+## a smaller window shrinks it); the UI SCALE slider goes 70-130% from there.
+## Phones keep their own fixed layout sizes (platform.gd).
+const UI_DESIGN_SIZE := Vector2(1600, 900)
+
+
+static func ui_scale_factor(window_size: Vector2) -> float:
+	var fit := minf(window_size.x / UI_DESIGN_SIZE.x, window_size.y / UI_DESIGN_SIZE.y)
+	return clampf(snappedf(fit * float(v.ui_scale), 0.05), 0.5, 4.0)
+
+
+static func apply_ui_scale() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	# load(), not preload(): platform.gd preloads this script
+	if tree == null or load("res://scripts/core/platform.gd").touch_mode():
+		return
+	var root := tree.root
+	var f := ui_scale_factor(Vector2(root.size))
+	if not is_equal_approx(root.content_scale_factor, f):
+		root.content_scale_factor = f
 
 
 static func _set_bus(bus_name: String, vol: float) -> void:

@@ -16,11 +16,13 @@ class CommunityTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    def request(self, method, path, body=None, token=""):
+    def request(self, method, path, body=None, token="", sender=""):
         raw = json.dumps(body).encode() if body is not None else b""
         env = {"REQUEST_METHOD": method, "PATH_INFO": path,
                "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw),
                "HTTP_AUTHORIZATION": "Bearer " + token}
+        if sender:
+            env["HTTP_X_FORWARDED_FOR"] = sender
         status = []
         response = self.app(env, lambda value, _headers: status.append(value))
         return int(status[0].split()[0]), json.loads(b"".join(response))
@@ -49,6 +51,19 @@ class CommunityTests(unittest.TestCase):
         for token in [self.token, "c" * 64]:
             self.request("POST", "/logins", {"events": [self.event()]}, token)
         self.assertEqual(len(self.request("GET", "/admin/logins", token=self.app.admin_key)[1]["rows"]), 2)
+
+    def test_new_maps_and_direct_rooms(self):
+        room = {"name": "Test Room", "address": "wss://host.example.ts.net:10000",
+                "mode": "pvp", "map": "warehouse", "players": 1, "version": "1.37.0-beta"}
+        self.assertEqual(self.request("POST", "/room", room, self.token)[0], 200)
+        direct = dict(room, address="8.8.8.8:7777")
+        # direct rooms: only the sender's own public address
+        self.assertEqual(self.request("POST", "/room", direct, self.token)[0], 400)
+        self.assertEqual(self.request("POST", "/room", direct, self.token, sender="1.1.1.1")[0], 400)
+        self.assertEqual(self.request("POST", "/room", direct, self.token, sender="8.8.8.8")[0], 200)
+        private = dict(room, address="192.168.1.5:7777")
+        self.assertEqual(self.request("POST", "/room", private, self.token, sender="192.168.1.5")[0], 400)
+        self.assertEqual(self.request("GET", "/rooms")[1]["rooms"][0]["address"], "8.8.8.8:7777")
 
     def test_live_rooms_expire_and_only_owner_can_remove(self):
         room = {"name": "Test Room", "address": "wss://host.example.ts.net:10000",

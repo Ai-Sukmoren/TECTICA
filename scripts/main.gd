@@ -7,6 +7,7 @@ const Level = preload("res://scripts/world/forest_level.gd")
 const TownLevel = preload("res://scripts/world/town_level.gd")
 const DesertLevel = preload("res://scripts/world/desert_level.gd")
 const ModelLevel = preload("res://scripts/world/model_level.gd")
+const Layers = preload("res://scripts/core/layers.gd")
 ## Maps for Zombie Survival / Deathmatch (the campaign is always the forest).
 const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES",
 		"warehouse": "WAREHOUSE", "backrooms": "BACKROOMS"}
@@ -1018,11 +1019,48 @@ func respawn_near_team() -> void:
 	var yaw: float = level.player_yaw
 	if not mates.is_empty():
 		var m = mates[randi() % mates.size()]
-		var off := Vector3(randf_range(-1.6, 1.6), 0, randf_range(-1.6, 1.6))
-		pos = m.global_position + off
+		pos = _clear_spot_near(m.global_position)
 		yaw = m.aim_yaw
-	pos.y = level.ground_y(pos.x, pos.z) if level.has_method("ground_y") else pos.y
 	respawn_local(pos, yaw)
+
+
+## Joiners and respawns appear next to a teammate: a random offset alone put
+## them inside walls and crates (or off the floor) on the model-built maps, so
+## each candidate is checked: no overlap with the world and a floor below.
+## Falls back to the teammate's own spot (always standable).
+func _clear_spot_near(base: Vector3) -> Vector3:
+	for i in 16:
+		var r := 1.2 + 0.25 * i
+		var a := randf() * TAU
+		var p := base + Vector3(cos(a) * r, 0, sin(a) * r)
+		if level.has_method("ground_y"):
+			p.y = level.ground_y(p.x, p.z)
+		var floor_y = _floor_below(p)
+		if floor_y == null:
+			continue
+		p.y = float(floor_y)
+		if _spot_clear(p):
+			return p
+	return base
+
+
+## Height of the floor within 1 m of `p` (null over a hole / inside a wall).
+func _floor_below(p: Vector3):
+	var q := PhysicsRayQueryParameters3D.create(p + Vector3(0, 1.0, 0), p + Vector3(0, -1.0, 0), Layers.WORLD)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return null if hit.is_empty() else (hit.position as Vector3).y
+
+
+## Room for an operator standing at `p` (feet position).
+func _spot_clear(p: Vector3) -> bool:
+	var shape := CapsuleShape3D.new()
+	shape.radius = 0.4
+	shape.height = 1.6
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.transform = Transform3D(Basis(), p + Vector3(0, 0.95, 0))
+	q.collision_mask = Layers.WORLD
+	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 
 func _update_respawn(delta: float) -> void:
@@ -1046,10 +1084,7 @@ func net_spawn_for(_id: int) -> Array:
 		return net_pvp_spawn()
 	var alive := alive_players()
 	var base: Vector3 = alive[0].global_position if not alive.is_empty() else level.player_spawn
-	var pos := base + Vector3(randf_range(-2.0, 2.0), 0, randf_range(1.0, 2.5))
-	if level.has_method("ground_y"):
-		pos.y = level.ground_y(pos.x, pos.z)
-	return [pos, alive[0].aim_yaw if not alive.is_empty() else level.player_yaw]
+	return [_clear_spot_near(base), alive[0].aim_yaw if not alive.is_empty() else level.player_yaw]
 
 
 ## Deathmatch spawn farthest from every other living operator.
@@ -1069,6 +1104,10 @@ func net_pvp_spawn(exclude: Node = player) -> Array:
 	for e in enemies:
 		if is_instance_valid(e) and not e.is_dead and e.has_meta("tdm_bot"):
 			others.append(e)
+	# a spot a prop ended up on (some fixed spawns on Atomic Acres) is skipped
+	var clear := spots.filter(func(s): return _spot_clear(s))
+	if not clear.is_empty():
+		spots = clear
 	var best: Vector3 = spots[randi() % spots.size()]
 	var best_d := -1.0
 	for s in spots:

@@ -8,6 +8,7 @@ They are not proof of a globally verified account identity.
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import json
 import re
 import secrets
@@ -22,6 +23,8 @@ from waitress import serve
 
 TOKEN = re.compile(r"^[0-9a-f]{64}$")
 VERSION = re.compile(r"^[0-9A-Za-z.+_-]{1,40}$")
+MAP = re.compile(r"^[a-z0-9_]{1,24}$")
+DIRECT = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$")
 
 
 class Community:
@@ -71,6 +74,29 @@ class Community:
                 return False
             self.rates[identity] = (start, count + 1)
         return True
+
+    @staticmethod
+    def funnel_address(address):
+        """An ONLINE host: wss://<pc>.<tailnet>.ts.net:10000."""
+        endpoint = urlsplit(address)
+        return (endpoint.scheme == "wss" and (endpoint.hostname or "").endswith(".ts.net")
+                and endpoint.port == 10000 and not endpoint.username and not endpoint.password
+                and endpoint.path in ("", "/") and not endpoint.query and not endpoint.fragment)
+
+    @staticmethod
+    def direct_address(address, env):
+        """A direct (ENet, UPnP-opened) host: "<public IPv4>:<port>". The IP must be
+        the address the request came from (Funnel's X-Forwarded-For), so a room can
+        only advertise its own host's address."""
+        match = DIRECT.fullmatch(address)
+        if not match:
+            return False
+        try:
+            ip = ipaddress.IPv4Address(match.group(1))
+        except ValueError:
+            return False
+        sender = env.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+        return ip.is_global and 1 <= int(match.group(2)) <= 65535 and sender == str(ip)
 
     def __call__(self, env, start_response):
         try:
@@ -165,15 +191,13 @@ class Community:
                 db.executemany("INSERT OR IGNORE INTO logins VALUES (?,?,?,?,?,?)", validated)
             return "200 OK", {"ok": True}
         name, address = body["name"], body["address"]
-        endpoint = urlsplit(address)
         if (not isinstance(name, str) or not 1 <= len(name) <= 40
                 or any(ord(c) < 32 for c in name)
-                or endpoint.scheme != "wss" or not (endpoint.hostname or "").endswith(".ts.net")
-                or endpoint.port != 10000 or endpoint.username or endpoint.password
-                or endpoint.path not in ("", "/") or endpoint.query or endpoint.fragment
+                or not isinstance(address, str)
+                or not (self.funnel_address(address) or self.direct_address(address, env))
                 or not VERSION.fullmatch(body["version"])
                 or body["mode"] not in ("coop", "pvp")
-                or body["map"] not in ("forest", "town")
+                or not isinstance(body["map"], str) or not MAP.fullmatch(body["map"])
                 or type(body["players"]) is not int or not 1 <= body["players"] <= 8):
             raise ValueError()
         with self.connect() as db:

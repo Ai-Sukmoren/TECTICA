@@ -49,7 +49,8 @@ func _join() -> void:
 		_message = "This room is full."
 		return
 	Net.player_name = preload("res://scripts/core/profile.gd").current.to_upper()
-	if Net.join(str(room.address)) == OK:
+	var target := Net.parse_invite(str(room.address))   # wss://… (ONLINE) or ip:port (direct)
+	if not target.is_empty() and Net.join(String(target[0]), int(target[1])) == OK:
 		_message = "Connecting to " + str(room.name) + "..."
 	else:
 		_message = Net.status

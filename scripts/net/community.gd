@@ -111,12 +111,19 @@ func _sent_logins(result: int, code: int, _headers_in: PackedStringArray, _body:
 func _publish_room() -> void:
 	if _room_busy:
 		return
-	var hosting := Net.active and Net.is_server() and Net.transport == "ws" and Net.funnel_url != ""
-	if hosting:
+	# listed only when friends outside the network can actually reach it:
+	# an ONLINE (Funnel) host, or a direct host whose router opened the port (UPnP)
+	var address := ""
+	if Net.active and Net.is_server():
+		if Net.transport == "ws":
+			address = Net.funnel_url
+		elif Net.upnp_state == "open" and Net.public_ip != "":
+			address = "%s:%d" % [Net.public_ip, Net.port]
+	if address != "":
 		var scene = get_tree().current_scene
 		if scene == null or scene.get("map_id") == null:
 			return
-		var body := {"name": Net.default_name() + "'s room", "address": Net.funnel_url,
+		var body := {"name": Net.default_name() + "'s room", "address": address,
 			"mode": Net.kind, "map": str(scene.map_id), "players": Net.roster.size(),
 			"version": str(ProjectSettings.get_setting("application/config/version"))}
 		_published = true

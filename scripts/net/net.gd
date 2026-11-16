@@ -149,10 +149,55 @@ static func funnel_cleanup_stale() -> void:
 ## Waits for the short-lived helper threads (link registration, Funnel CLI)
 ## so none is destroyed while still running.
 static func join_threads() -> void:
-	for t in [_funnel_thread, _reg_thread]:
+	for t in [_funnel_thread, _reg_thread, _upnp_thread]:
 		if t != null and t.is_started():
 			t.wait_to_finish()
 	_funnel_thread = null
+	_upnp_thread = null
+
+
+## ---- direct peer-to-peer hosting: ask the router to open the game's UDP port
+## (UPnP), so internet friends can join the host's public address / join code
+## without manual port forwarding. Runs in the background (discovery takes ~2 s).
+## Routers with UPnP turned off, or double NAT / carrier NAT, still need
+## forwarding or the ONLINE (Tailscale Funnel) host.
+static var upnp_state := ""        # "" idle, "busy", "open" or "failed"
+static var _upnp: UPNP
+static var _upnp_port := 0
+static var _upnp_thread: Thread
+
+
+static func upnp_open(p_port: int) -> void:
+	upnp_close()
+	upnp_state = "busy"
+	_upnp_thread = Thread.new()
+	_upnp_thread.start(_upnp_job.bind(p_port))
+
+
+static func _upnp_job(p_port: int) -> void:
+	var u := UPNP.new()
+	if u.discover(2000, 2) != UPNP.UPNP_RESULT_SUCCESS or u.get_gateway() == null or not u.get_gateway().is_valid_gateway():
+		upnp_state = "failed"
+		return
+	if u.add_port_mapping(p_port, p_port, "TECTICA", "UDP", 0) != UPNP.UPNP_RESULT_SUCCESS:
+		upnp_state = "failed"
+		return
+	var ext := u.query_external_address()
+	if _octets(ext).size() == 4 and _private_index(_octets(ext)) < 0:
+		public_ip = ext   # a private address here means double NAT: keep the ipify lookup
+	_upnp = u
+	_upnp_port = p_port
+	upnp_state = "open"
+
+
+static func upnp_close() -> void:
+	if _upnp_thread != null and _upnp_thread.is_started():
+		_upnp_thread.wait_to_finish()
+	_upnp_thread = null
+	if _upnp != null:
+		_upnp.delete_port_mapping(_upnp_port, "UDP")
+	_upnp = null
+	upnp_state = ""
 
 
 ## Removes only the game's own Funnel mapping.
@@ -288,6 +333,7 @@ static func host(p_kind: String, p_port: int = DEFAULT_PORT, online: bool = fals
 			return err
 		_mp().multiplayer_peer = peer
 		transport = "enet"
+		upnp_open(p_port)
 	kind = p_kind
 	port = p_port
 	active = true
@@ -326,6 +372,7 @@ static func join(ip: String, p_port: int = DEFAULT_PORT) -> int:
 
 static func leave() -> void:
 	funnel_stop()
+	upnp_close()
 	var mp := _mp()
 	if mp.multiplayer_peer != null and not (mp.multiplayer_peer is OfflineMultiplayerPeer):
 		mp.multiplayer_peer.close()

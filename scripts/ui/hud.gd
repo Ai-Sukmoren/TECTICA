@@ -1686,7 +1686,13 @@ func _copy_public() -> void:
 	var icode := Net.join_code(Net.public_ip, Net.port)
 	if icode != "":
 		add_feed("INTERNET JOIN CODE  ·  %s" % icode, ACCENT)
-	add_feed("FRIENDS OVER THE INTERNET NEED UDP PORT %d FORWARDED ON YOUR ROUTER" % Net.port, WARN)
+	match Net.upnp_state:
+		"open":
+			add_feed("ROUTER PORT %d OPENED AUTOMATICALLY  ·  FRIENDS CAN JOIN DIRECTLY" % Net.port, ACCENT)
+		"busy":
+			add_feed("STILL ASKING YOUR ROUTER TO OPEN UDP PORT %d  ·  TRY AGAIN IN A MOMENT" % Net.port, WARN)
+		_:
+			add_feed("ROUTER DID NOT OPEN UDP PORT %d (UPnP OFF?)  ·  FORWARD IT OR HOST ONLINE" % Net.port, WARN)
 
 
 # ================================================================ zombie shop

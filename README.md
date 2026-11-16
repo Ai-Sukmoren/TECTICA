@@ -97,8 +97,10 @@ Needs a 64-bit Windows 10/11 PC with a Vulkan-capable graphics card.
 - **Join a friend:** **MULTIPLAYER → JOIN**, type the code, press **Enter**.
 - A 5-character code works for friends on the **same Wi-Fi / network** or on the **same Tailscale network**
   (there is one code for each). The code is the host's address packed into a few letters; there is no lobby server.
-- **Over the internet without Tailscale:** the host forwards UDP port 7777 on the router and uses
-  **Esc → COPY INVITE LINK · INTERNET**, which also gives a 7-character code.
+- **Over the internet without Tailscale (direct, peer to peer):** when hosting, the game asks the router to open
+  UDP port 7777 itself (UPnP). The host uses **Esc → COPY INVITE LINK · INTERNET**, which also gives a 7-character
+  code and says whether the router opened the port. If UPnP is off on the router (or the ISP uses carrier-grade NAT),
+  forward UDP 7777 by hand or host *ONLINE* instead.
 - **Online (Tailscale Funnel):** switch **CONNECTION** to *ONLINE*; the host needs [Tailscale](https://tailscale.com)
   with Funnel enabled and shares the invite link, friends need nothing extra.
 - Invite links (`tectica://join/...`) and plain IP addresses still work in the JOIN row; Ctrl+V pastes.

@@ -221,6 +221,9 @@ var palette: Dictionary
 ## Skinned model that copies this rig's pose (null = procedural body is drawn).
 var model_skin: ModelSkin
 var _body_meshes: Array[MeshInstance3D] = []
+## Off: first person draws the rig's own code-built arms and gloves.
+## On: the supplied skinned FPS arm model (fps_arm_rig.gd).
+const USE_SUPPLIED_FP_ARMS := false
 var fp_arm_rig: FPSArmRig
 var _fp_arm_shadows := {}
 
@@ -322,24 +325,13 @@ func build(p: Dictionary) -> void:
 			for k in 3:
 				_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
 			_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
-		_mesh(el, ML.cylinder(0.039, 0.041, 0.032, 14), p.gloves, Vector3(0, -0.272, 0))
-		_mesh(el, ML.cylinder(0.042, 0.042, 0.012, 14), detail, Vector3(0, -0.264, 0))
+		_mesh(el, Body.glove_cuff(-FOREARM), p.gloves, Vector3.ZERO)
+		_mesh(el, Body.glove_strap(-FOREARM), detail, Vector3.ZERO)
 		_mesh(el, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -0.01, -0.05))
 		var hand := _node(el, "Hand", Vector3(0, -FOREARM, 0))
-		# glove: palm, padded back with a knuckle guard, four curled fingers
-		# wrapping the grip and a thumb over the top
-		_mesh(hand, ML.rbox(Vector3(0.05, 0.088, 0.088)), p.gloves, Vector3(side * 0.008, 0.0, 0.0))
-		_mesh(hand, ML.rbox(Vector3(0.016, 0.07, 0.066)), detail, Vector3(side * 0.037, 0.004, -0.004))
-		_mesh(hand, ML.rbox(Vector3(0.02, 0.03, 0.082)), detail, Vector3(side * 0.034, 0.012, -0.05), Vector3(0, side * 0.25, 0))
-		for k in 4:
-			var fy := 0.032 - k * 0.0215
-			var flen := 0.064 - absf(k - 1.2) * 0.006
-			# first joint runs forward from the knuckle, second curls across the grip
-			_mesh(hand, ML.capsule(0.0105, flen), p.gloves, Vector3(side * 0.02, fy, -0.062), Vector3(PI * 0.5, 0, 0))
-			_mesh(hand, ML.capsule(0.01, 0.05), p.gloves, Vector3(-side * 0.004, fy, -0.09), Vector3(0, 0, PI * 0.5))
-			_mesh(hand, ML.capsule(0.0095, 0.04), p.gloves, Vector3(-side * 0.03, fy, -0.074), Vector3(PI * 0.5, side * 0.5, 0))
-		_mesh(hand, ML.capsule(0.0125, 0.07), p.gloves, Vector3(-side * 0.002, 0.052, -0.03), Vector3(PI * 0.5, -side * 0.5, 0))
-		_mesh(hand, ML.sphere(0.017, false, 8), p.gloves, Vector3(side * 0.012, 0.046, 0.006))
+		# glove: rounded palm, jointed fingers wrapping the grip, thumb over the top
+		_mesh(hand, Body.glove(side), p.gloves, Vector3.ZERO)
+		_mesh(hand, Body.glove_trim(side), detail, Vector3.ZERO)
 		shoulders.append(sh)
 		elbows.append(el)
 		hands.append(hand)
@@ -377,11 +369,9 @@ func _build_details(p: Dictionary) -> void:
 	var wrap: Material = p.get("wrap", M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0))
 	_mesh(chest, ML.cylinder(0.07, 0.092, 0.075, 14), wrap, Vector3(0, 0.305, 0.0))
 	_mesh(chest, ML.sphere(0.06, false, 10), wrap, Vector3(0.0, 0.285, -0.075), Vector3.ZERO, Vector3(1.5, 0.75, 0.7))
-	# arms: rounded elbow pads, glove cuffs
+	# arms: rounded elbow pads
 	for i in 2:
 		_mesh(elbows[i], ML.sphere(0.052, false, 10), pads, Vector3(0, -0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
-		_mesh(elbows[i], ML.cylinder(0.06, 0.064, 0.055, 12), p.gloves, Vector3(0, -FOREARM + 0.035, 0))
-		_mesh(hands[i], ML.rbox(Vector3(0.076, 0.03, 0.06)), detail, Vector3(0, -0.02, -0.03))
 	# legs: knee caps, pocket flaps, boot collars and toe caps
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0
@@ -802,7 +792,7 @@ func set_first_person(on: bool) -> void:
 				(n as MeshInstance3D).cast_shadow = mode
 	_apply_model_visibility()
 	# Only the local first-person operator allocates the supplied skinned arms.
-	if on and not zombie and fp_arm_rig == null and ResourceLoader.exists(FPSArmRig.ASSET):
+	if on and USE_SUPPLIED_FP_ARMS and not zombie and fp_arm_rig == null and ResourceLoader.exists(FPSArmRig.ASSET):
 		var arms := FPSArmRig.new()
 		arms.name = "FPSArms"
 		add_child(arms)
@@ -1973,7 +1963,7 @@ func _one_hand_run() -> bool:
 ## Glove extents in hand space (corners of all its meshes), measured once.
 var _hand_box: Array = []
 ## The wrist cuff's radius: it sits at the hand's origin.
-const CUFF_R := 0.065
+const CUFF_R := 0.052
 ## How far (0..1) a glove may rise from its hold point toward the sight line while aiming.
 const ADS_HAND_RISE := 0.33
 

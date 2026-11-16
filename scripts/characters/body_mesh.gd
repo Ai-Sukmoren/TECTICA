@@ -9,6 +9,8 @@ extends RefCounted
 ##
 ## A ring is [y, half width (x), half depth (z), centre z]; -Z is the front.
 
+const ML = preload("res://scripts/core/mesh_lib.gd")
+
 static var _cache := {}
 
 
@@ -186,7 +188,7 @@ static func upper_arm(length: float) -> ArrayMesh:
 		[-length * 0.45, 0.056, 0.062, -0.008],
 		[-length * 0.8, 0.050, 0.054, -0.004],
 		[-length - 0.02, 0.046, 0.048, 0.0],
-	], 12)
+	], 16)
 
 
 ## Forearm sleeve from the elbow: full just below the elbow, tapering and
@@ -198,7 +200,7 @@ static func forearm(length: float, thin: bool = false) -> ArrayMesh:
 		[-length * 0.22, 0.054 * k, 0.051 * k, 0.0],
 		[-length * 0.55, 0.047 * k, 0.043 * k, 0.0],
 		[-length * 0.88, 0.040 * k, 0.034 * k, 0.0],
-	], 12)
+	], 16)
 
 
 ## Low-poly ball to fill a bending joint (knee, elbow).
@@ -210,3 +212,82 @@ static func joint(radius: float) -> ArrayMesh:
 		[-radius * 0.6, radius * 0.8, radius * 0.8, 0.0],
 		[-radius, 0.0, 0.0, 0.0],
 	], 10)
+
+
+# ------------------------------------------------------------------ gloves
+# Hand space (soldier_rig "Hand" node): +X * side is the back of the hand,
+# +Y the thumb side, -Z the fingers. The parts keep the old block glove's
+# finger and thumb positions, so every grip still lands where it did.
+
+## Merges [mesh, Transform3D] parts (primitives of one vertex format) into a
+## single cached mesh: one draw call per glove material.
+static func merge(key: String, parts: Array) -> ArrayMesh:
+	if _cache.has(key):
+		return _cache[key]
+	var st := SurfaceTool.new()
+	for part in parts:
+		st.append_from(part[0], 0, part[1])
+	st.index()
+	var mesh := st.commit()
+	_cache[key] = mesh
+	return mesh
+
+
+static func _xf(pos: Vector3, rot: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> Transform3D:
+	return Transform3D(Basis.from_euler(rot).scaled_local(scl), pos)
+
+
+## Glove shell: rounded palm and thenar pad, three-segment fingers with
+## rounded knuckles, tapered fingertips, two-segment thumb.
+static func glove(side: float) -> ArrayMesh:
+	var s := side
+	var parts: Array = []
+	parts.append([ML.sphere(0.5, false, 16), _xf(Vector3(s * 0.006, 0.0, -0.004), Vector3.ZERO, Vector3(0.05, 0.09, 0.104))])
+	parts.append([ML.sphere(0.5, false, 12), _xf(Vector3(s * 0.004, 0.04, 0.006), Vector3.ZERO, Vector3(0.036, 0.034, 0.05))])
+	for k in 4:
+		var fy := 0.032 - k * 0.0215
+		var flen := 0.064 - absf(k - 1.2) * 0.006
+		var tip := 1.0 - absf(k - 1.2) * 0.04   # little finger slimmest
+		parts.append([ML.capsule(0.0108 * tip, flen), _xf(Vector3(s * 0.02, fy, -0.062), Vector3(PI * 0.5, 0, 0))])
+		parts.append([ML.sphere(0.0112 * tip, false, 10), _xf(Vector3(s * 0.019, fy, -0.09))])
+		parts.append([ML.capsule(0.0102 * tip, 0.048), _xf(Vector3(-s * 0.004, fy, -0.09), Vector3(0, 0, PI * 0.5))])
+		parts.append([ML.sphere(0.0099 * tip, false, 10), _xf(Vector3(-s * 0.027, fy, -0.088))])
+		parts.append([ML.capsule(0.0088 * tip, 0.036), _xf(Vector3(-s * 0.031, fy, -0.073), Vector3(PI * 0.5, s * 0.5, 0))])
+	var trot := Vector3(PI * 0.5, -s * 0.5, 0)
+	var d := Basis.from_euler(trot) * Vector3.UP
+	var c := Vector3(-s * 0.002, 0.052, -0.03)
+	parts.append([ML.capsule(0.0128, 0.046), _xf(c + d * 0.012, trot)])
+	parts.append([ML.sphere(0.0124, false, 10), _xf(c - d * 0.005)])
+	parts.append([ML.capsule(0.011, 0.034), _xf(c - d * 0.02, trot)])
+	return merge("glove%d" % int(s), parts)
+
+
+## Glove trim: padded back plate, a hard knuckle pad per finger, suede palm
+## patch and the hook-and-loop wrist tab.
+static func glove_trim(side: float) -> ArrayMesh:
+	var s := side
+	var parts: Array = []
+	parts.append([ML.rbox(Vector3(0.012, 0.072, 0.054), 0.005), _xf(Vector3(s * 0.029, 0.002, -0.006))])
+	for k in 4:
+		var fy := 0.032 - k * 0.0215
+		parts.append([ML.rbox(Vector3(0.007, 0.016, 0.017), 0.0033), _xf(Vector3(s * 0.029, fy, -0.047))])
+	parts.append([ML.rbox(Vector3(0.006, 0.062, 0.05), 0.0025), _xf(Vector3(-s * 0.018, -0.004, -0.002))])
+	parts.append([ML.rbox(Vector3(0.008, 0.05, 0.02), 0.003), _xf(Vector3(s * 0.027, 0.0, 0.038))])
+	return merge("glove_trim%d" % int(s), parts)
+
+
+## Glove gauntlet round the wrist in forearm (Elbow) space: `wrist` is the
+## hand's offset (-FOREARM). Flares over the sleeve hem.
+static func glove_cuff(wrist: float) -> ArrayMesh:
+	return merge("glove_cuff%.3f" % wrist, [
+		[ML.cylinder(0.05, 0.0465, 0.052, 18), _xf(Vector3(0, wrist + 0.03, 0))],
+		[ML.cylinder(0.0515, 0.0515, 0.007, 18), _xf(Vector3(0, wrist + 0.055, 0))],
+	])
+
+
+## Wrist strap round the gauntlet with its pull tab.
+static func glove_strap(wrist: float) -> ArrayMesh:
+	return merge("glove_strap%.3f" % wrist, [
+		[ML.cylinder(0.0508, 0.0498, 0.016, 18), _xf(Vector3(0, wrist + 0.03, 0))],
+		[ML.rbox(Vector3(0.022, 0.018, 0.008), 0.003), _xf(Vector3(0.0, wrist + 0.03, -0.0515))],
+	])

@@ -74,7 +74,6 @@ var flashlight_on := false
 var flashlight: SpotLight3D
 ## Night-vision goggles (N): main.gd fades the effect in and out.
 var nvg_on := false
-var _chem_glow: OmniLight3D
 ## Player switched the light themselves (T): auto-on at dusk leaves it alone.
 var flashlight_manual := false
 var _torch: Node3D
@@ -364,8 +363,9 @@ func _equip_current() -> void:
 	_place_torch()
 
 
-## Green chem lights on the shoulder strap and the back of the vest, so every
-## operator stays readable in the dark (soft glow, no shadows, cheap).
+## Green chem sticks on the shoulder strap and the back of the vest, so every
+## operator stays readable in the dark. They only glow themselves: no light is
+## cast on the body (it showed as a green rim on the operator, also on the menu).
 const CHEM_COLOR := Color(0.35, 1.0, 0.45)
 
 func _build_chem_lights() -> void:
@@ -379,32 +379,6 @@ func _build_chem_lights() -> void:
 		stick.position = spot[0]
 		stick.rotation = spot[1]
 		rig.chest.add_child(stick)
-	var light := OmniLight3D.new()
-	light.name = "ChemGlow"
-	light.light_color = CHEM_COLOR
-	light.light_energy = 0.55
-	light.omni_range = 3.2
-	light.omni_attenuation = 1.6
-	light.shadow_enabled = false
-	light.light_volumetric_fog_energy = 0.0
-	light.position = Vector3(0, 0.15, 0)
-	rig.chest.add_child(light)
-	_chem_glow = light
-
-
-## Chem sticks always glow, but their light only matters after dark: by day
-## it tinted the whole operator green, and in first person it lit the arms
-## and weapon from the inside.
-func _update_chem_glow() -> void:
-	if _chem_glow == null:
-		return
-	var night := 1.0
-	var m = get_tree().current_scene
-	if m != null and m.get("tod") != null:
-		night = float(m.tod.night)
-	var e := 0.55 * smoothstep(0.3, 0.7, night) * (0.0 if rig.fp_mode else 1.0)
-	_chem_glow.light_energy = e
-	_chem_glow.visible = e > 0.01
 
 
 ## Number keys pick weapons by role, so they still work when the inventory is
@@ -536,7 +510,6 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if rig == null:
 		return
-	_update_chem_glow()
 	_tick_actions(delta)
 	if puppet:
 		_puppet_physics(delta)

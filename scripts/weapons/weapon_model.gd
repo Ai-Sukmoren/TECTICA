@@ -188,13 +188,23 @@ const PACK4 := "res://assets/thirdparty/alstra_shooter_essentials/Guns/"
 const _Y90 := Vector3(0, -PI * 0.5, 0)
 
 
+## Gun and attachment model files stay loaded once used (GunWarmup loads them
+## all with the map), so switching guns never waits on the disk.
+static var _scenes := {}
+
+static func _scene(path: String) -> PackedScene:
+	if not _scenes.has(path):
+		_scenes[path] = load(path)
+	return _scenes[path]
+
+
 ## Copies every mesh of a glb into `r` (in weapon space), except names that
 ## contain `skip`. Returns {mesh name: [mesh, transform]} for the skipped ones.
 static func _glb_meshes(r: Node3D, path: String, conv: Basis, skip: String = "") -> Dictionary:
 	var held := {}
 	if not ResourceLoader.exists(path):
 		return held
-	var inst := (load(path) as PackedScene).instantiate()
+	var inst := _scene(path).instantiate()
 	var list: Array = []
 	_glb_walk(inst, Transform3D.IDENTITY, list)
 	inst.free()
@@ -527,7 +537,7 @@ static func _low_poly(r: Node3D, model: String, handguard: String = "standard") 
 	var path := LOW_POLY + model + ".glb"
 	if spec.is_empty() or not ResourceLoader.exists(path):
 		return _placeholder(r, float(spec.get("length", 0.8)), pistol)
-	var inst := (load(path) as PackedScene).instantiate()
+	var inst := _scene(path).instantiate()
 	var list: Array = []
 	_glb_walk(inst, Transform3D.IDENTITY, list)
 	inst.free()
@@ -696,7 +706,7 @@ static func _att_model(at: Node3D, name: String) -> Node3D:
 	var path := LP_ATT + name + ".glb"
 	if not ResourceLoader.exists(path):
 		return null
-	var inst := (load(path) as PackedScene).instantiate()
+	var inst := _scene(path).instantiate()
 	var list: Array = []
 	_glb_walk(inst, Transform3D.IDENTITY, list)
 	inst.free()

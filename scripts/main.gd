@@ -22,6 +22,7 @@ const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
 const PackProps = preload("res://scripts/core/pack_props.gd")
 const Transition = preload("res://scripts/ui/transition.gd")
+const GunWarmup = preload("res://scripts/weapons/gun_warmup.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const FX = preload("res://scripts/fx/fx.gd")
 const WaveDirector = preload("res://scripts/modes/wave_director.gd")
@@ -221,6 +222,11 @@ func _ready() -> void:
 	hud.name = "HUD"
 	add_child(hud)
 	hud.setup(self)
+	# every gun and attachment built and drawn once under the loading screen,
+	# so switching guns mid-match does not stall to load and compile them
+	var warm := GunWarmup.new()
+	warm.name = "GunWarmup"
+	add_child(warm)
 	Transition.reveal(get_tree())   # fade in once the new map has rendered
 
 

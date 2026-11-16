@@ -26,6 +26,10 @@ var _preview_rect := Rect2()
 var _dragging_preview := false
 var _manual_rotation := false
 var _spin := 0.0
+## attachment slots with a real part on the previewed gun (only those take a skin)
+var _skinnable: Dictionary = {}
+var _skinnable_id := ""
+const SKIN_TAG_W := 150.0
 
 
 func setup(p_hud) -> void:
@@ -128,6 +132,29 @@ func _change(i: int, dir: int) -> void:
 		hud.gunsmith_live_update()
 
 
+## True when row `i` is an attachment that is physically on the previewed gun.
+func _part_row(i: int) -> bool:
+	var r: Dictionary = _rows[i]
+	return r.t == "att" and r.s == _skinnable_id and _skinnable.has(r.a)
+
+
+## Steps the skin of the attachment on row `i` (match gun / factory / owned finishes).
+func _change_part_skin(i: int, dir: int) -> void:
+	if not _part_row(i):
+		return
+	var r: Dictionary = _rows[i]
+	Collection.cycle_part(String(Loadout.entry(r.s).id), r.a, dir)
+	Sfx.play(hud, "switch", Vector3.ZERO, -12.0, 0.0)
+	hud.gunsmith_live_update()
+
+
+func _part_skin_label(weapon: String, slot: String) -> String:
+	var f := String(Collection.parts_for(weapon).get(slot, ""))
+	if f == "":
+		return "SKIN: GUN"
+	return "SKIN: FACTORY" if f == Skins.FACTORY else "SKIN: " + Skins.finish_name(f).to_upper()
+
+
 func _activate(i: int) -> bool:
 	var r: Dictionary = _rows[i]
 	if r.t == "back":
@@ -163,6 +190,10 @@ func handle(event: InputEvent) -> bool:
 		_change(row, -1)
 	elif event.is_action_pressed("ui_right") or event.is_action_pressed("move_right"):
 		_change(row, 1)
+	elif event.is_action_pressed("peek_left"):
+		_change_part_skin(row, -1)
+	elif event.is_action_pressed("peek_right"):
+		_change_part_skin(row, 1)
 	elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
 		return _activate(row)
 	elif event is InputEventMouseMotion:
@@ -178,6 +209,9 @@ func handle(event: InputEvent) -> bool:
 					var t: String = _rows[i].t
 					if t == "back" or t == "reset":
 						return _activate(i)
+					if _part_row(i) and event.position.x > rr.end.x - SKIN_TAG_W:
+						_change_part_skin(i, 1)   # the skin tag at the row's right end
+						return false
 					_change(i, -1 if event.position.x < rr.position.x + rr.size.x * 0.45 else 1)
 				elif event.button_index == MOUSE_BUTTON_RIGHT:
 					_change(i, -1)
@@ -190,14 +224,20 @@ func _process(delta: float) -> void:
 	_build_rows()
 	var e: Dictionary = Loadout.entry(_focus_slot())
 	var sk := Collection.skin_for(String(e.id))
-	var key := str(e.id) + str(e.att) + sk + String(e.get("charm", ""))
+	var parts := Collection.parts_for(String(e.id))
+	var key := str(e.id) + str(e.att) + sk + str(parts) + String(e.get("charm", ""))
 	if key != _preview_key:
 		_preview_key = key
 		for c in _pivot.get_children():
 			c.queue_free()
 		var w := Weapon.new()
 		w.setup(String(e.id), e.att)
-		w.apply_skin(sk)
+		w.apply_skin(sk, parts)
+		_skinnable = {}
+		_skinnable_id = _focus_slot()
+		for mi in w.find_children("*", "MeshInstance3D", true, false):
+			if mi.has_meta("skin_part"):
+				_skinnable[String(mi.get_meta("skin_part"))] = true
 		w.apply_charm(String(e.get("charm", "")))
 		_pivot.add_child(w)
 		var pistol := w.is_pistol() or w.is_melee()
@@ -272,6 +312,13 @@ func draw(c: Control, vp: Vector2) -> void:
 		if value != "":
 			var shown := ("<  " + value + "  >") if sel else value
 			hud._text(c, Vector2(rect.position.x + 170, y), shown, 14 if head else 13, hud.WARN if sel else col, HORIZONTAL_ALIGNMENT_LEFT, -1, head)
+		if _part_row(i):
+			# this attachment's own skin; Q / E (or a click here) changes it
+			var wid := String(Loadout.entry(r.s).id)
+			var pf := String(Collection.parts_for(wid).get(r.a, ""))
+			var tag_col: Color = Skins.RARITY_COLORS[Skins.rarity_of(pf)] if Skins.FINISHES.has(pf) else hud.DIM
+			hud._text(c, Vector2(rect.end.x - SKIN_TAG_W, y), ("Q  " if sel else "") + _part_skin_label(wid, r.a) + ("  E" if sel else ""), 11,
+					tag_col if not sel else hud.WARN, HORIZONTAL_ALIGNMENT_RIGHT, SKIN_TAG_W - 8.0)
 		y += row_step
 
 	# --- preview
@@ -327,7 +374,7 @@ func draw(c: Control, vp: Vector2) -> void:
 	hud._text(c, Vector2(bx, iy), "MAGAZINE  %d / %d      RELOAD  %.1f s      %s" % [int(st.mag), int(st.reserve), float(st.reload), "AUTO" if st.auto else ("BOLT-ACTION" if st.cycle == "bolt" else ("PUMP-ACTION" if st.cycle == "pump" else ("LEVER-ACTION" if st.cycle == "lever" else "SEMI-AUTO")))],
 			13, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(bx, iy + 22), "Green = better than stock, red = worse.", 11, hud.DIM)
-	hud._text(c, Vector2(0, vp.y - 30), "W/S select   ·   A/D or click change   ·   Esc / B save & back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	hud._text(c, Vector2(0, vp.y - 30), "W/S select   ·   A/D or click change   ·   Q/E attachment skin   ·   Esc / B save & back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
 
 func _n(v, maxv: float) -> float:

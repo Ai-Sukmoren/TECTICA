@@ -467,11 +467,32 @@ static func _skin_surfaces(mi: MeshInstance3D, fm: Material) -> void:
 		mi.set_surface_override_material(s, fm)
 
 
-static func apply(model_root: Node, finish: String, metal_mats: Array) -> void:
-	if not FINISHES.has(finish) or model_root == null:
+## A part skin that keeps that part's factory look under a skinned gun.
+const FACTORY := "factory"
+
+
+## Keeps only real attachment slots mapped to real finishes (or FACTORY): part
+## skins arrive from other peers, so nothing else may reach the materials.
+static func sanitize_parts(parts) -> Dictionary:
+	var out := {}
+	if not (parts is Dictionary):
+		return out
+	for slot in parts:
+		var f = parts[slot]
+		if not (slot is String and f is String):
+			continue
+		if slot in Data.SLOTS and (f == FACTORY or FINISHES.has(f)):
+			out[slot] = f
+	return out
+
+
+## Paints a built weapon model. `finish` is the gun's own finish ("" = factory);
+## `parts` gives an attachment slot (or the magazine) its own finish, or FACTORY.
+## A part without an entry wears the gun's finish. Parts are tagged by the model
+## builder with the "skin_part" meta.
+static func apply(model_root: Node, finish: String, metal_mats: Array, parts: Dictionary = {}) -> void:
+	if model_root == null:
 		return
-	var mm := material(finish, false)
-	var fm := material(finish, true)
 	var stack: Array = [model_root]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
@@ -480,6 +501,11 @@ static func apply(model_root: Node, finish: String, metal_mats: Array) -> void:
 		if not (n is MeshInstance3D):
 			continue
 		var mi := n as MeshInstance3D
+		var f := String(parts.get(String(mi.get_meta("skin_part", "")), finish))
+		if not FINISHES.has(f):
+			continue   # factory look for this part
+		var mm := material(f, false)
+		var fm := material(f, true)
 		var mat := mi.material_override
 		if mat == null:
 			if mi.has_meta("pack4"):   # textured model parts (guns and attachments)

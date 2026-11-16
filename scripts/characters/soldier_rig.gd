@@ -23,6 +23,7 @@ const ROLL_HAMMER_COCKED := 0.75   # matches WeaponModel.ROLL_HAMMER_COCKED
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const ModelSkin = preload("res://scripts/characters/model_skin.gd")
 const Body = preload("res://scripts/characters/body_mesh.gd")
+const FPSArmRig = preload("res://scripts/characters/fps_arm_rig.gd")
 
 signal footstep(pos: Vector3, intensity: float)
 signal throw_release
@@ -182,6 +183,10 @@ var inspect_t := -1.0
 ## Starting duration: two readable holds in 2.6 s. Regression checks require
 ## completion at every tested frame rate; shorten if the holds feel sluggish.
 const INSPECT_DURATION := 2.6
+## An interrupted inspect eases back to the held pose over this long (s).
+const INSPECT_BLEND_OUT := 0.16
+var _inspect_fade := 0.0
+var _inspect_last := Transform3D.IDENTITY
 var death_t := -1.0
 var _death_dir := Vector3.FORWARD
 var _death_hip := HIP_STAND
@@ -216,6 +221,8 @@ var palette: Dictionary
 ## Skinned model that copies this rig's pose (null = procedural body is drawn).
 var model_skin: ModelSkin
 var _body_meshes: Array[MeshInstance3D] = []
+var fp_arm_rig: FPSArmRig
+var _fp_arm_shadows := {}
 
 
 # =====================================================================
@@ -794,6 +801,32 @@ func set_first_person(on: bool) -> void:
 			if n is MeshInstance3D:
 				(n as MeshInstance3D).cast_shadow = mode
 	_apply_model_visibility()
+	# Only the local first-person operator allocates the supplied skinned arms.
+	if on and not zombie and fp_arm_rig == null and ResourceLoader.exists(FPSArmRig.ASSET):
+		var arms := FPSArmRig.new()
+		arms.name = "FPSArms"
+		add_child(arms)
+		if arms.setup(self):
+			fp_arm_rig = arms
+			if weapon != null:
+				arms.select_weapon(weapon)
+		else:
+			arms.queue_free()
+	if fp_arm_rig != null:
+		fp_arm_rig.visible = on
+		if not on:
+			hand_mag.transform = Transform3D(Basis.IDENTITY, Vector3(0, -0.04, 0))
+		for sh in shoulders:
+			for n in sh.find_children("*", "MeshInstance3D", true, false):
+				var mi := n as MeshInstance3D
+				if _is_gear(mi):
+					continue
+				if not _fp_arm_shadows.has(mi):
+					_fp_arm_shadows[mi] = mi.cast_shadow
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else _fp_arm_shadows[mi]
+		if model_skin != null and on:
+			for mi in model_skin.fp_arms:
+				mi.visible = false
 
 
 ## Shot-off limb: every mesh from `bone` down is copied onto a tumbling
@@ -899,7 +932,12 @@ func snap_yaw(yaw: float) -> void:
 
 func set_weapon(active: Weapon, others: Array) -> void:
 	cancel_inspect()
+	_inspect_fade = 0.0   # the new gun starts from its own pose
+	if weapon != null and weapon != active and not weapon.bolt_action.is_empty():
+		_set_bolt(0.0)   # a holstered bolt rifle goes away with its bolt closed
 	weapon = active
+	if fp_arm_rig != null:
+		fp_arm_rig.select_weapon(active)
 	cycle_t = -1.0
 	_pump_base = active.pump.position if active.pump != null else Vector3.ZERO
 	_attach(active, weapon_anchor)
@@ -962,9 +1000,15 @@ func play_reload(duration: float, empty: bool) -> void:
 	_reload_dur = maxf(duration, 0.1)
 	_reload_empty = empty
 	if empty:
-		_reload_ev = {"out": 0.2, "pouch": 0.36, "grab": 0.46, "mag_in": 0.62, "bolt": 0.8}
+		# "bolt": the hand lets the charging handle / slide go and it slams home
+		_reload_ev = {"out": 0.2, "pouch": 0.36, "grab": 0.46, "mag_in": 0.62, "bolt": 0.84}
 	else:
 		_reload_ev = {"out": 0.24, "pouch": 0.42, "grab": 0.52, "mag_in": 0.7, "bolt": 9.0}
+	if weapon != null and not weapon.bolt_action.is_empty():
+		# turn-bolt rifles feed from the top: the bolt is opened first and closed last
+		_reload_ev.bolt = 9.0
+		_reload_ev.open = 0.05
+		_reload_ev.close = 0.9
 
 
 func cancel_reload() -> void:
@@ -972,6 +1016,10 @@ func cancel_reload() -> void:
 	hand_mag.visible = false
 	if weapon and weapon.mag_node:
 		weapon.mag_node.visible = true
+	if weapon:
+		weapon.drop_action()
+		if not weapon.bolt_action.is_empty() and cycle_t < 0.0:
+			_set_bolt(0.0)
 
 
 func play_switch(duration: float) -> void:
@@ -1176,6 +1224,8 @@ func _animate(delta: float) -> void:
 	_update_weapon_pose(delta)
 	_update_legs(delta)
 	_update_arms(delta)
+	if fp_mode and fp_arm_rig != null:
+		fp_arm_rig.pose(delta)
 
 
 func _update_state(delta: float) -> void:
@@ -1449,36 +1499,34 @@ func cancel_inspect() -> void:
 	if inspect_t < 0.0:
 		return
 	inspect_t = -1.0
+	_inspect_fade = 1.0
 	# Update the muzzle immediately, before the same physics tick can fire.
 	if weapon != null and is_inside_tree():
 		_update_weapon_pose(0.0)
 		_update_arms(0.0)
 
 
-## Lift, hold the receiver side, roll to show the opposite side, return.
+## Lift the gun, turn its left side to the eye, look it over, return.
 ## The hand targets remain attached to the gun; the eye never follows it.
-## Starting pose offsets: both receiver sides must stay inside the camera,
-## with positive eye-space clearance. Reduce angles if long guns clip hands.
 ## Inspect keys: [t, position, euler]. The rest pose is the first and last
-## key; between them the gun is shown right side, rolled to the left side,
-## then tipped up to check the underside. Pairs of close keys keep it
-## drifting instead of freezing in place. Positions are eye-relative.
+## key. Only the left side is ever shown: turning the muzzle left keeps the
+## support hand on the left and the grip hand on the right, so the forearms
+## never cross. The gun turns a modest 45-55 degrees, then tips its muzzle up a
+## little and rolls its top toward the eye (sights, optic, action) while the
+## same side stays in view. Pairs of close keys keep it drifting instead of
+## freezing in place. Positions are eye-relative.
 const INSPECT_KEYS := {
 	"rifle": [
-		[0.13, Vector3(0.160, -0.100, -0.396), Vector3(0.1, 1.05, -0.3)],
-		[0.3, Vector3(0.172, -0.088, -0.410), Vector3(0.05, 1.18, -0.38)],
-		[0.45, Vector3(-0.056, -0.068, -0.396), Vector3(0.18, -0.95, 0.34)],
-		[0.6, Vector3(-0.080, -0.080, -0.410), Vector3(0.13, -1.06, 0.42)],
-		[0.72, Vector3(0.06, -0.12, -0.42), Vector3(0.12, 0.3, 1.1)],
-		[0.85, Vector3(0.07, -0.115, -0.41), Vector3(0.08, 0.22, 1.0)],
+		[0.14, Vector3(0.150, -0.100, -0.400), Vector3(0.08, 0.85, -0.22)],
+		[0.36, Vector3(0.160, -0.092, -0.410), Vector3(0.04, 0.95, -0.30)],
+		[0.56, Vector3(0.130, -0.086, -0.420), Vector3(0.18, 0.78, -0.50)],
+		[0.78, Vector3(0.135, -0.090, -0.415), Vector3(0.14, 0.82, -0.42)],
 	],
 	"pistol": [
-		[0.13, Vector3(0.056, -0.084, -0.288), Vector3(0.08, 1.1, -0.25)],
-		[0.3, Vector3(0.064, -0.076, -0.302), Vector3(0.02, 1.22, -0.32)],
-		[0.45, Vector3(-0.024, -0.076, -0.302), Vector3(0.12, -1.05, 0.28)],
-		[0.6, Vector3(-0.036, -0.084, -0.310), Vector3(0.08, -1.16, 0.36)],
-		[0.72, Vector3(0.024, -0.116, -0.259), Vector3(-0.7, 0.1, 1.2)],
-		[0.85, Vector3(0.032, -0.108, -0.252), Vector3(-0.62, 0.05, 1.05)],
+		[0.14, Vector3(0.056, -0.084, -0.288), Vector3(0.06, 0.95, -0.20)],
+		[0.36, Vector3(0.062, -0.078, -0.298), Vector3(0.02, 1.05, -0.28)],
+		[0.56, Vector3(0.050, -0.080, -0.292), Vector3(0.16, 0.85, -0.48)],
+		[0.78, Vector3(0.052, -0.082, -0.290), Vector3(0.12, 0.90, -0.40)],
 	],
 	"knife": [
 		[0.14, Vector3(0.056, -0.100, -0.259), Vector3(0.1, 0.95, 0.15)],
@@ -1489,25 +1537,21 @@ const INSPECT_KEYS := {
 }
 
 
-## Third-person inspect (what other players see): the same right side, left
-## side, underside sequence, but chest-relative and held out in front of the
-## vest at chest height, so the gun never passes through the body or arms.
+## Third-person inspect (what other players see): the same one-sided look,
+## but chest-relative and held out in front of the vest at chest height, so
+## the gun never passes through the body or arms.
 const TP_INSPECT_KEYS := {
 	"rifle": [
-		[0.13, Vector3(0.13, 0.02, -0.46), Vector3(0.1, 0.9, -0.3)],
-		[0.3, Vector3(0.14, 0.03, -0.48), Vector3(0.05, 1.0, -0.38)],
-		[0.45, Vector3(-0.03, 0.05, -0.47), Vector3(0.18, -0.85, 0.34)],
-		[0.6, Vector3(-0.05, 0.04, -0.49), Vector3(0.13, -0.95, 0.42)],
-		[0.72, Vector3(0.06, 0.0, -0.48), Vector3(0.12, 0.3, 1.1)],
-		[0.85, Vector3(0.07, 0.0, -0.47), Vector3(0.08, 0.22, 1.0)],
+		[0.14, Vector3(0.13, 0.02, -0.46), Vector3(0.08, 0.80, -0.22)],
+		[0.36, Vector3(0.14, 0.03, -0.48), Vector3(0.04, 0.90, -0.30)],
+		[0.56, Vector3(0.11, 0.04, -0.47), Vector3(0.18, 0.74, -0.50)],
+		[0.78, Vector3(0.115, 0.035, -0.47), Vector3(0.14, 0.78, -0.42)],
 	],
 	"pistol": [
-		[0.13, Vector3(0.08, 0.04, -0.42), Vector3(0.08, 1.0, -0.25)],
-		[0.3, Vector3(0.09, 0.05, -0.43), Vector3(0.02, 1.12, -0.32)],
-		[0.45, Vector3(-0.01, 0.05, -0.43), Vector3(0.12, -1.0, 0.28)],
-		[0.6, Vector3(-0.02, 0.04, -0.44), Vector3(0.08, -1.1, 0.36)],
-		[0.72, Vector3(0.04, 0.0, -0.4), Vector3(-0.7, 0.1, 1.2)],
-		[0.85, Vector3(0.05, 0.01, -0.4), Vector3(-0.62, 0.05, 1.05)],
+		[0.14, Vector3(0.08, 0.04, -0.42), Vector3(0.06, 0.90, -0.20)],
+		[0.36, Vector3(0.09, 0.05, -0.43), Vector3(0.02, 1.00, -0.28)],
+		[0.56, Vector3(0.07, 0.05, -0.43), Vector3(0.16, 0.80, -0.48)],
+		[0.78, Vector3(0.075, 0.045, -0.43), Vector3(0.12, 0.85, -0.40)],
 	],
 	# knives: out to the right at arm's length, blade in front of the chest and
 	# neck rather than against the vest or the face (karambit spins and
@@ -1566,15 +1610,22 @@ func _update_weapon_pose(delta: float) -> void:
 	if inspect_t >= 0.0:
 		if aim_target > 0.0 or sprint_target > 0.0 or slide_target > 0.0:
 			inspect_t = -1.0
+			_inspect_fade = 1.0
 		else:
 			inspect_t += delta / INSPECT_DURATION
 			if inspect_t >= 1.0:
 				inspect_t = -1.0
 			else:
 				xf = _inspect_pose(kind, xf)
+				_inspect_last = xf
 				weapon.inspect_motion(inspect_t)
 	if inspect_t < 0.0:
 		weapon.inspect_motion(-1.0)
+		if _inspect_fade > 0.0:
+			# an inspect cut short (aim, sprint, fire, reload) eases back to the
+			# held pose instead of snapping
+			_inspect_fade = maxf(_inspect_fade - delta / INSPECT_BLEND_OUT, 0.0)
+			xf = xf.interpolate_with(_inspect_last, smoothstep(0.0, 1.0, _inspect_fade))
 	if fp_mode:
 		var fs: Array = FP_POSES[kind].sprint
 		xf = xf.interpolate_with(Transform3D(Basis.from_euler(fs[1]), fs[0]), sprint_amt * (1.0 - aim_amt))
@@ -1623,7 +1674,13 @@ func _update_weapon_pose(delta: float) -> void:
 	if throw_t >= 0.0:
 		xf = xf.interpolate_with(_weapon_pose(kind, "lower"), smoothstep(0.0, 0.18, throw_t) * (1.0 - smoothstep(0.75, 1.0, throw_t)) * 0.85)
 	_update_cycle(delta)
-	if cycle_t >= 0.0 and weapon.bolt != null:
+	if cycle_t >= 0.0 and weapon.bolt != null and not weapon.bolt_action.is_empty():
+		# turn-bolt: the rifle stays in the shoulder, canted a little toward the
+		# working hand and dipped a touch while the bolt is open
+		var ct := clampf(cycle_t, 0.0, 1.0)
+		var bw := smoothstep(0.02, BOLT_LIFT, ct) * (1.0 - smoothstep(BOLT_DOWN, 1.0, ct))
+		xf = xf * Transform3D(Basis.from_euler(Vector3(-0.035 * bw, 0.02 * bw, 0.16 * bw)), Vector3(0, -0.012 * bw, 0.01 * bw))
+	elif cycle_t >= 0.0 and weapon.bolt != null:
 		var cw := sin(PI * cycle_t)
 		xf = xf * Transform3D(Basis.from_euler(Vector3(0.05 * cw, 0.1 * cw, 0.35 * cw)), Vector3.ZERO)
 	_twirl = 0.0
@@ -1792,6 +1849,8 @@ func _update_arms(delta: float) -> void:
 	if fp_mode:
 		cb = fp_eye.basis
 	var r_xf: Transform3D = weapon.grip.global_transform
+	if fp_mode and fp_arm_rig != null:
+		r_xf = fp_arm_rig.grip_transform(weapon, 1, r_xf)
 	if _twirl != 0.0 and weapon.twirl != null:
 		# the hand does not go round with the gun: it stays where the grip would
 		# be without the spin, finger through the guard
@@ -1799,12 +1858,33 @@ func _update_arms(delta: float) -> void:
 		var un := Basis(axis, -_twirl)
 		var pvw: Vector3 = weapon.twirl.global_position
 		r_xf = Transform3D(un * r_xf.basis, pvw + un * (r_xf.origin - pvw))
-	if cycle_t >= 0.0 and weapon.bolt != null:
+	if not weapon.bolt_action.is_empty():
+		# turn-bolt: the right hand takes the handle (it rides with the bolt as it
+		# turns and runs back), after a shot and to open / close it for a reload
+		var hw := 0.0
+		if cycle_t >= 0.0:
+			var ct := clampf(cycle_t, 0.0, 1.0)
+			hw = smoothstep(0.0, BOLT_REACH, ct) * (1.0 - smoothstep(BOLT_DOWN, BOLT_RETURN, ct))
+		elif reload_t >= 0.0 and _reload_ev.has("open"):
+			hw = smoothstep(0.0, 0.05, reload_t) * (1.0 - smoothstep(0.17, 0.25, reload_t)) \
+					+ smoothstep(0.72, 0.8, reload_t) * (1.0 - smoothstep(0.94, 1.0, reload_t))
+		if hw > 0.0:
+			# palm over the knob from above and behind, fingers wrapped round it
+			var knob: Vector3 = weapon.charge.global_position
+			var wb: Basis = weapon.global_transform.basis.orthonormalized()
+			r_xf.origin = r_xf.origin.lerp(knob + wb * Vector3(0.012, 0.018, 0.02), hw)
+			var working := wb * Basis.from_euler(Vector3(-0.5, 0.25, -0.6))
+			if fp_mode and fp_arm_rig != null:
+				working = wb * FPSArmRig.frame(Vector3(-0.4, 0, -1.0), Vector3.DOWN)
+			r_xf.basis = r_xf.basis.orthonormalized().slerp(working.orthonormalized(), hw)
+	elif cycle_t >= 0.0 and weapon.bolt != null:
 		var bw := smoothstep(0.0, 0.25, cycle_t) * (1.0 - smoothstep(0.75, 1.0, cycle_t))
 		r_xf.origin = r_xf.origin.lerp(weapon.charge.global_position, bw)
 	if throw_t >= 0.0:
 		r_xf.origin = _throw_hand(r_xf.origin)
 	var l_xf: Transform3D = weapon.support.global_transform
+	if fp_mode and fp_arm_rig != null:
+		l_xf = fp_arm_rig.grip_transform(weapon, 0, l_xf)
 	var l_pos := l_xf.origin
 	var l_basis := l_xf.basis
 	if cycle_t >= 0.0 and weapon.roll != null:
@@ -1816,6 +1896,8 @@ func _update_arms(delta: float) -> void:
 		_update_reload_events()
 		if reload_t >= 0.0:
 			l_pos = _reload_left_target(reload_t)
+			if fp_mode and fp_arm_rig != null:
+				l_basis = fp_arm_rig.reload_basis(weapon, reload_t, l_basis)
 	# vault: left hand reaches for and plants on the obstacle top
 	var plant_w := _vw(0.02, 0.2, 0.5, 0.68)
 	if plant_w > 0.0:
@@ -1846,11 +1928,15 @@ func _update_arms(delta: float) -> void:
 	if kwa > 0.0 and not fp_mode:
 		# free arm flung out wide for balance while lying flat in the air
 		l_pos = l_pos.lerp(chest.global_transform * Vector3(-0.52, 0.08, 0.05), kwa)
+	if fp_mode and fp_arm_rig != null:
+		var settled := fp_arm_rig.settle_left(Transform3D(l_basis.orthonormalized(), l_pos), delta)
+		l_pos = settled.origin
+		l_basis = settled.basis
 	# A long gun's handguard sits further from the left shoulder than the arm
 	# reaches. Real shooters roll the shoulder forward (and blade the torso):
 	# the shoulder follows the hand by up to 13 cm in third person, and as far
 	# as needed in first person, where the shoulders are off-screen.
-	if fp_mode and aim_amt > 0.0 and _free_arm < 0.5 and reload_t < 0.0:
+	if fp_mode and fp_arm_rig == null and aim_amt > 0.0 and _free_arm < 0.5 and reload_t < 0.0:
 		# aiming in first person, the gloves and cuffs must not rise into the
 		# view of the gun: each hand drops just below its hold point as the eye sees it
 		var up := fp_eye.basis.y.normalized()
@@ -1862,8 +1948,16 @@ func _update_arms(delta: float) -> void:
 	_set_basis(hands[1], r_xf.basis)
 	_solve_ik(shoulders[0], elbows[0], UPPER_ARM, FOREARM, l_pos, (cb * l_pole).normalized())
 	if _free_arm > 0.001:
-		l_basis = l_basis.orthonormalized().slerp(elbows[0].global_transform.basis.orthonormalized(), _free_arm)
+		var free_basis: Basis = elbows[0].global_transform.basis.orthonormalized()
+		if fp_mode and fp_arm_rig != null:
+			free_basis = cb * FPSArmRig.frame(Vector3(0.15, -1.0, -0.4), Vector3.RIGHT)
+		l_basis = l_basis.orthonormalized().slerp(free_basis, _free_arm)
 	_set_basis(hands[0], l_basis)
+	if fp_mode and fp_arm_rig != null and hand_mag.visible:
+		# HandMag used to inherit the block glove's axes. Keep the magazine upright
+		# with the new anatomical palm, meeting its original socket on insertion.
+		var wb := weapon.global_transform.basis.orthonormalized()
+		hand_mag.global_transform = Transform3D(wb, l_pos + wb * Vector3(0.025, 0.075, -0.025))
 
 
 ## Sprinting with the gun in the right hand only and the left arm pumping:
@@ -1938,22 +2032,51 @@ const LEVER_OPEN := 0.9
 ## Spin cock: where in the cycle (0..1) the rifle completes its roll and is caught.
 const SPIN_CATCH := 0.78
 
+## Turn-bolt cycle after a shot, as fractions of the cycle: the hand leaves the
+## grip for the handle, lifts it, draws the bolt back (the case flies out at the
+## end of the stroke), runs it forward, turns it down, and returns to the grip.
+const BOLT_REACH := 0.15
+const BOLT_LIFT := 0.29
+const BOLT_BACK := 0.47
+const BOLT_FWD := 0.66
+const BOLT_DOWN := 0.79
+const BOLT_RETURN := 0.95
+
+
+## The turn-bolt stroke (see _set_bolt) at cycle fraction `ct`.
+static func _bolt_stroke(ct: float) -> float:
+	var s := smoothstep(BOLT_REACH, BOLT_LIFT, ct) + smoothstep(BOLT_LIFT, BOLT_BACK, ct)
+	return s - smoothstep(BOLT_BACK + 0.04, BOLT_FWD, ct) - smoothstep(BOLT_FWD, BOLT_DOWN, ct)
+
+
 ## Bolt-action / pump-action / lever-action cycling after each shot.
 func _update_cycle(delta: float) -> void:
+	var turn_bolt := not weapon.bolt_action.is_empty()
 	if weapon.cycle_pending > 0.0:
 		weapon.cycle_pending -= delta
 		if weapon.cycle_pending <= 0.0:
 			cycle_t = 0.0
-			_cycle_dur = clampf(60.0 / float(weapon.stats.rpm) * (0.82 if weapon.twirl != null else 0.7), 0.35, 1.0)
+			_cycle_dur = clampf(60.0 / float(weapon.stats.rpm) * (0.82 if weapon.twirl != null else 0.7), 0.35, 1.1 if turn_bolt else 1.0)
 			_cycle_cased = false
 			_tw_a = false
 			_tw_b = false
-			Sfx.play(self, "knife_swing" if weapon.twirl != null else "bolt", weapon.global_position, -4.0)
+			if not turn_bolt:
+				Sfx.play(self, "knife_swing" if weapon.twirl != null else "bolt", weapon.global_position, -4.0)
 	if cycle_t < 0.0:
 		return
 	cycle_t += delta / _cycle_dur
 	var w := sin(PI * minf(cycle_t, 1.0))
-	if weapon.bolt != null:
+	if turn_bolt:
+		var ct := minf(cycle_t, 1.0)
+		_set_bolt(_bolt_stroke(ct))
+		# unlocking click as the handle comes up, the slam and lock as it goes down
+		if not _tw_a and ct > BOLT_REACH + 0.02:
+			_tw_a = true
+			Sfx.play(self, "bolt", weapon.charge.global_position, -7.0)
+		if not _tw_b and ct > BOLT_FWD - 0.02:
+			_tw_b = true
+			Sfx.play(self, "bolt", weapon.charge.global_position, -3.0)
+	elif weapon.bolt != null:
 		weapon.bolt.position = Vector3(0, 0, 0.075 * w)
 	if weapon.pump != null:
 		weapon.pump.position = _pump_base + Vector3(0, 0, 0.09 * w)
@@ -1972,13 +2095,15 @@ func _update_cycle(delta: float) -> void:
 		var ct := minf(cycle_t, 1.0)
 		weapon.hammer.rotation.x = ROLL_HAMMER_COCKED * smoothstep(0.05, 0.3, ct)
 		weapon.roll.rotation.x = 1.25 * (smoothstep(0.3, 0.5, ct) - smoothstep(0.72, 0.92, ct))
-	if not _cycle_cased and cycle_t > 0.5:
+	if not _cycle_cased and cycle_t > (BOLT_BACK - 0.03 if turn_bolt else 0.5):
 		_cycle_cased = true
 		if weapon.twirl == null or weapon.lever != null:   # a break-action keeps its shells until the reload
 			FX.casing(self, weapon.eject.global_position, weapon.global_transform.basis.x, false)
 	if cycle_t >= 1.0:
 		cycle_t = -1.0
-		if weapon.bolt != null:
+		if turn_bolt:
+			_set_bolt(0.0)
+		elif weapon.bolt != null:
 			weapon.bolt.position = Vector3.ZERO
 		if weapon.pump != null:
 			weapon.pump.position = _pump_base
@@ -2017,6 +2142,8 @@ func _update_reload_events() -> void:
 		reload_t = -1.0
 		hand_mag.visible = false
 		weapon.mag_node.visible = true
+		if _reload_ev.has("open"):
+			_set_bolt(0.0)
 		return
 	var mag: Node3D = weapon.mag_node
 	if t >= _reload_ev.out and mag.visible and t < _reload_ev.mag_in:
@@ -2034,9 +2161,42 @@ func _update_reload_events() -> void:
 		mag.visible = true
 		hand_mag.visible = false
 		Sfx.play(self, "mag_in", mag.global_position, -6.0)
+	# empty: the support hand racks the charging handle / slide back and lets it go
+	if _reload_empty and weapon.bolt_action.is_empty() and weapon.bolt != null and _reload_ev.bolt < 1.0:
+		var rk: Vector2 = _rack_times()
+		if t >= rk.x:
+			weapon.hold_action(smoothstep(rk.x, rk.y, t))
 	if t >= _reload_ev.bolt and _reload_ev.bolt < 1.0:
 		_reload_ev.bolt = 9.0
-		Sfx.play(self, "bolt", weapon.charge.global_position, -6.0)
+		weapon.release_action()
+		Sfx.play(self, "bolt", weapon.charge.global_position, -4.0)
+	# turn-bolt: open (lift, draw back) before the rounds go in, close at the end
+	if _reload_ev.has("open"):
+		var s := 2.0 * smoothstep(0.05, 0.17, t) * (1.0 - smoothstep(0.8, 0.94, t))
+		_set_bolt(s)
+		if t >= _reload_ev.open:
+			_reload_ev.open = 9.0
+			Sfx.play(self, "bolt", weapon.charge.global_position, -6.0)
+		if t >= _reload_ev.close:
+			_reload_ev.close = 9.0
+			Sfx.play(self, "bolt", weapon.charge.global_position, -3.0)
+
+
+## Reload fractions where the support hand takes the charging handle and where
+## it has it fully back (it lets go at the "bolt" event just after).
+func _rack_times() -> Vector2:
+	return Vector2(0.76, 0.81)
+
+
+## Turn-bolt position for a stroke `s`: 0 closed, 1 handle lifted (bolt
+## unlocked), 2 lifted and drawn fully back. Lift turns it on its own axis.
+func _set_bolt(s: float) -> void:
+	if weapon == null or weapon.bolt == null or weapon.bolt_action.is_empty():
+		return
+	var turn := clampf(s, 0.0, 1.0)
+	var pull := clampf(s - 1.0, 0.0, 1.0)
+	weapon.bolt.rotation = Vector3(0, 0, float(weapon.bolt_action[0]) * turn)
+	weapon.bolt.position = weapon.bolt_rest + Vector3(0, 0, float(weapon.bolt_action[1]) * pull)
 
 
 func _reload_left_target(t: float) -> Vector3:
@@ -2044,10 +2204,23 @@ func _reload_left_target(t: float) -> Vector3:
 	var well: Vector3 = weapon.mag_well.global_position
 	var pouch := chest.global_transform * Vector3(-0.07, -0.02, -0.25)
 	var charge: Vector3 = weapon.charge.global_position
+	if fp_mode and fp_arm_rig != null:
+		hg = fp_arm_rig.grip_transform(weapon, 0, weapon.support.global_transform).origin
+		var wb := weapon.global_transform.basis.orthonormalized()
+		well += wb * Vector3(-0.025, -0.025, 0.025)
+		charge += wb * Vector3(-0.025, 0.018, 0.02)
 	var keys: Array
-	if _reload_empty:
+	if _reload_empty and weapon.bolt_action.is_empty():
+		# onto the charging handle (or the slide's rear serrations), draw it back
+		# the full stroke with the action, let go, then back to the handguard
+		var rk := _rack_times()
+		var back: Vector3 = weapon.global_transform.basis.z.normalized() * weapon.blowback * 1.3
 		keys = [[0.0, hg], [0.12, well], [0.2, well], [0.36, pouch], [0.46, pouch], [0.62, well],
-				[0.7, well], [0.8, charge], [0.86, charge], [1.0, hg]]
+				[0.7, well], [rk.x, charge], [rk.y, charge + back], [0.84, charge + back],
+				[0.9, charge + back * 1.4], [1.0, hg]]
+	elif _reload_empty:
+		keys = [[0.0, hg], [0.12, well], [0.2, well], [0.36, pouch], [0.46, pouch], [0.62, well],
+				[0.7, well], [1.0, hg]]
 	else:
 		keys = [[0.0, hg], [0.14, well], [0.24, well], [0.42, pouch], [0.52, pouch], [0.7, well],
 				[0.78, well], [1.0, hg]]

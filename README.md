@@ -261,6 +261,9 @@ Attachment slots (options depend on the gun):
 
 Every attachment changes the real stats: damage, fire rate, range, accuracy, recoil, mobility, ADS speed, magazine size, reload time and noise.
 
+**Attachment skins:** every attachment and the magazine can wear its own skin. In the Gunsmith, on an attachment row press
+**Q / E** (LB / RB) or click its **SKIN** tag: *match the gun*, *factory*, or any finish you own on that gun. Other players see them.
+
 Classes: ASSAULT, RIFLEMAN, RECON, CQB, BREACHER, SUPPORT, SPEC OPS. Each is fully editable and saved to `user://loadout.cfg`.
 
 ## Structure
@@ -390,6 +393,7 @@ multi-computer multiplayer session still needs manual playtesting.
   - Attachments: low-poly collimator set (Aimpoint Comp M4, EOTech EXPS3, Holosun 403R, Holosun 510C, Vortex AMG UH-1),
     AN/PEQ-2, muzzle device set, AK hexagon handguard (hex tube and rail), GP-25 launcher and VOG-25 round, SureFire X300U.
   - Knives: karambit, PS1-style butterfly knife.
+  - First-person arms: Low Poly Arm Rig (rigged arms, `assets/thirdparty/fps_arms/`).
   - Vehicles and props: Panzer I Ausf. A, Toyota Corolla E80, Tequila Zombie Café, "Everything Must Go" sign, low-poly UFO scene.
   - Maps: neighbourhood city modular low-poly (NEIGHBOURHOOD), fps-map (WALLED VILLAGE),
     low-poly FPS TDM game map by **ResoForge** (WAREHOUSE), location underground laboratory (UNDERGROUND LAB).

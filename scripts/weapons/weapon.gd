@@ -28,6 +28,8 @@ var ads_offset := Vector3(0, -0.15, -0.3)
 var cycle_pending := 0.0
 ## equipped finish ("" = factory)
 var skin := ""
+## attachment slot -> its own finish or Skins.FACTORY (see apply_skin)
+var part_skins: Dictionary = {}
 var _model_root: Node3D
 var _base_skin_overrides: Dictionary = {}
 var _skin_base_saved := false
@@ -48,6 +50,13 @@ var roll: Node3D
 var hammer: Node3D
 ## Lever-action: the finger lever's front pin (null on other guns).
 var lever: Node3D
+## Turn-bolt rifles: [handle lift (rad), bolt throw (m)], empty on other guns.
+## The bolt pivots on its own axis at `bolt_rest`.
+var bolt_action: Array = []
+var bolt_rest := Vector3.ZERO
+## Set once the action has been worked during a reload (slide released, bolt
+## closed): the slide no longer holds open on the empty magazine.
+var chambered := false
 ## How far the slide / bolt runs back on each shot (metres), and the stroke in
 ## progress (0..1, -1 idle). A pistol's slide stays locked back on an empty mag.
 var blowback := 0.0
@@ -88,6 +97,9 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	hammer = parts.get("hammer")
 	twirl = parts.get("twirl")
 	lever = parts.get("lever")
+	bolt_action = parts.get("bolt_action", [])
+	if bolt != null:
+		bolt_rest = bolt.position
 	blowback = float(parts.get("blowback", 0.0))
 	laser = parts.laser
 	launcher = parts.get("launcher")
@@ -101,30 +113,33 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 		_build_laser()
 
 
-## Applies a weapon skin finish (see skins.gd) to the built model.
-func apply_skin(finish: String) -> void:
-	if finish == skin:
-		return
-	if finish == "":
-		if _skin_base_saved:
-			for node in _base_skin_overrides:
-				if is_instance_valid(node):
-					(node as MeshInstance3D).material_override = _base_skin_overrides[node]
-		skin = ""
-		return
-	if not Skins.FINISHES.has(finish):
+## Applies a weapon skin finish (see skins.gd) to the built model. `parts` gives
+## attachment slots / the magazine their own finish (or Skins.FACTORY); a part not
+## listed wears the gun's finish. Unknown slots or finishes are ignored.
+func apply_skin(finish: String, parts: Dictionary = {}) -> void:
+	if finish != "" and not Skins.FINISHES.has(finish):
+		finish = ""
+	parts = Skins.sanitize_parts(parts)
+	if finish == skin and parts == part_skins:
 		return
 	if not _skin_base_saved:
 		_skin_base_saved = true
-		var stack: Array = [_model_root]
-		while not stack.is_empty():
-			var node: Node = stack.pop_back()
-			for child in node.get_children():
-				stack.append(child)
-			if node is MeshInstance3D:
-				_base_skin_overrides[node] = (node as MeshInstance3D).material_override
+		for node in _model_root.find_children("*", "MeshInstance3D", true, false):
+			var mi := node as MeshInstance3D
+			var surfaces: Array = []
+			for s in (mi.mesh.get_surface_count() if mi.mesh != null else 0):
+				surfaces.append(mi.get_surface_override_material(s))
+			_base_skin_overrides[mi] = [mi.material_override, surfaces]
+	# back to the factory look, then paint: a part may go from skinned to factory
+	for node in _base_skin_overrides:
+		if is_instance_valid(node):
+			var base: Array = _base_skin_overrides[node]
+			(node as MeshInstance3D).material_override = base[0]
+			for s in (base[1] as Array).size():
+				(node as MeshInstance3D).set_surface_override_material(s, base[1][s])
 	skin = finish
-	Skins.apply(_model_root, finish, [Model._black, Model._worn])
+	part_skins = parts
+	Skins.apply(_model_root, finish, [Model._black, Model._worn], parts)
 
 
 ## Places the current finish's sticker (if it has one) per `cfg` (see sticker.gd).
@@ -337,9 +352,46 @@ func _kick_action() -> void:
 		_blow_t = 0.0
 
 
+## How far the hand holds the slide / bolt carrier back while chambering
+## (0..1 of a full hand stroke), or -1 when the hand is off it.
+var _hand_back := -1.0
+
+
+## The rig's hand on the charging handle or slide (a reload's chambering):
+## pulls the action `back` (0..1) of a full stroke, a little past where the
+## shot drives it.
+func hold_action(back: float) -> void:
+	_hand_back = clampf(back, 0.0, 1.0)
+
+
+## The hand lets go: the action slams forward onto a fresh round.
+func release_action() -> void:
+	if _hand_back < 0.0 and not _slide_locked:
+		return
+	_hand_back = -1.0
+	_slide_locked = false
+	chambered = true
+	_blow_t = 0.35   # the return half of a shot's stroke: a fast spring-driven close
+
+
+## A reload cut short mid-pull: the hand comes off and the action springs back
+## to where it was (closed, or a pistol's slide still locked on the empty mag).
+func drop_action() -> void:
+	if _hand_back < 0.0:
+		return
+	_hand_back = -1.0
+	if not _slide_locked:
+		_blow_t = 0.35
+
+
 ## Snaps back fast, returns a little slower; holds open on a pistol's last round.
 func _update_blowback(delta: float) -> void:
 	if bolt == null or stats.cycle != "":
+		return
+	if _hand_back >= 0.0:
+		_blow_t = -1.0
+		# a slide locked open stays open until the hand draws it past the lock
+		bolt.position.z = maxf(blowback if _slide_locked else 0.0, blowback * 1.3 * _hand_back)
 		return
 	if _blow_t >= 0.0:
 		var dur := clampf(60.0 / float(stats.rpm) * 0.85, 0.045, 0.11)
@@ -353,7 +405,7 @@ func _update_blowback(delta: float) -> void:
 			back = 0.0
 		bolt.position.z = blowback * back
 	if _slide_locked:
-		if ammo > 0:
+		if ammo > 0 or chambered:
 			_slide_locked = false
 			bolt.position.z = 0.0
 		else:
@@ -384,6 +436,7 @@ func fire(shooter: CharacterBody3D, origin: Vector3, target: Vector3, spread_deg
 		_charm.kick()
 	cooldown = 60.0 / float(stats.rpm)
 	ammo -= 1
+	chambered = false
 	_kick_action()
 	var total_spread := spread_deg + bloom
 	bloom = minf(bloom + float(stats.bloom_add), float(stats.bloom_max))

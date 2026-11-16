@@ -15,6 +15,9 @@ static var credits := START_CREDITS
 static var owned: Dictionary = {}
 ## weapon id -> finish id ("" = factory finish)
 static var equipped: Dictionary = {}
+## weapon id -> {attachment slot -> finish id or Skins.FACTORY}; a slot not listed
+## wears the gun's equipped finish
+static var equipped_parts: Dictionary = {}
 static var packs_opened := 0
 ## weapon id -> sticker placement {"on", "u", "v", "s", "r", "side"} (see sticker.gd)
 static var stickers: Dictionary = {}
@@ -39,6 +42,7 @@ static func ensure() -> void:
 		credits = int(cfg.get_value("armory", "credits", START_CREDITS))
 		owned = cfg.get_value("armory", "owned", {})
 		equipped = cfg.get_value("armory", "equipped", {})
+		equipped_parts = cfg.get_value("armory", "equipped_parts", {})
 		packs_opened = int(cfg.get_value("armory", "packs_opened", 0))
 		stickers = cfg.get_value("armory", "stickers", {})
 		if int(cfg.get_value("armory", "stickers_v", 1)) < 2:
@@ -54,6 +58,7 @@ static func save() -> void:
 	cfg.set_value("armory", "credits", credits)
 	cfg.set_value("armory", "owned", owned)
 	cfg.set_value("armory", "equipped", equipped)
+	cfg.set_value("armory", "equipped_parts", equipped_parts)
 	cfg.set_value("armory", "packs_opened", packs_opened)
 	cfg.set_value("armory", "stickers", stickers)
 	cfg.set_value("armory", "stickers_v", 2)
@@ -164,6 +169,57 @@ static func equip(weapon: String, finish: String) -> bool:
 	equipped[weapon] = finish
 	save()
 	return true
+
+
+## Per-attachment skins for a gun, keeping only finishes the player owns on that gun.
+static func parts_for(weapon: String) -> Dictionary:
+	ensure()
+	var out := {}
+	var saved = equipped_parts.get(weapon, {})
+	for slot in Skins.sanitize_parts(saved):
+		var f := String(saved[slot])
+		if f == Skins.FACTORY or has_skin(weapon, f):
+			out[slot] = f
+	return out
+
+
+## Choices for one attachment slot: "" (match the gun), factory, then every
+## finish the player owns on that gun.
+static func part_choices(weapon: String) -> Array:
+	ensure()
+	var out: Array = ["", Skins.FACTORY]
+	for f in Skins.finish_ids(Profile.is_admin()):
+		if has_skin(weapon, f):
+			out.append(f)
+	return out
+
+
+## Sets one attachment slot's skin: "" to match the gun, Skins.FACTORY, or an owned finish.
+static func set_part(weapon: String, slot: String, finish: String) -> bool:
+	ensure()
+	if not slot in Skins.Data.SLOTS:
+		return false
+	if finish != "" and finish != Skins.FACTORY and not has_skin(weapon, finish):
+		return false
+	var parts: Dictionary = (equipped_parts.get(weapon, {}) as Dictionary).duplicate()
+	if finish == "":
+		parts.erase(slot)
+	else:
+		parts[slot] = finish
+	if parts.is_empty():
+		equipped_parts.erase(weapon)
+	else:
+		equipped_parts[weapon] = parts
+	save()
+	return true
+
+
+## Steps one attachment slot's skin through part_choices().
+static func cycle_part(weapon: String, slot: String, dir: int) -> void:
+	var choices := part_choices(weapon)
+	var cur := String(parts_for(weapon).get(slot, ""))
+	var i := choices.find(cur)
+	set_part(weapon, slot, String(choices[posmod((i if i >= 0 else 0) + dir, choices.size())]))
 
 
 static func _roll_rarity(odds: Array, rng: RandomNumberGenerator) -> int:

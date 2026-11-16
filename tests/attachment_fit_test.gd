@@ -105,17 +105,33 @@ func run() -> void:
 		# muzzle: the device's rear face is the anchor
 		var mz := _local(b.muzzle_at, root)
 		# barrels are open tubes, so a ray down the bore flies straight in. Instead,
-		# step forward along the bore dropping short vertical rays onto the
-		# barrel: the front-most one that still hits it marks the tip.
+		# step forward along the bore dropping short vertical lines onto the
+		# barrel: the front-most one that still meets it marks the tip. The lines
+		# are intersected with the gun's own triangles (three side by side):
+		# physics rays slip through the edge-on top faces of thin barrels (the
+		# Mosin's) and miss a barrel that is there.
 		var tip := INF
 		if Data.WEAPONS[id].options.muzzle == ["integral"]:
 			mz.z = INF   # built-in suppressor only: nothing attaches here
+		var faces := PackedVector3Array()
+		if mz.z < INF:
+			for n in root.find_children("*", "MeshInstance3D", true, false):
+				var under_anchor := false
+				var p: Node = n
+				while p != null and p != root:
+					if String(p.name) in ANCHORS:
+						under_anchor = true
+					p = p.get_parent()
+				if not under_anchor:
+					var xf: Transform3D = root.global_transform.affine_inverse() * (n as MeshInstance3D).global_transform
+					for v in (n as MeshInstance3D).mesh.get_faces():
+						faces.append(xf * v)
 		var z := mz.z + 0.04 if mz.z < INF else -INF
 		while z > mz.z - 0.04:
-			var from := o + Vector3(0, mz.y + 0.03, z)
-			var dd := _ray(from, Vector3.DOWN, 0.045)
-			if dd < INF:
-				tip = z
+			for x in [-0.002, 0.0, 0.002]:
+				var top := Model._top_in(faces, z, x)
+				if top > mz.y - 0.015 and top < mz.y + 0.03:
+					tip = z
 			z -= 0.0005
 		if tip < INF:
 			var gap := tip - mz.z   # > 0: device starts in front of the barrel

@@ -1850,7 +1850,7 @@ func _apply_armory_skins_in_match() -> void:
 		if not is_instance_valid(w):
 			continue
 		var weapon_id := String(w.id)
-		w.apply_skin(Collection.skin_for(weapon_id))
+		w.apply_skin(Collection.skin_for(weapon_id), Collection.parts_for(weapon_id))
 		w.apply_sticker(Collection.sticker_for(weapon_id))
 	if not PlayerScript.zombie_specs.is_empty():
 		for i in PlayerScript.zombie_specs.size():
@@ -1861,6 +1861,8 @@ func _apply_armory_skins_in_match() -> void:
 					spec[2] = Collection.skin_for(spec_weapon_id)
 				if spec.size() > 3:
 					spec[3] = Collection.sticker_for(spec_weapon_id)
+				if spec.size() > 5:
+					spec[5] = Collection.parts_for(spec_weapon_id)
 		if Net.active and Net.is_server():
 			Net.roster[1] = {"name": Net.default_name(), "loadout": PlayerScript.net_loadout()}
 	if Net.active and Net.sync != null:
@@ -2607,6 +2609,7 @@ func _switch_profile() -> void:
 	Collection.credits = Collection.START_CREDITS
 	Collection.owned = {}
 	Collection.equipped = {}
+	Collection.equipped_parts = {}
 	Collection.packs_opened = 0
 	Loadout._loaded = false
 	Loadout.classes = []

@@ -94,7 +94,7 @@ func _smg_spec(id: String) -> Array:
 	var full: Array = Loadout.weapon_list()
 	if String(full[1][0]) == id:
 		return full[1]
-	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), ""]
+	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), "", Collection.parts_for(id)]
 
 
 ## The player's own attachments / skin when they bought their class primary,
@@ -103,7 +103,7 @@ func _primary_spec(id: String) -> Array:
 	var full: Array = Loadout.weapon_list()
 	if String(full[0][0]) == id:
 		return full[0]
-	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), ""]
+	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), "", Collection.parts_for(id)]
 
 
 ## Shop rows for the HUD: {id, section, label, desc, price, ok, note}.

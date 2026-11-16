@@ -207,7 +207,8 @@ func _make_weapon(spec) -> Weapon:
 	if spec is Array:
 		w.setup(String(spec[0]), spec[1])
 		if spec.size() > 2:
-			w.apply_skin(String(spec[2]))   # [id, attachments, skin, sticker placement]
+			# [id, attachments, skin, sticker placement, charm, part skins]
+			w.apply_skin(String(spec[2]), spec[5] if spec.size() > 5 and spec[5] is Dictionary else {})
 		if spec.size() > 3 and spec[3] is Dictionary:
 			w.apply_sticker(spec[3])
 		if spec.size() > 4:

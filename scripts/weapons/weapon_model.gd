@@ -19,6 +19,8 @@ static var _poly: Material
 static var _worn: Material
 static var _glass: Material
 static var _tube: Material
+## Bare machined steel (bolts, bolt handles) for models that export it as flat white.
+static var _steel: Material
 
 
 static func _mats() -> void:
@@ -58,6 +60,7 @@ static func _mats() -> void:
 		poly.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_poly = poly
 	_worn = M.solid(Color(0.29, 0.31, 0.34), 0.27, 0.9)
+	_steel = M.solid(Color(0.46, 0.47, 0.49), 0.3, 0.9)
 	var g := StandardMaterial3D.new()
 	g.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	g.albedo_color = Color(0.7, 0.85, 0.95, 0.05)
@@ -88,7 +91,11 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 			b = _low_poly(root, model, String(att.get("handguard", "standard")))
 
 	var parts := {"root": root, "blowback": float(b.get("blowback", 0.022 if b.get("pistol", false) else 0.045)), "grip": b.grip, "support": b.support, "charge": b.charge, "eject": b.eject,
+			"bolt_action": b.get("bolt_action", []),
 			"pump": b.get("pump"), "bolt": b.get("bolt"), "roll": b.get("roll"), "hammer": b.get("hammer"), "twirl": b.get("twirl"), "lever": b.get("lever"), "laser": null}
+	# Every attachment's meshes are tagged with their slot ("skin_part") so each
+	# attachment, and the magazine, can wear its own skin (see skins.gd).
+	var seen := _meshes(root)
 	# magazine
 	var mag_at: Node3D = b.mag_at
 	if b.has("glb_mag"):
@@ -96,12 +103,14 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 	else:
 		parts.mag = _marker(mag_at, "Mag", Vector3.ZERO)
 	parts.mag_well = _marker(mag_at, "MagWell", Vector3(0, -0.05, 0))
+	_tag_new(root, seen, "magazine")
 	# muzzle device
 	var mz := String(att.get("muzzle", "none"))
 	if mz == "suppressor" and b.has("glb_suppressor") and _glb_suppressor(b.muzzle_at, String(b.glb_suppressor)):
 		parts.muzzle = _marker(b.muzzle_at, "Muzzle", Vector3(0, 0, -float(b.glb_suppressor_len)))
 	else:
 		parts.muzzle = _muzzle(b.muzzle_at, mz, b.get("pistol", false))
+	_tag_new(root, seen, "muzzle")
 	# underbarrel
 	var ub_kind := String(att.get("underbarrel", "none"))
 	var ub_at: Node3D = b.under_at
@@ -111,8 +120,11 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 		var rail := _att_model(ub_at, "rail")
 		if rail != null:
 			rail.scale = Vector3.ONE * small
-			ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP * small, 0))
+			var lowered := _fit_rail(root, ub_at, rail)
+			ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP * small - lowered, 0))
+	_tag_new(root, seen, "rail")
 	var ub := _underbarrel(ub_at, ub_kind, small)
+	_tag_new(root, seen, "underbarrel")
 	if ub.has("support"):
 		parts.support = ub.support
 	if ub.has("laser"):
@@ -120,8 +132,32 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 	parts.launcher = ub.get("launcher")
 	# optic
 	parts.sight = _optic(root, b, String(att.get("optic", "iron")))
+	_tag_new(root, seen, "optic")
 	_signature_details(root, model, b)
+	_tag_tree(parts.mag, "magazine")   # details added on the magazine ride with it
 	return parts
+
+
+static func _meshes(root: Node) -> Dictionary:
+	var out := {}
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		out[n] = true
+	return out
+
+
+## Tags the meshes built since `seen` with `slot` and adds them to `seen`.
+static func _tag_new(root: Node, seen: Dictionary, slot: String) -> void:
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		if not seen.has(n):
+			seen[n] = true
+			n.set_meta("skin_part", slot)
+
+
+static func _tag_tree(node: Node, slot: String) -> void:
+	if node == null:
+		return
+	for n in node.find_children("*", "MeshInstance3D", true, false):
+		n.set_meta("skin_part", slot)
 
 
 ## Weapon-specific construction details visible during inspection. Keep geometry
@@ -382,7 +418,7 @@ static func _mgp7(r: Node3D) -> Dictionary:
 		"charge": _marker(r, "Charge", Vector3(-0.02, 0.14, -0.23)),
 		"eject": _marker(r, "Eject", Vector3(0.02, 0.13, -0.14)),
 		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.108, -0.41)),
-		"under_at": _marker(r, "UnderAt", Vector3(0, 0.073, -0.27)),
+		"under_at": _marker(r, "UnderAt", Vector3(0, _bottom_at(r, -0.27, 0.073), -0.27)),
 		"mag_at": _marker(r, "MagAt", Vector3(0, 0.06, -0.17)),
 		"mag_style": "smg",
 		"stock_at": r,
@@ -443,6 +479,7 @@ static func _marlin(r: Node3D) -> Dictionary:
 		var mi := MeshInstance3D.new()
 		mi.mesh = e[1]
 		mi.set_meta("pack4", true)   # skins recolour these too
+		_clear_glass(mi)   # its bolt and hammer come in flat white ("1w")
 		if part.begins_with("Lever"):
 			lever = Node3D.new()
 			lever.name = "Lever"
@@ -503,19 +540,22 @@ const LP_GUNS := {
 			"muzzle": Vector2(4.375, 0.33), "eject": Vector2(-0.3, 0.3), "charge": Vector2(0.5, 0.35), "under": Vector2(0.9, 0.0), "snap_under": true,
 			"sight": Vector2(1.708, 0.63), "rail": Vector2(-0.5, 0.624), "relief": 0.4},
 	"gepard": {"length": 0.68, "grip": Vector2(0.114, -0.437), "support": Vector2(1.685, -0.16), "mag": Vector2(0.1, -0.3),
-			"muzzle": Vector2(3.718, 0.21), "eject": Vector2(0.62, 0.35), "charge": Vector2(0.4, 0.4), "under": Vector2(1.9, -0.17), "snap_under": true,
+			"muzzle": Vector2(3.718, 0.114), "eject": Vector2(0.62, 0.35), "charge": Vector2(0.4, 0.4), "under": Vector2(1.9, -0.17), "snap_under": true,
 			"sight": Vector2(0.253, 0.72), "rail": Vector2(-0.3, 0.53), "relief": 0.2},
 	"p90": {"length": 0.5, "grip": Vector2(0.75, -0.74), "support": Vector2(1.55, -0.7), "mag": Vector2(0.47, 0.08),
 			"muzzle": Vector2(2.6, -0.13), "eject": Vector2(0.4, -1.0), "charge": Vector2(1.2, -0.2), "under": Vector2(1.8, -0.75), "rail_adapter": true,
 			"sight": Vector2(0.6, 0.83), "rail": Vector2(1.1, 0.82), "relief": 0.2},
 	"scar_h": {"length": 0.91, "grip": Vector2(-1.75, -0.7), "support": Vector2(1.3, -0.05), "mag": Vector2(-0.34, -0.6),
-			"muzzle": Vector2(4.81, 0.226), "eject": Vector2(-0.3, 0.45), "charge": Vector2(1.6, 0.4), "under": Vector2(2.0, -0.05), "rail_adapter": true,
+			"muzzle": Vector2(4.81, 0.226), "eject": Vector2(-0.3, 0.45), "charge": Vector2(1.6, 0.4), "under": Vector2(2.0, -0.05),
 			"sight": Vector2(-1.88, 0.98), "rail": Vector2(-0.6, 0.7)},
-	"l96a1": {"length": 1.18, "grip": Vector2(-1.4, -0.65), "support": Vector2(2.0, -0.05), "mag": Vector2(0.0, -0.3),
-			"muzzle": Vector2(6.855, 0.435), "eject": Vector2(0.0, 0.5), "charge": Vector2(-1.0, 0.45), "under": Vector2(3.5, -0.15), "rail_adapter": true,
+	# bolt_action: [handle lift (rad), bolt throw (m)]. The AW's three-lug bolt
+	# lifts a short 60 degrees and runs back a short stroke; the Mosin's two-lug
+	# bolt turns a full 90 degrees and runs back much further.
+	"l96a1": {"drop": ["blt"], "bolt_action": [1.05, 0.085], "length": 1.18, "grip": Vector2(-1.4, -0.65), "support": Vector2(2.0, -0.05), "mag": Vector2(0.0, -0.3),
+			"muzzle": Vector2(7.25, 0.469), "eject": Vector2(0.0, 0.5), "charge": Vector2(-1.0, 0.45), "under": Vector2(3.5, -0.15), "rail_adapter": true,
 			"sight": Vector2(-1.39, 0.95), "rail": Vector2(0.0, 0.7), "relief": 0.1},
-	"mosin": {"length": 1.24, "grip": Vector2(-3.2, -0.05), "support": Vector2(0.2, 0.1), "mag": Vector2(-1.7, -0.3),
-			"muzzle": Vector2(5.86, 0.6), "eject": Vector2(-1.5, 0.6), "charge": Vector2(-2.3, 0.45), "under": Vector2(2.5, 0.0), "rail_adapter": true,
+	"mosin": {"bolt_action": [1.55, 0.105], "length": 1.24, "grip": Vector2(-3.2, -0.05), "support": Vector2(0.2, 0.1), "mag": Vector2(-1.7, -0.3),
+			"muzzle": Vector2(6.2, 0.513), "eject": Vector2(-1.5, 0.6), "charge": Vector2(-2.3, 0.45), "under": Vector2(2.5, 0.0), "rail_adapter": true,
 			"sight": Vector2(0.05, 0.8), "rail": Vector2(-1.5, 0.75), "relief": 0.45},
 	"g17": {"length": 0.2, "pistol": true, "grip": Vector2(-0.62, -0.08), "mag": Vector2(-0.5, 0.3),
 			"muzzle": Vector2(1.17, 0.566), "eject": Vector2(0.2, 0.62), "charge": Vector2(-0.75, 0.55), "under": Vector2(0.524, 0.295),
@@ -552,9 +592,11 @@ static func _low_poly(r: Node3D, model: String, handguard: String = "standard") 
 		mi.mesh = e[1]
 		mi.transform = e[2]
 		mi.set_meta("pack4", true)   # skins recolour these too
-		_clear_glass(mi)
 		if part.begins_with("Body") and handguard == "hex" and spec.has("hex"):
 			mi.mesh = _without_handguard(model, e[1], e[2], spec)
+		if part.begins_with("Body") and spec.has("drop"):
+			mi.mesh = _without_surfaces(mi.mesh, spec.drop)
+		_clear_glass(mi)   # after the mesh is final: overrides go by surface index
 		if part.begins_with("Bolt"):
 			bolt = Node3D.new()
 			bolt.name = "Bolt"
@@ -569,15 +611,23 @@ static func _low_poly(r: Node3D, model: String, handguard: String = "standard") 
 		var tube := _att_model(r, "hex_handguard")
 		if tube != null:
 			tube.position = Vector3(0, (spec.muzzle.y - g.y) * 0.1, float(hz[1]))
+			_tag_tree(tube, "handguard")
 	var under := _lp(spec.under, g)
 	# every gun can take the rail now, so its mount sits on the model's real underside
 	under.y = _bottom_at(r, under.z, under.y)
 	var sight := _lp(spec.sight, g)
 	var rail := _lp(spec.get("rail", spec.sight), g)
+	var action: Array = spec.get("bolt_action", [])
+	var charge: Node3D
+	if bolt != null and not action.is_empty():
+		charge = _turn_bolt(bolt)
+	else:
+		charge = _marker(r, "Charge", _lp(spec.charge, g))
+		action = []
 	var out := {
-		"glb": true, "glb_mag": mag, "bolt": bolt, "pistol": pistol,
+		"glb": true, "glb_mag": mag, "bolt": bolt, "pistol": pistol, "bolt_action": action,
 		"grip": _marker(r, "Grip", Vector3(0, -0.01, 0.0), Vector3(-0.25 if pistol else -0.3, 0, 0)),
-		"charge": _marker(r, "Charge", _lp(spec.charge, g)),
+		"charge": charge,
 		"eject": _marker(r, "Eject", _lp(spec.eject, g, 0.02)),
 		"muzzle_at": _marker(r, "MuzzleAt", _lp(spec.muzzle, g)),
 		"under_at": _marker(r, "UnderAt", under),
@@ -595,6 +645,33 @@ static func _low_poly(r: Node3D, model: String, handguard: String = "standard") 
 	else:
 		out.support = _marker(r, "Support", _lp(spec.support, g, -0.005), Vector3(0, 0, -0.5))
 	return out
+
+
+## Turn-bolt rifles: the bolt pivot moves onto the bolt body's own axis (the
+## middle of its geometry along the centreline), so lifting the handle turns the
+## bolt in place instead of swinging it round the grip. The hand's target is the
+## handle's knob (its outermost point to the right), on the bolt, so the hand
+## rides with the lift and the pull. Returns that "Charge" marker.
+static func _turn_bolt(bolt: Node3D) -> Node3D:
+	var lo := INF
+	var hi := -INF
+	var knob := Vector3(-INF, 0, 0)
+	for c in bolt.get_children():
+		var mi := c as MeshInstance3D
+		if mi == null:
+			continue
+		for v in mi.mesh.get_faces():
+			var p: Vector3 = mi.transform * v
+			if absf(p.x) < 0.012:
+				lo = minf(lo, p.y)
+				hi = maxf(hi, p.y)
+			if p.x > knob.x:
+				knob = p
+	var axis := (lo + hi) * 0.5 if lo < hi else knob.y
+	bolt.position = Vector3(0, axis, 0)
+	for c in bolt.get_children():
+		(c as Node3D).position.y -= axis
+	return _marker(bolt, "Charge", Vector3(knob.x - 0.008, knob.y - axis, knob.z))
 
 
 ## Ring round the bore (m) that is the handguard shell: inside is the barrel, outside
@@ -724,14 +801,36 @@ static func _att_model(at: Node3D, name: String) -> Node3D:
 
 
 ## Lenses and sight windows exported as opaque surfaces get the see-through
-## sight glass, so aiming down the sights is not blocked.
+## sight glass, so aiming down the sights is not blocked. The palette-named
+## models (L96A1, AS VAL, P90) call their lens "1g" and their bare steel "1w";
+## both come in flat white, which drew chalk-white bolts and scope lenses.
 static func _clear_glass(mi: MeshInstance3D) -> void:
 	for s in mi.mesh.get_surface_count():
 		var m := mi.mesh.surface_get_material(s)
 		if m != null:
 			var n := m.resource_name.to_lower()
-			if n.contains("glass") or n.contains("lens"):
+			if n.contains("glass") or n.contains("lens") or n == "1g":
 				mi.set_surface_override_material(s, _glass)
+			elif n == "1w":
+				mi.set_surface_override_material(s, _steel)
+
+
+## `mesh` without the surfaces whose material is named in `names` (stray parts
+## baked into a model, like the loose cartridge under the L96A1's action).
+static var _drop_cache := {}
+
+static func _without_surfaces(mesh: Mesh, names: Array) -> Mesh:
+	if _drop_cache.has(mesh):
+		return _drop_cache[mesh]
+	var out := ArrayMesh.new()
+	_drop_cache[mesh] = out
+	for s in mesh.get_surface_count():
+		var mat := mesh.surface_get_material(s)
+		if mat != null and names.has(mat.resource_name):
+			continue
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(s))
+		out.surface_set_material(out.get_surface_count() - 1, mat)
+	return out
 
 
 ## The centre of a launcher's muzzle: the middle of the geometry within 1.5 cm
@@ -797,38 +896,170 @@ static func _optic(r: Node3D, b: Dictionary, kind: String) -> Dictionary:
 			var c := _reticle_centre(m)
 			if c != Vector3.INF:
 				m.position.x = -c.x   # the models sit a little off-centre: put the reticle on the bore line
-			var y := float(b.rail_y) + (c.y if c != Vector3.INF else float(o[0]))
-			var rear := float(b.rail_z) + (c.z + 0.02 if c != Vector3.INF else float(o[1]))
+			_seat_optic(r, mount, m, float(b.rail_y))
+			var y := mount.position.y + (c.y if c != Vector3.INF else float(o[0]))
+			var rear := mount.position.z + (c.z + 0.02 if c != Vector3.INF else float(o[1]))
 			return {"y": y, "rear_z": rear, "relief": float(o[2])}
 		mount.free()
 	return {"y": float(b.iron_y), "rear_z": float(b.iron_rear_z), "relief": float(b.get("iron_relief", 0.16))}
 
 
+## Sits the optic's base flush on the gun's top rail. The nominal mount point
+## can leave it floating above the rail (P90) or sunk into a sight block
+## (Gepard): the rail's real top is measured under the optic's whole footprint,
+## the mount slides along the rail (up to 6 cm) to the nearest stretch that is
+## flat at rail height, and the optic is set down on it.
+static func _seat_optic(r: Node3D, mount: Node3D, optic: Node3D, rail_y: float) -> void:
+	var box := _holder_box(optic)
+	var z0 := mount.position.z
+	var faces := _faces_near(_faces_of(r, mount), z0 + box.position.z - 0.065, z0 + box.end.z + 0.065)
+	var best_dz := 0.0
+	var best_top := _top_under(faces, z0 + box.position.z, z0 + box.end.z)
+	if not is_finite(best_top):
+		return
+	if absf(best_top - rail_y) > 0.004:
+		for i in range(1, 49):
+			var dz := 0.0025 * float((i + 1) / 2) * (1.0 if i % 2 == 1 else -1.0)
+			var top := _top_under(faces, z0 + dz + box.position.z, z0 + dz + box.end.z)
+			if is_finite(top) and absf(top - rail_y) <= 0.004:
+				best_dz = dz
+				best_top = top
+				break
+	mount.position = Vector3(0, best_top - box.position.y, z0 + best_dz)
+
+
+## Highest point of the gun along the centre of its top between z0 and z1
+## (both rail edges and the middle), or -INF over nothing.
+static func _top_under(faces: PackedVector3Array, z0: float, z1: float) -> float:
+	var best := -INF
+	for k in 7:
+		var z := lerpf(z0 + 0.004, z1 - 0.004, k / 6.0)
+		for x in [-0.008, 0.0, 0.008]:
+			best = maxf(best, _top_in(faces, z, x))
+	return best
+
+
 ## Lowest point of the gun's underside at `z` along the centreline (where a
 ## rail adapter clamps), from the parts built so far; `fallback` if nothing is there.
 static func _bottom_at(r: Node3D, z: float, fallback: float) -> float:
-	var best := INF
+	var best := _bottom_in(_faces_of(r), z)
+	return best if best < INF else fallback
+
+
+## Every triangle under `r` in r's space, leaving out the subtree `skip`.
+static func _faces_of(r: Node3D, skip: Node = null) -> PackedVector3Array:
+	var out := PackedVector3Array()
 	for n in r.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
-		if mi.mesh == null:
+		if mi.mesh == null or (skip != null and (skip == mi or skip.is_ancestor_of(mi))):
 			continue
 		var xf := Transform3D.IDENTITY
 		var p: Node = mi
 		while p != null and p != r:
 			xf = (p as Node3D).transform * xf
 			p = p.get_parent()
-		var faces := mi.mesh.get_faces()
-		for i in range(0, faces.size(), 3):
-			var a := xf * faces[i]
-			var c := xf * faces[i + 1]
-			var d := xf * faces[i + 2]
-			if minf(a.z, minf(c.z, d.z)) > z or maxf(a.z, maxf(c.z, d.z)) < z:
-				continue
-			# exact: where a vertical line up the centreline at `z` crosses this face
-			var hit = Geometry3D.ray_intersects_triangle(Vector3(0, -1.0, z), Vector3.UP, a, c, d)
-			if hit != null:
-				best = minf(best, (hit as Vector3).y)
-	return best if best < INF else fallback
+		for v in mi.mesh.get_faces():
+			out.append(xf * v)
+	return out
+
+
+## The triangles that reach into z0..z1 near the centreline (|x| < 3 cm).
+static func _faces_near(faces: PackedVector3Array, z0: float, z1: float) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in range(0, faces.size(), 3):
+		var a := faces[i]
+		var b := faces[i + 1]
+		var c := faces[i + 2]
+		if maxf(a.z, maxf(b.z, c.z)) < z0 or minf(a.z, minf(b.z, c.z)) > z1:
+			continue
+		if minf(a.x, minf(b.x, c.x)) > 0.03 or maxf(a.x, maxf(b.x, c.x)) < -0.03:
+			continue
+		out.append(a)
+		out.append(b)
+		out.append(c)
+	return out
+
+
+## Lowest surface a vertical line at (x, z) meets (INF when it misses the gun).
+static func _bottom_in(faces: PackedVector3Array, z: float, x: float = 0.0) -> float:
+	var best := INF
+	for i in range(0, faces.size(), 3):
+		var a := faces[i]
+		var c := faces[i + 1]
+		var d := faces[i + 2]
+		if minf(a.z, minf(c.z, d.z)) > z or maxf(a.z, maxf(c.z, d.z)) < z:
+			continue
+		var hit = Geometry3D.ray_intersects_triangle(Vector3(x, -1.0, z), Vector3.UP, a, c, d)
+		if hit != null:
+			best = minf(best, (hit as Vector3).y)
+	return best
+
+
+## Highest surface a vertical line at (x, z) meets (-INF when it misses the gun).
+static func _top_in(faces: PackedVector3Array, z: float, x: float = 0.0) -> float:
+	var best := -INF
+	for i in range(0, faces.size(), 3):
+		var a := faces[i]
+		var c := faces[i + 1]
+		var d := faces[i + 2]
+		if minf(a.z, minf(c.z, d.z)) > z or maxf(a.z, maxf(c.z, d.z)) < z:
+			continue
+		var hit = Geometry3D.ray_intersects_triangle(Vector3(x, 1.0, z), Vector3.DOWN, a, c, d)
+		if hit != null:
+			best = maxf(best, (hit as Vector3).y)
+	return best
+
+
+## Bounds of an attachment holder's meshes in its parent's space.
+static func _holder_box(holder: Node3D) -> AABB:
+	var box := AABB()
+	var first := true
+	for c in holder.get_children():
+		if c is MeshInstance3D:
+			var a: AABB = holder.transform * ((c as MeshInstance3D).transform * (c as MeshInstance3D).mesh.get_aabb())
+			box = a if first else box.merge(a)
+			first = false
+	return box
+
+
+## The rail adapter clamps flat to the gun's underside at `at`. Where a magazine,
+## trigger guard or grip hangs lower within its length it would run through
+## them: the rail is cut to the clear, flat stretch round its mount instead.
+## Returns how far it had to be lowered (m) to clear a curved underside.
+static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> float:
+	var box := _holder_box(rail)
+	var face_y := at.position.y
+	var z0 := at.position.z
+	var half := box.size.z * 0.5
+	var faces := _faces_near(_faces_of(r, rail), z0 - half - 0.01, z0 + half + 0.01)
+	var ends: Array = []
+	for dir: float in [-1.0, 1.0]:
+		var reach := 0.0
+		while reach < half:
+			var z := z0 + dir * (reach + 0.002)
+			var low := _bottom_in(faces, z)
+			# something hangs below the clamp face, or the underside steps up away from it
+			if low < face_y - 0.0015 or low > face_y + 0.006:
+				break
+			reach += 0.002
+		ends.append(z0 + dir * reach)
+	var span: float = ends[1] - ends[0]
+	if span >= box.size.z - 0.002:
+		return 0.0
+	var k := maxf(span, 0.03) / box.size.z
+	rail.scale.z *= k
+	# centre the shortened rail on the clear stretch
+	var mid := (float(ends[0]) + float(ends[1])) * 0.5
+	rail.position.z += mid - z0 - box.get_center().z * k
+	# a curved underside (P90) has no flat stretch even as long as the shortest
+	# rail: it drops just clear of the lowest point over its length instead
+	var low := INF
+	var half_k := box.size.z * k * 0.5
+	for i in 7:
+		low = minf(low, _bottom_in(faces, lerpf(mid - half_k, mid + half_k, i / 6.0)))
+	var drop := maxf(face_y - low, 0.0) if is_finite(low) else 0.0
+	rail.position.y -= drop
+	return drop
 
 
 ## Centre of an optic model's glowing reticle, in its holder's space (INF if none).

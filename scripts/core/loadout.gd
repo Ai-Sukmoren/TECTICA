@@ -141,13 +141,14 @@ static func reset_class() -> void:
 	classes[class_index] = _preset(class_index)
 
 
-## [[id, att, skin], ...] for Soldier.setup_soldier / set_loadout (skins are
-## part of the spec so other multiplayer peers see them too).
+## [[id, att, skin, sticker, charm, part skins], ...] for Soldier.setup_soldier /
+## set_loadout (skins are part of the spec so other multiplayer peers see them too).
 static func weapon_list() -> Array:
 	var c := current()
 	var out: Array = []
 	for slot in SLOTS:
 		var e: Dictionary = c[slot]
-		out.append([e.id, e.att, Collection.skin_for(String(e.id)), Collection.sticker_for(String(e.id)), Charm.sanitize(String(e.get("charm", "")))])
-	out.append([knife, Data.sanitize(knife, {}), Collection.skin_for(knife), {}, ""])
+		var id := String(e.id)
+		out.append([e.id, e.att, Collection.skin_for(id), Collection.sticker_for(id), Charm.sanitize(String(e.get("charm", ""))), Collection.parts_for(id)])
+	out.append([knife, Data.sanitize(knife, {}), Collection.skin_for(knife), {}, "", {}])
 	return out

@@ -6,9 +6,42 @@ A tactical military shooter for **Godot 4.7** (GDScript, Forward+), playable in 
 campaign chapters, zombie survival, online co-op and PvP deathmatch.
 Soldiers, most weapons, both maps, FX and sound are generated in code; a few props and two guns come from an optional asset pack.
 
-## 🆕 What's new in v1.21
+## 🆕 What's new in v1.39
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.21.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.39.0-beta)
+
+### New first-person hands
+The original TECTICA arms are back in first person, with a rebuilt glove: rounded palm, jointed fingers with knuckles,
+a two-part thumb, hard knuckle pads and a slim cuff with a wrist strap. Every gun and knife keeps its grip.
+
+<p align="center"><img src="docs/screenshots/v139-hands-scar.gif" width="560" alt="New hands on the FN SCAR-H: fire, aim and reload"></p>
+
+| Before (left) and after (right) |
+|---|
+| ![Old glove next to the new glove](docs/screenshots/v139-glove-before-after.jpg) |
+
+The green glow that lit the operator's body (also on the title menu) is gone; the chem sticks on the vest still glow.
+
+### Newest guns (v1.34)
+| Gun | Type |
+|---|---|
+| **FN SCAR-H** | 7.62 battle rifle |
+| **FN P90** | SMG with a 50-round top magazine |
+| **L96A1** | Bolt-action sniper with a built-in 10x scope |
+| **Mosin-Nagant 91/30** | Bolt-action rifle on iron sights, 5 rounds |
+
+All four take gunsmith attachments, cycle their bolts after every shot and are in the Zombie Survival shop.
+
+![FN SCAR-H, FN P90, L96A1 and Mosin-Nagant in first person](docs/screenshots/v139-new-guns.jpg)
+
+### Every weapon, every animation
+All 17 weapons with the new hands: draw, walk, hip fire, aim, reloads, inspect, sprint and grenade throw (about 4½ minutes).
+
+[![Watch all 17 weapons with the new hands](docs/screenshots/v139-all-guns-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/all_guns_new_hands.mp4)
+
+## Earlier: v1.21
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.21.0-beta)
 
 ### Nine new attachments
 Prism 2.5x, pistol mini red dot, heavy suppressor, muzzle booster, stubby grip, handstop, hollow points, taped dual mag and folding stock. Every attachment now sits flush on every gun.

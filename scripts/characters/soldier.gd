@@ -20,6 +20,9 @@ const CROUCH_HEIGHT := 1.15
 const SWITCH_TIME := 0.5
 const GRAVITY := 18.0
 const COYOTE_TIME := 0.12
+## Highest step (stair riser, kerb) a body walks up without jumping, in metres. Anything taller is a wall to climb
+## or vault. Floor snapping reaches as far down, so running down the same stairs stays on the ground.
+const STEP_HEIGHT := 0.42
 ## Share of a headshot that still lands when a helmet stops the round.
 const HELMET_STOP := 0.25
 
@@ -91,12 +94,14 @@ var _net_has := false
 # knockback (kicks): a shove that overrides steering for a moment
 var _knock := Vector3.ZERO
 var _knock_t := 0.0
+## time spent hung up off the ground on edges (see _unperch)
+var _perch_t := 0.0
 
 
 func setup_soldier(palette: Dictionary, weapon_ids: Array, layer: int, mask: int, yaw: float = 0.0) -> void:
 	collision_layer = layer
 	collision_mask = mask
-	floor_snap_length = 0.3
+	floor_snap_length = STEP_HEIGHT
 	_shape = CapsuleShape3D.new()
 	_shape.radius = 0.32
 	_shape.height = STAND_HEIGHT
@@ -270,15 +275,87 @@ func move_with(desired: Vector3, delta: float) -> void:
 		velocity.y = jump_request
 		air_time = COYOTE_TIME
 	jump_request = 0.0
+	_step_up(delta)
 	move_and_slide()
+	_unperch(delta)
+
+
+## A body hung up off the ground on edges (a planter rim against a trunk, the top of a railing) is held by surfaces
+## too steep to count as floor, so it can neither fall nor jump. After a moment it is pushed off them, away from the
+## upward-facing contacts, and the perch counts as ground for a jump.
+func _unperch(delta: float) -> void:
+	# judged by how the body really moved, not by its velocity, which gravity keeps growing while it is held
+	if is_on_floor() or get_slide_collision_count() == 0 or get_real_velocity().length() > 0.6:
+		_perch_t = 0.0
+		return
+	_perch_t += delta
+	velocity.y = maxf(velocity.y, -2.0)   # held up: no fall speed builds up to slam down with later
+	if _perch_t < 0.15:
+		return
+	var push := Vector3.ZERO
+	for i in get_slide_collision_count():
+		var n := get_slide_collision(i).get_normal()
+		if n.y > 0.05:
+			push += Vector3(n.x, 0.0, n.z)
+	if push.length() > 0.01:
+		push = push.normalized() * 2.5
+		velocity.x = push.x
+		velocity.z = push.z
+	air_time = 0.0
+
+
+## Stair stepping. A capsule meets the edge of a step at a steep angle, which move_and_slide() treats as a wall,
+## so on the ground a step up to STEP_HEIGHT is climbed here: the move is swept ahead; if it is blocked by a steep
+## face, the body is swept up, forward and back down, and when that lands on walkable floor the body is lifted to
+## it (move_and_slide() then carries it on over the step). Every sweep is a real collision test, so this can never
+## lift a body through a ceiling or onto something it does not fit on.
+func _step_up(delta: float) -> void:
+	if (not is_on_floor() and air_time > COYOTE_TIME) or velocity.y > 0.5:
+		return
+	var h := Vector3(velocity.x, 0.0, velocity.z) * delta
+	if h.length() < 0.0005:
+		return
+	var ahead := h.normalized() * maxf(h.length(), 0.06)   # look a little ahead: catch the step before it stops us
+	var xf := global_transform
+	# swept from just above the floor, so the floor under us (a ramp, a sloped stair) is not taken for the obstacle
+	var skim := Vector3.UP * 0.04
+	if test_move(xf, skim):
+		return
+	var hit := KinematicCollision3D.new()
+	if not test_move(xf.translated(skim), ahead, hit) or hit.get_normal().y > 0.7:
+		return   # nothing in the way, or a slope the floor already handles
+	var rise := Vector3.UP * STEP_HEIGHT
+	var ceiling := KinematicCollision3D.new()
+	if test_move(xf, rise, ceiling):
+		rise = ceiling.get_travel()   # low ceiling: only as high as it allows
+	if rise.y < 0.04:
+		return
+	var raised := xf.translated(rise)
+	# land a body-radius past the edge, on the step's flat top (just past it the base would sit on the corner)
+	var onto := ahead.normalized() * (ahead.length() + _shape.radius * 0.6)
+	if test_move(raised, onto):
+		return   # still blocked up there: a wall, not a step
+	var down := KinematicCollision3D.new()
+	if not test_move(raised.translated(onto), -rise - Vector3(0, 0.02, 0), down) or down.get_normal().y < 0.7:
+		return   # no floor to stand on past it
+	var top := raised.origin.y + down.get_travel().y
+	if top - xf.origin.y > 0.02:
+		global_position.y = top
 
 
 func set_crouch(c: bool) -> void:
 	if c == crouching:
 		return
+	if not c and not _headroom():
+		return   # standing up here would push the head into the ceiling: stay crouched
 	crouching = c
 	_shape.height = CROUCH_HEIGHT if c else STAND_HEIGHT
 	_col.position.y = _shape.height * 0.5
+
+
+## Room above a crouched body to stand up.
+func _headroom() -> bool:
+	return not test_move(global_transform, Vector3.UP * (STAND_HEIGHT - CROUCH_HEIGHT + 0.02))
 
 
 func chest_height() -> float:

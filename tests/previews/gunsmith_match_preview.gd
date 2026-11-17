@@ -33,9 +33,8 @@ func run() -> void:
 	await snap(out + "/gunsmith_in_match.jpg")
 	# turned by hand and zoomed in on the action
 	var gs = hud.gunsmith
-	gs._manual_rotation = true
-	gs._pivot.rotation = Vector3(0.25, -2.2, 0)
-	gs.zoom = 0.45
+	gs.preview.set_turn(Vector3(0.25, -2.2, 0))
+	gs.preview.zoom = 0.45
 	await frames(20)
 	await snap(out + "/gunsmith_zoomed.jpg")
 	preload("res://scripts/core/settings.gd").mark_clean_exit()

@@ -14,28 +14,43 @@ const MAP_DIR := "res://assets/thirdparty/"
 ## whole map; without it the edge is invisible,
 ## stairs: [[foot, top, width], ...] an invisible slope along a stair's step edges,
 ## so feet glide up it and navigation can follow,
-## agent_radius: narrower navigation agents for narrow stairs (default 0.5 m; it
-## rounds up to whole 0.25 m cells),
+## agent_radius: navigation agent radius (default 0.5 m; it rounds up to whole cells, so keep it above the
+## 0.32 m body or bots hug walls they cannot pass), nav_cell: a finer navigation grid (default 0.25 m) so a
+## narrow stair still has room for that radius,
 ## play_at: a point in the area to play in, when the largest walkable area is not
 ## it (the play area is then the walkable area nearest this point),
-## ramps: [[foot, top], ...] concrete ramps joining walkable areas the model
-## leaves apart (kerbs, ledges); found by tools/link_map_islands.gd.
+## ramps: [[foot, top], ...] visible concrete ramps joining walkable areas the model leaves apart (none in use:
+## measure the real floor and every rail across the route before adding one),
 const CONFIGS := {
 	"warehouse": {"glb": "warehouse/warehouse.glb", "lights": [], "indoor": true},
 	"backrooms": {"glb": "backrooms/backrooms.glb", "lights": [], "indoor": true, "floor_only": true},
 	# open-air Tokyo back street (canal, bridge, rail line), car removed, walled in
-	"tokyo": {"glb": "tokyo/tokyo.glb", "lights": [], "indoor": false, "wall": 12.0, "ramps": TOKYO_RAMPS, "play_at": Vector3(-14.0, 3.8, 10.0), "agent_radius": 0.25,
+	"tokyo": {"glb": "tokyo/tokyo.glb", "lights": [], "indoor": false, "wall": 12.0, "play_at": Vector3(-14.0, 3.8, 10.0), "agent_radius": 0.4, "nav_cell": 0.1,
 			# the long stair from the west plaza up to the hotel level, between its walls
-			"stairs": [[Vector3(-12.32, 3.34, 5.6), Vector3(-12.32, 7.68, -7.7), 0.95]]},
+			# walls at x -13.07 / -11.86; the slope rides 0.12 m over the step nosings so no tread pokes through it
+			"stairs": [[Vector3(-12.465, 3.46, 5.6), Vector3(-12.465, 7.80, -7.7), 1.19],
+				# the 0.67 m kerb from the road up to the west plaza, in the two openings of the bamboo fence
+				# (rails at 0.45 / 1.0 m along x -11.8 everywhere else): south end z 19.05-19.98, north by the stair foot
+				# (the north opening by the stair foot is 0.65 m, too narrow for a body and its margin: jump it)
+				[Vector3(-10.0, 2.67, 19.5), Vector3(-11.6, 3.34, 19.5), 0.85]]},
 }
 const MAX_LAMPS := 24
+## Foliage and cloth (by material name) is drawn but not solid: leaf cards, ivy, flags. Made solid, a tree's
+## crossing leaf planes caught a jumping body in the canopy. A tree drawn only from such cards keeps a trunk post.
+const SOFT := ["leaves", "leaf", "ivy", "alley_plants", "tree2_tex", "bakeryflag"]
+const TRUNK_RADIUS := 0.18
+## Bushes (by mesh name) are one solid block over their visible volume: a hedge fills an open-topped planter, and
+## with only its leaves to stand on a body dropped into the box and wedged there.
+const BLOCKS := ["hedge"]
 const RAMP_WIDTH := 1.8
-const TOKYO_RAMPS := [[Vector3(-9.79, 3.00, 13.16), Vector3(-12.17, 3.75, 13.16)], [Vector3(-9.50, 8.00, -11.54), Vector3(-5.98, 9.25, -12.20)]]
 
 var map_key := "warehouse"
 var _walkable: Array = []
 var _lo := Vector3.ZERO
 var _hi := Vector3.ZERO
+## where the ground ends (the boundary stands here): may be inside _lo/_hi, which also take in overhangs
+var _ground_lo := Vector3.ZERO
+var _ground_hi := Vector3.ZERO
 static var _navs := {}
 
 
@@ -92,6 +107,7 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 	var first := true
 	var lamps := 0
 	var hints: Array = cfg.lights
+	var boxes: Array = []
 	for n in inst.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -102,6 +118,7 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 			xf = (p as Node3D).transform * xf
 			p = p.get_parent()
 		var aabb: AABB = xf * mi.mesh.get_aabb()
+		boxes.append(aabb)
 		if first:
 			_lo = aabb.position
 			_hi = aabb.end
@@ -111,11 +128,30 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 			_hi = _hi.max(aabb.end)
 		# small clutter gets no collision
 		if aabb.size.x * aabb.size.y * aabb.size.z > 0.02 or aabb.size.y > 1.5 or aabb.size.x > 3.0 or aabb.size.z > 3.0:
+			var solid := _solid_part(mi.mesh)
 			var cs := CollisionShape3D.new()
 			cs.name = mi.name
-			cs.shape = mi.mesh.create_trimesh_shape()
-			cs.transform = xf
-			body.add_child(cs)
+			if BLOCKS.any(func(h): return String(mi.name).to_lower().contains(String(h))):
+				var box := BoxShape3D.new()
+				box.size = aabb.size
+				cs.shape = box
+				cs.position = aabb.get_center()
+				body.add_child(cs)
+			elif solid != null:
+				var tri := solid.create_trimesh_shape()
+				# solid from both sides: one-sided faces stop pushing back once a fast body is past them, and it falls
+				# through a deck or into a hollow shell (a wall, a planter, a building)
+				tri.backface_collision = true
+				cs.shape = tri
+				cs.transform = xf
+				body.add_child(cs)
+			elif aabb.size.y > 2.5:
+				var trunk := CylinderShape3D.new()
+				trunk.radius = TRUNK_RADIUS
+				trunk.height = minf(aabb.size.y * 0.5, 3.0)
+				cs.shape = trunk
+				cs.position = Vector3(aabb.get_center().x, aabb.position.y + trunk.height * 0.5, aabb.get_center().z)
+				body.add_child(cs)
 		var nm := String(mi.name).to_lower()
 		if lamps < MAX_LAMPS and hints.any(func(h): return nm.contains(String(h))):
 			lamps += 1
@@ -129,6 +165,7 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 			lights.append({"light": l, "shadow": lamps % 6 == 0})
 		if aabb.size.y > 2.2 and aabb.size.x < 40.0 and aabb.size.z < 40.0:
 			map_rects.append({"c": Vector2(aabb.get_center().x, aabb.get_center().z), "s": Vector2(aabb.size.x, aabb.size.z), "r": 0.0, "tall": true})
+	_find_ground(boxes)
 	if bool(cfg.indoor):
 		# indoors: a few soft fill lights spread over the floor so it is never pitch black
 		var step := 12.0
@@ -146,16 +183,59 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 			x += step
 
 
+## The mesh's solid surfaces (foliage and cloth left out), the mesh itself when all are solid, null when none is.
+func _solid_part(mesh: Mesh) -> Mesh:
+	var keep: Array = []
+	for i in mesh.get_surface_count():
+		var m := mesh.surface_get_material(i)
+		var nm := String(m.resource_name).to_lower() if m != null else ""
+		if not SOFT.any(func(h): return nm.contains(String(h))):
+			keep.append(i)
+	if keep.size() == mesh.get_surface_count():
+		return mesh
+	if keep.is_empty():
+		return null
+	var am := ArrayMesh.new()
+	for i in keep:
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(i))
+	return am
+
+
+## The ground's footprint: the big pieces that sit on the model's lowest level (a street, a floor slab, a rail bed)
+## and span a good part of the map. A building that overhangs the ground's edge is left out, so the boundary does
+## not stand beyond the floor and leave a slot down the side of the model to fall into.
+func _find_ground(boxes: Array) -> void:
+	_ground_lo = _lo
+	_ground_hi = _hi
+	var size := _hi - _lo
+	var first := true
+	for b in boxes:
+		var a: AABB = b
+		if a.position.y > _lo.y + 1.0 or (a.size.x < size.x * 0.35 and a.size.z < size.z * 0.35):
+			continue
+		if first:
+			_ground_lo = a.position
+			_ground_hi = a.end
+			first = false
+		else:
+			_ground_lo = _ground_lo.min(a.position)
+			_ground_hi = _ground_hi.max(a.end)
+	_ground_lo.y = _lo.y
+	_ground_hi.y = _hi.y
+
+
 ## Walls just outside the model keep everyone in: invisible, or solid concrete
 ## (with the invisible part above it) when the map's config asks for a wall.
 func _build_edges() -> void:
-	var c := (_lo + _hi) * 0.5
-	var s := _hi - _lo
-	var h := s.y + 6.0
+	var lo := _ground_lo if _ground_lo != _ground_hi else _lo
+	var hi := _ground_hi if _ground_lo != _ground_hi else _hi
+	var c := (lo + hi) * 0.5
+	var s := hi - lo
+	var h := (_hi.y - _lo.y) + 6.0
 	var wall := float(CONFIGS[map_key].get("wall", 0.0))
 	var t := 0.6 if wall <= 0.0 else 1.0
-	for e in [[Vector3(c.x, _lo.y, _lo.z - t * 0.5), Vector3(s.x + t * 2.0, h, t)], [Vector3(c.x, _lo.y, _hi.z + t * 0.5), Vector3(s.x + t * 2.0, h, t)],
-			[Vector3(_lo.x - t * 0.5, _lo.y, c.z), Vector3(t, h, s.z + t * 2.0)], [Vector3(_hi.x + t * 0.5, _lo.y, c.z), Vector3(t, h, s.z + t * 2.0)]]:
+	for e in [[Vector3(c.x, _lo.y, lo.z - t * 0.5), Vector3(s.x + t * 2.0, h, t)], [Vector3(c.x, _lo.y, hi.z + t * 0.5), Vector3(s.x + t * 2.0, h, t)],
+			[Vector3(lo.x - t * 0.5, _lo.y, c.z), Vector3(t, h, s.z + t * 2.0)], [Vector3(hi.x + t * 0.5, _lo.y, c.z), Vector3(t, h, s.z + t * 2.0)]]:
 		var b := _body(e[0])
 		_box_shape(b, e[1], Vector3(0, h * 0.5, 0))
 		if wall > 0.0:
@@ -168,19 +248,27 @@ func _build_edges() -> void:
 
 func _bake_navigation(fresh: bool = false) -> void:
 	if _navs.has(map_key) and not fresh:
-		nav_region.navigation_mesh = (_navs[map_key] as NavigationMesh).duplicate()
+		var cached := (_navs[map_key] as NavigationMesh).duplicate() as NavigationMesh
+		NavigationServer3D.map_set_cell_size(get_world_3d().navigation_map, cached.cell_size)
+		NavigationServer3D.map_set_cell_height(get_world_3d().navigation_map, cached.cell_height)
+		nav_region.navigation_mesh = cached
 		return
 	var nm := NavigationMesh.new()
 	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
 	nm.geometry_collision_mask = Layers.WORLD
-	nm.cell_size = 0.25
-	nm.cell_height = 0.25
+	var cell := float(CONFIGS[map_key].get("nav_cell", 0.25))
+	nm.cell_size = cell
+	nm.cell_height = cell
 	nm.agent_radius = float(CONFIGS[map_key].get("agent_radius", 0.5))
 	nm.agent_height = 2.0
-	nm.agent_max_climb = 0.5
+	# no higher than a body actually steps (soldier.gd STEP_HEIGHT), where the grid is fine enough to say so
+	nm.agent_max_climb = 0.4 if cell < 0.2 else 0.5
 	nm.agent_max_slope = 40.0
 	nm.region_min_size = 4.0
 	nm.filter_baking_aabb = AABB(_lo - Vector3(0, 1, 0), _hi - _lo + Vector3(0, 2, 0))
+	# the navigation map works on the same grid as this mesh
+	NavigationServer3D.map_set_cell_size(get_world_3d().navigation_map, cell)
+	NavigationServer3D.map_set_cell_height(get_world_3d().navigation_map, cell)
 	nav_region.navigation_mesh = nm
 	nav_region.bake_navigation_mesh(false)
 	_navs[map_key] = nm.duplicate()

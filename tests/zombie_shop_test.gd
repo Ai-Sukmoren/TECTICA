@@ -85,18 +85,18 @@ func run() -> void:
 	check(shop.buy("gun_marlin", p) == "", "can't buy the same gun twice")
 	check(Player.zombie_specs.size() == 3, "net loadout carries the new gun")
 
-	# --- upgrade the gun in hand
+	# --- upgrade the rifle
 	var dmg0 := float(p.weapons[0].stats.damage)
 	var mag0 := int(p.weapons[0].stats.mag)
 	shop.points = 20000
-	check(shop.buy("upgrade", p) != "", "upgrade to MK I")
+	check(shop.buy("upgrade:marlin", p) != "", "upgrade to MK I")
 	check(is_equal_approx(float(p.weapons[0].stats.damage), dmg0 * 1.3), "MK I: +30% damage")
 	check(int(p.weapons[0].stats.mag) > mag0, "MK I: bigger magazine")
-	shop.buy("upgrade", p)
-	shop.buy("upgrade", p)
+	shop.buy("upgrade:marlin", p)
+	shop.buy("upgrade:marlin", p)
 	check(shop.upgrade_tag("marlin") == "MK III", "upgrades stop at MK III")
 	var pts_before: int = shop.points
-	check(shop.buy("upgrade", p) == "" and shop.points == pts_before, "no fourth upgrade")
+	check(shop.buy("upgrade:marlin", p) == "" and shop.points == pts_before, "no fourth upgrade")
 	check(is_equal_approx(float(p.weapons[0].stats.damage), dmg0 * 1.9), "MK III: +90% damage, no compounding")
 
 	# --- perks
@@ -140,13 +140,13 @@ func run() -> void:
 	check(att_rows.size() >= 5, "the shop lists attachments for the gun in hand")
 	var pts_a: int = shop.points
 	var aug_ammo: int = p.weapons[0].ammo
-	check(shop.buy("att_muzzle:suppressor", p) != "", "buys a suppressor")
+	check(shop.buy("att_aug_a1:muzzle:suppressor", p) != "", "buys a suppressor")
 	check(String(p.weapons[0].attachments.muzzle) == "suppressor" and bool(p.weapons[0].stats.suppressed), "the suppressor is on the AUG")
 	check(shop.points == pts_a - Shop.ATT_PRICES.muzzle, "attachment price taken")
 	check(p.weapons[0].ammo == aug_ammo, "the gun keeps its ammo")
 	check(is_equal_approx(float(p.weapons[0].stats.reload), float(D.compute("aug_a1", p.weapons[0].attachments).reload) * 0.6), "perks still apply")
-	check(shop.buy("att_muzzle:suppressor", p) == "", "can't buy a fitted attachment again")
-	check(shop.buy("att_underbarrel:laser", p) != "" and String(p.weapons[0].attachments.rail) == "rail", "a laser brings its rail")
+	check(shop.buy("att_aug_a1:muzzle:suppressor", p) == "", "can't buy a fitted attachment again")
+	check(shop.buy("att_aug_a1:underbarrel:laser", p) != "" and String(p.weapons[0].attachments.rail) == "rail", "a laser brings its rail")
 	check(String(p.weapons[0].attachments.muzzle) == "suppressor", "earlier attachments stay")
 
 	# --- an SMG adds the third gun, in its own slot next to the rifle
@@ -159,6 +159,32 @@ func run() -> void:
 	check(Player.zombie_specs.size() == 4, "net loadout carries the SMG")
 	shop.buy("smg_gepard", p)
 	check(p.weapons.size() == 4 and String(p.weapons[1].id) == "gepard", "the Gepard replaces the MGP7")
+
+	# --- every gun carried has its upgrade; attachments go on the gun picked in FIT TO
+	var up_ids: Array = shop.items(p).filter(func(r): return String(r.id).begins_with("upgrade:")).map(func(r): return String(r.id).substr(8))
+	var pistol_id := String(p.weapons[2].id)
+	check(up_ids.size() == 3 and "aug_a1" in up_ids and "gepard" in up_ids and pistol_id in up_ids, "an upgrade row for every gun carried %s" % [up_ids])
+	var rifle_dmg := float(p.weapons[0].stats.damage)
+	var in_hand: int = p.weapon_index
+	shop.points = 20000
+	check(shop.buy("upgrade:" + pistol_id, p) != "" and shop.upgrade_tag(pistol_id) == "MK I", "upgrades the pistol without holding it")
+	check(is_equal_approx(float(p.weapons[0].stats.damage), rifle_dmg), "the rifle is untouched")
+	shop.fit_to = ""
+	check(String(shop.fit_gun(p).id) == String(p.current_weapon().id), "FIT TO starts on the gun in hand")
+	shop.fit_to = "aug_a1"
+	var order: Array = []
+	for k in 3:
+		shop.cycle_fit(p, 1)
+		order.append(String(shop.fit_gun(p).id))
+	check(order == ["gepard", pistol_id, "aug_a1"], "FIT TO cycles through every gun carried %s" % [order])
+	shop.fit_to = pistol_id
+	var prows: Array = shop.items(p).filter(func(r): return String(r.id).begins_with("att_" + pistol_id + ":"))
+	check(not prows.is_empty() and shop.items(p).filter(func(r): return String(r.id).begins_with("att_aug_a1:")).is_empty(), "the attachment rows follow the gun picked")
+	var buy_id := String(prows[0].id)
+	var part := buy_id.substr(4).split(":")
+	check(shop.buy(buy_id, p) != "", "buys %s for the pistol" % buy_id)
+	check(String(p.weapons[2].attachments[part[1]]) == part[2], "it goes on the pistol")
+	check(p.weapon_index == in_hand and String(p.weapons[0].attachments.muzzle) == "suppressor", "the gun in hand stays in hand and keeps its own attachments")
 
 	# --- wave end pays out, and the operator keeps everything after respawning
 	var pts: int = shop.points

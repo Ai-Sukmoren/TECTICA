@@ -52,6 +52,8 @@ var smg := ""
 var upgrades := {}
 ## weapon id -> {slot: option} attachments bought this run
 var attach := {}
+## the gun the ATTACHMENTS rows fit to (a weapon id the operator carries; "" or one not carried = the gun in hand)
+var fit_to := ""
 var perks := {}
 
 
@@ -125,23 +127,26 @@ func _primary_spec(id: String) -> Array:
 ## Shop rows for the HUD: {id, section, label, desc, price, ok, note}.
 func items(p) -> Array:
 	var out: Array = []
-	var w = p.current_weapon() if p != null and not p.weapons.is_empty() else null
 	# supplies
 	out.append(_row("ammo", "SUPPLIES", "AMMO REFILL", "EVERY GUN TO FULL RESERVE", 300, true))
 	out.append(_row("heal", "SUPPLIES", "MEDKIT", "HEAL TO FULL", 400, p != null and p.health < p.max_health - 0.5))
 	out.append(_row("frag", "SUPPLIES", "FRAG GRENADES x2", "CARRY UP TO 5", 350, p != null and p.grenades < 5))
 	out.append(_row("flash", "SUPPLIES", "FLASHBANG", "CARRY UP TO 3", 250, p != null and p.flashbangs < 3))
-	# upgrade the gun in hand
-	if w != null and not w.is_melee():
-		var lv := int(upgrades.get(String(w.id), 0))
+	# upgrades: one row for every gun carried ("upgrade:<id>")
+	for g in guns(p):
+		var lv := int(upgrades.get(String(g.id), 0))
 		if lv < MAX_UPGRADE:
-			out.append(_row("upgrade", "UPGRADE", "UPGRADE %s TO MK %s" % [String(w.stats.name), _roman(lv + 1)],
+			out.append(_row("upgrade:" + String(g.id), "UPGRADE", "UPGRADE %s TO MK %s" % [String(g.stats.name), _roman(lv + 1)],
 					"+30% DAMAGE, +25% MAGAZINE PER LEVEL", upgrade_price(lv), true))
 		else:
-			out.append(_row("upgrade", "UPGRADE", "%s  MK %s" % [String(w.stats.name), _roman(lv)], "FULLY UPGRADED", 0, false, "MAX"))
-	# attachments for the gun in hand
-	if w != null and not w.is_melee():
-		out += _attachment_rows(w)
+			out.append(_row("upgrade:" + String(g.id), "UPGRADE", "%s  MK %s" % [String(g.stats.name), _roman(lv)], "FULLY UPGRADED", 0, false, "MAX"))
+	# attachments for the gun picked in the FIT TO row
+	var fit = fit_gun(p)
+	if fit != null:
+		var n := guns(p).size()
+		out.append(_row("fit_to", "ATTACHMENTS", "FIT TO  ◀  %s  ▶" % String(fit.stats.name) if n > 1 else "FIT TO  %s" % String(fit.stats.name),
+				"A / D OR CLICK: THE GUN THESE ATTACHMENTS GO ON  ·  %d GUNS CARRIED" % n, 0, n > 1, "PICK" if n > 1 else "ONLY GUN"))
+		out += _attachment_rows(fit)
 	# perks
 	for id in PERKS:
 		var pk: Array = PERKS[id]
@@ -167,8 +172,36 @@ func items(p) -> Array:
 	return out
 
 
-## One row per attachment the gun in hand can take (its defaults left out):
-## "att_<slot>:<option>", FITTED when it is on the gun.
+## The guns the operator carries (the knife left out), in slot order.
+func guns(p) -> Array:
+	if p == null:
+		return []
+	return p.weapons.filter(func(w): return not w.is_melee())
+
+
+## The gun the ATTACHMENTS rows fit to: `fit_to` when it is carried, else the gun in hand, else the first gun.
+func fit_gun(p):
+	var gs := guns(p)
+	if gs.is_empty():
+		return null
+	for g in gs:
+		if String(g.id) == fit_to:
+			return g
+	var w = p.current_weapon()
+	return w if w != null and not w.is_melee() else gs[0]
+
+
+## The FIT TO row: the next (dir 1) or previous (dir -1) gun carried.
+func cycle_fit(p, dir: int) -> void:
+	var gs := guns(p)
+	if gs.is_empty():
+		return
+	var i := gs.find(fit_gun(p))
+	fit_to = String(gs[posmod(i + dir, gs.size())].id)
+
+
+## One row per attachment the gun can take (its defaults left out): "att_<gun>:<slot>:<option>", FITTED when it is
+## on the gun.
 func _attachment_rows(w) -> Array:
 	var out: Array = []
 	var wid := String(w.id)
@@ -182,7 +215,7 @@ func _attachment_rows(w) -> Array:
 				continue
 			var fitted := String(on[slot]) == String(opt)
 			var label := "%s  ·  %s" % [String(Data.SLOT_NAMES[slot]), String(Data.ATTACHMENTS[slot][opt].name).to_upper()]
-			out.append(_row("att_%s:%s" % [slot, opt], "ATTACHMENTS  ·  " + String(st.name), label,
+			out.append(_row("att_%s:%s:%s" % [wid, slot, opt], "ATTACHMENTS", label,
 					"REPLACES " + String(Data.ATTACHMENTS[slot][on[slot]].name).to_upper() if not fitted else "ON THIS GUN",
 					int(ATT_PRICES[slot]), not fitted, "FITTED" if fitted else ""))
 	return out
@@ -219,13 +252,15 @@ func buy(id: String, p) -> String:
 			p.grenades = mini(p.grenades + 2, 5)
 		"flash":
 			p.flashbangs = mini(p.flashbangs + 1, 3)
-		"upgrade":
-			var w = p.current_weapon()
-			upgrades[String(w.id)] = int(upgrades.get(String(w.id), 0)) + 1
-			apply_mods(p)
-			w.ammo = int(w.stats.mag)
 		_:
-			if id.begins_with("perk_"):
+			if id.begins_with("upgrade:"):
+				var gid := id.substr(8)
+				upgrades[gid] = int(upgrades.get(gid, 0)) + 1
+				apply_mods(p)
+				for g in guns(p):
+					if String(g.id) == gid:
+						g.ammo = int(g.stats.mag)
+			elif id.begins_with("perk_"):
 				perks[id.substr(5)] = true
 				apply_mods(p)
 				if id == "perk_tough":
@@ -235,12 +270,11 @@ func buy(id: String, p) -> String:
 						if not w.is_melee():
 							w.reserve = maxi(w.reserve, int(w.stats.reserve))
 			elif id.begins_with("att_"):
-				var pair := id.substr(4).split(":")
-				var wid := String(p.current_weapon().id)
-				var a: Dictionary = attach.get(wid, {})
-				a[pair[0]] = pair[1]
-				attach[wid] = a
-				reissue(p, p.weapon_index)
+				var part := id.substr(4).split(":")   # gun, slot, option
+				var a: Dictionary = attach.get(part[0], {})
+				a[part[1]] = part[2]
+				attach[part[0]] = a
+				reissue(p, p.weapon_index)   # the gun in hand stays in hand
 			elif id.begins_with("gun_"):
 				_equip_primary(id.substr(4), p)
 			elif id.begins_with("smg_"):

@@ -27,6 +27,11 @@ WINDOWED = {
     "locomotion_stability_test": ["--resolution", "960x540"],
     "camera_motion_test": ["--resolution", "960x540"],
     "aim_stability_test": ["--resolution", "960x540", "--max-fps", "144"],
+    "shop_ui_test": ["--resolution", "1280x720"],
+}
+# headless tests that need engine options (simulation tests run physics as fast as it computes) and their time limit
+ENGINE_ARGS = {
+    "collision_audit_test": (["--fixed-fps", "120"], 900),
 }
 # host + client pairs: [host args, client args]
 PAIRS = {
@@ -38,10 +43,11 @@ PAIRS = {
 
 def run(name: str, extra: list) -> tuple:
     headless = name not in WINDOWED
-    cmd = [GODOT] + (["--headless"] if headless else []) + ["--path", str(ROOT), "-s", f"res://tests/{name}.gd"]
+    engine, limit = ENGINE_ARGS.get(name, ([], TIMEOUT))
+    cmd = [GODOT] + (["--headless"] if headless else []) + engine + ["--path", str(ROOT), "-s", f"res://tests/{name}.gd"]
     cmd += WINDOWED.get(name, []) if not headless else (["--"] + extra if extra else [])
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT, encoding="utf-8", errors="replace")
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=limit, encoding="utf-8", errors="replace")
         text = out.stdout + out.stderr
         bad = out.returncode != 0 or "SCRIPT ERROR" in text or "Parse Error" in text
         return (not bad, text)

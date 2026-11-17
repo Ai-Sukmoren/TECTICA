@@ -6,6 +6,7 @@ extends CanvasLayer
 
 const LOGO_PATH := "res://assets/logo.png"
 const Gunsmith = preload("res://scripts/ui/gunsmith.gd")
+const WeaponPreview = preload("res://scripts/ui/weapon_preview.gd")
 const RoomBrowser = preload("res://scripts/ui/room_browser.gd")
 const Armory = preload("res://scripts/ui/armory.gd")
 const AdminDashboard = preload("res://scripts/ui/admin_dashboard.gd")
@@ -75,6 +76,11 @@ var mp_pause := false
 var shop_open := false
 var shop_index := 0
 var _shop_rects: Array = []
+## the shop list's first visible line; it follows the selection only when that moves by keys / pad
+var _shop_scroll := 0
+var _shop_follow := true
+## the gun of the selected row, on the gunsmith's turntable
+var shop_preview: WeaponPreview
 var _shop_rows: Array = []
 var _shop_msg := ""
 var _shop_msg_t := 0.0
@@ -152,6 +158,8 @@ func setup(p_main: Node) -> void:
 	_font_bold = Retro.bold()
 	_font_display = Retro.display()
 	_logo = _load_logo()
+	shop_preview = WeaponPreview.new()
+	add_child(shop_preview)
 	gunsmith = Gunsmith.new()
 	add_child(gunsmith)
 	gunsmith.setup(self)
@@ -1779,6 +1787,10 @@ func _deployed_hud() -> bool:
 func _open_shop() -> void:
 	shop_open = true
 	shop_index = 0
+	_shop_scroll = 0
+	_shop_follow = true
+	main.director.shop.fit_to = ""   # attachments start on the gun in hand
+	shop_preview.set_active(true)
 	main.director.shop_open = true
 	player.rig.cancel_inspect()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1787,6 +1799,7 @@ func _open_shop() -> void:
 
 func _close_shop() -> void:
 	shop_open = false
+	shop_preview.set_active(false)
 	if main.director != null:
 		main.director.shop_open = false
 	if player != null and not get_tree().paused:
@@ -1810,6 +1823,10 @@ func _shop_activate(i: int) -> void:
 		main.director.timer = 0.0
 		_close_shop()
 		return
+	if r.id == "fit_to":
+		main.director.shop.cycle_fit(player, 1)
+		Sfx.play(player, "switch", player.global_position, -10.0, 0.0)
+		return
 	var msg: String = main.director.shop.buy(String(r.id), player)
 	if msg == "":
 		_shop_msg = "ALREADY OWNED" if String(r.note) != "" else ("NOT ENOUGH POINTS" if not bool(r.afford) else "NOT NEEDED RIGHT NOW")
@@ -1827,15 +1844,29 @@ func _shop_input(event: InputEvent) -> void:
 	var n := _shop_rows_now().size()
 	if event.is_action_pressed("shop") or event.is_action_pressed("interact") or event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
 		_close_shop()
+	elif shop_preview.handle(event):
+		pass   # turning / zooming the gun
+	elif event.is_action_pressed("reload"):
+		shop_preview.reset_view()
 	elif event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		shop_index = clampi(shop_index + (-1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1), 0, n - 1)
+		# the wheel scrolls the list; the selection stays where the mouse points
+		_shop_scroll += -3 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 3
+		_shop_follow = false
+	elif (event.is_action_pressed("ui_left") or event.is_action_pressed("move_left") or event.is_action_pressed("ui_right") \
+			or event.is_action_pressed("move_right")) and String(_shop_rows_now()[clampi(shop_index, 0, n - 1)].id) == "fit_to":
+		var dir := -1 if event.is_action_pressed("ui_left") or event.is_action_pressed("move_left") else 1
+		main.director.shop.cycle_fit(player, dir)
+		Sfx.play(player, "switch", player.global_position, -10.0, 0.0)
 	elif event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
 		shop_index = posmod(shop_index - 1, n)
+		_shop_follow = true
 	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
 		shop_index = posmod(shop_index + 1, n)
+		_shop_follow = true
 	elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
 		_shop_activate(shop_index)
 	elif event is InputEventMouseMotion:
+		# hovering picks a row but never scrolls: a list that moved under the pointer picked the next row, and so on
 		for i in _shop_rects.size():
 			if (_shop_rects[i] as Rect2).has_point(event.position):
 				shop_index = i
@@ -1847,14 +1878,46 @@ func _shop_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 
+## The gun a shop row is about, as [id, attachments, the carried gun it is compared with]: a gun or SMG as it is sold
+## (bare, against the gun in hand); an upgrade, the FIT TO row or an attachment on its own gun (an attachment
+## fitted); anything else the gun in hand as it is.
+func _shop_row_gun(r: Dictionary) -> Array:
+	var id := String(r.id)
+	var shop = main.director.shop
+	if id.begins_with("gun_") or id.begins_with("smg_"):
+		var gid := id.substr(4)
+		return [gid, WData.sanitize(gid, {}), player.current_weapon()]
+	var w = player.current_weapon()
+	if id.begins_with("upgrade:"):
+		for g in shop.guns(player):
+			if String(g.id) == id.substr(8):
+				w = g
+	elif id == "fit_to" or id.begins_with("att_"):
+		w = shop.fit_gun(player)
+	var att: Dictionary = (w.attachments as Dictionary).duplicate()
+	if id.begins_with("att_"):
+		var part := id.substr(4).split(":")   # gun, slot, option
+		att[part[1]] = part[2]
+	return [String(w.id), WData.sanitize(String(w.id), att), w]
+
+
 func _draw_shop(c: Control, vp: Vector2) -> void:
 	var d = main.director
 	var rows := _shop_rows_now()
 	shop_index = clampi(shop_index, 0, rows.size() - 1)
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
-	var w := minf(760.0, vp.x - 40.0)
-	var row_h := 28.0
-	# the list scrolls: lines (section headers + rows) that fit, kept round the selection
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.02, 0.025, 0.03, 0.97))   # nothing of the HUD shows through
+	_text(c, Vector2(70, 70), "ARCADE SHOP  //  SUPPLIES", 26, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(0, 70), "%d PTS" % d.shop.points, 26, WARN, HORIZONTAL_ALIGNMENT_RIGHT, vp.x - 70.0, true)
+	var sub := "NEXT WAVE IN %d" % int(ceil(d.timer))
+	if not Net.active:
+		sub += "  ·  CLOCK STOPPED WHILE SHOPPING"
+	_text(c, Vector2(70, 96), sub, 13, DIM)
+
+	# --- the list (left), scrolling
+	var lx := 70.0
+	var lw := vp.x * 0.42 - 110.0
+	var top := 140.0
+	var row_h := 30.0
 	var lines: Array = []   # [row index or -1 for a header, section name]
 	var section0 := ""
 	for i in rows.size():
@@ -1863,62 +1926,81 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 			section0 = sec
 			lines.append([-1, sec])
 		lines.append([i, sec])
-	var cap := maxi(6, int((vp.y - 250.0) / row_h))
+	var cap := maxi(6, int((vp.y - 70.0 - top) / row_h))
 	var sel_line := 0
 	for k in lines.size():
 		if int(lines[k][0]) == shop_index:
 			sel_line = k
-	var first := clampi(sel_line - cap / 2, 0, maxi(0, lines.size() - cap))
-	var shown: Array = lines.slice(first, first + cap)
-	var x0 := (vp.x - w) * 0.5
-	var y := maxf(40.0, (vp.y - shown.size() * row_h - 150.0) * 0.5)
-	var panel := Rect2(x0 - 18, y - 18, w + 36, shown.size() * row_h + 160)
-	c.draw_rect(panel, Color(0.025, 0.045, 0.055, 0.92))
-	c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
-	_brackets(c, panel, 14.0, Color(WARN, 0.6), 1.5)
-	_text(c, Vector2(x0, y + 26), "SUPPLY SHOP", 26, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-	_text(c, Vector2(x0, y + 26), "%d PTS" % d.shop.points, 26, WARN, HORIZONTAL_ALIGNMENT_RIGHT, w, true)
-	var sub := "NEXT WAVE IN %d" % int(ceil(d.timer))
-	if not Net.active:
-		sub += "  ·  CLOCK STOPPED WHILE SHOPPING"
-	_text(c, Vector2(x0, y + 50), sub, 12, DIM)
-	y += 70.0
+	if _shop_follow:
+		if sel_line < _shop_scroll:
+			_shop_scroll = sel_line
+		elif sel_line >= _shop_scroll + cap:
+			_shop_scroll = sel_line - cap + 1
+	_shop_scroll = clampi(_shop_scroll, 0, maxi(0, lines.size() - cap))
 	_shop_rects.clear()
 	for i in rows.size():
 		_shop_rects.append(Rect2())   # rows scrolled out of view take no clicks
-	if first > 0:
-		_text(c, Vector2(x0, y - 4), "▲  MORE", 10, DIM, HORIZONTAL_ALIGNMENT_RIGHT, w)
-	for ln in shown:
+	if _shop_scroll > 0:
+		_text(c, Vector2(lx, top - 8), "▲  MORE", 10, DIM, HORIZONTAL_ALIGNMENT_RIGHT, lw)
+	var y := top
+	for ln in lines.slice(_shop_scroll, _shop_scroll + cap):
 		var i: int = ln[0]
 		if i < 0:
-			_text(c, Vector2(x0, y + row_h * 0.7), String(ln[1]), 11, Color(ACCENT, 0.9), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			_text(c, Vector2(lx, y + row_h * 0.72), String(ln[1]), 11, Color(ACCENT, 0.9), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 			y += row_h
 			continue
 		var r: Dictionary = rows[i]
-		if r.id == "start":
-			y += 6.0
-		var rect := Rect2(x0, y, w, row_h - 3.0)
+		var rect := Rect2(lx, y, lw, row_h - 4.0)
 		_shop_rects[i] = rect
 		var sel := i == shop_index
 		if sel:
 			c.draw_rect(rect, Color(RED, 0.22))
 			_brackets(c, rect, 8.0, RED, 1.5)
 		var ok := bool(r.ok)
-		var col := TEXT if ok else Color(DIM, 0.7)
 		if r.id == "start":
-			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.66), "START NEXT WAVE  ▶", 15, TEXT if sel else WARN, HORIZONTAL_ALIGNMENT_CENTER, w, true)
+			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.64), "START NEXT WAVE  ▶", 15, TEXT if sel else WARN, HORIZONTAL_ALIGNMENT_CENTER, lw, true)
 		else:
-			_text(c, Vector2(rect.position.x + 10, rect.position.y + row_h * 0.66), String(r.label), 15, col, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-			_text(c, Vector2(rect.position.x + w * 0.36, rect.position.y + row_h * 0.64), String(r.desc), 10, Color(DIM, 0.9 if ok else 0.6), HORIZONTAL_ALIGNMENT_LEFT, w * 0.5)
+			_text(c, Vector2(rect.position.x + 10, rect.position.y + row_h * 0.64), String(r.label), 14, TEXT if ok else Color(DIM, 0.7), HORIZONTAL_ALIGNMENT_LEFT, lw - 90.0, true)
 			var tag: String = String(r.note) if String(r.note) != "" else "%d" % int(r.price)
 			var tcol := Color(DIM, 0.8) if String(r.note) != "" else (WARN if bool(r.afford) else DANGER)
-			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.66), tag, 15, tcol, HORIZONTAL_ALIGNMENT_RIGHT, w - 10, true)
+			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.64), tag, 14, tcol, HORIZONTAL_ALIGNMENT_RIGHT, lw - 10.0, true)
 		y += row_h
-	if first + cap < lines.size():
-		_text(c, Vector2(x0, y + 8), "▼  MORE", 10, DIM, HORIZONTAL_ALIGNMENT_RIGHT, w)
+	if _shop_scroll + cap < lines.size():
+		_text(c, Vector2(lx, y + 12), "▼  MORE", 10, DIM, HORIZONTAL_ALIGNMENT_RIGHT, lw)
+
+	# --- the selected row (right): its gun on the turntable, what it does, the stats against the gun in hand
+	var r2: Dictionary = rows[shop_index]
+	var g := _shop_row_gun(r2)
+	var gid := String(g[0])
+	shop_preview.show_weapon(gid, g[1], Collection.skin_for(gid), Collection.parts_for(gid))
+	var pr := Rect2(vp.x * 0.42, 110, vp.x * 0.54, vp.x * 0.27)
+	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.8))
+	_brackets(c, pr, 18.0, Color(TEXT, 0.4), 1.5)
+	shop_preview.draw(c, pr)
+	var title := "START NEXT WAVE" if r2.id == "start" else String(r2.label)
+	_text(c, pr.position + Vector2(18, 34), title, 24, TEXT, HORIZONTAL_ALIGNMENT_LEFT, pr.size.x - 36.0, true)
+	_text(c, pr.position + Vector2(18, 56), String(r2.desc), 12, DIM, HORIZONTAL_ALIGNMENT_LEFT, pr.size.x - 36.0)
+	if r2.id != "start":
+		var price := ""
+		var pcol := WARN
+		if String(r2.note) != "":
+			price = String(r2.note)
+			pcol = DIM
+		elif bool(r2.ok):
+			price = "%d PTS  ·  [ENTER] OR CLICK TO BUY" % int(r2.price)
+		else:
+			price = "%d PTS  ·  NOT ENOUGH POINTS" % int(r2.price)
+			pcol = DANGER
+		_text(c, pr.position + Vector2(18, 78), price, 12, pcol, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(pr.position.x + 18, pr.end.y - 14), "Drag to rotate  ·  Wheel to zoom  ·  [%s] reset view" % Settings.Controls.short("reload"), 12, DIM)
+	var held = g[2]
+	var st: Dictionary = WData.compute(gid, g[1])
+	var ref: Dictionary = WData.compute(String(held.id), held.attachments)
+	gunsmith.draw_stats(c, st, ref, Vector2(pr.position.x, pr.end.y + 34.0), pr.size.x,
+			"Green = better than your %s as it is now, red = worse." % String(held.stats.name))
 	if _shop_msg_t > 0.0:
-		_text(c, Vector2(x0, y + 26), _shop_msg, 14, Color(WARN, clampf(_shop_msg_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, w, true)
-	_text(c, Vector2(x0, y + 50), "W/S or mouse select  ·  ENTER / click buy  ·  [%s] or ESC close" % Settings.Controls.short("interact"), 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
+		_text(c, Vector2(pr.position.x, vp.y - 56), _shop_msg, 14, Color(WARN, clampf(_shop_msg_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_LEFT, pr.size.x, true)
+	_text(c, Vector2(0, vp.y - 30), "W/S or mouse select   ·   Wheel scroll   ·   Enter / click buy   ·   [%s] or Esc close" % Settings.Controls.short("interact"), 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
 
 ## A gunsmith pick in a solo match: the operator is re-issued the loadout at

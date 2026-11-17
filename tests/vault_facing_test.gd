@@ -67,14 +67,14 @@ func run() -> void:
 	var main = current_scene
 	main.player.health = 100000.0
 	main.director.timer = 999.0
-	main.player.global_position = Vector3(0, 0.05, 30)   # open street south of the crossroads
+	main.player.global_position = Vector3(-16.0, 3.4, 11.0)   # open plaza floor, room to vault both ways
 	for i in 20: await physics_frame
 
 	var back: float = await vault_with(main, "move_back", Vector3(0, 0, 1.3))
 	print("    backing over cover: view turned %.1f deg" % rad_to_deg(back))
 	check(back >= 0.0, "backing into cover vaults")
 	check(back >= 0.0 and back < deg_to_rad(10.0), "backing over cover keeps the view")
-	main.player.global_position = Vector3(0, 0.05, 30)
+	main.player.global_position = Vector3(-16.0, 3.4, 11.0)
 	for i in 20: await physics_frame
 	var fwd: float = await vault_with(main, "move_forward", Vector3(0, 0, -1.3))
 	print("    forward vault: view turned %.1f deg" % rad_to_deg(fwd))

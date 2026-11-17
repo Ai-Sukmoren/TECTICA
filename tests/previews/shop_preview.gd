@@ -68,6 +68,15 @@ func run() -> void:
 	main.hud.shop_index = 9
 	await frames(20)
 	await shot(out + "/shop_attachments.jpg")
+	# FIT TO switched to the pistol: its attachments, one picked on the turntable
+	dir.shop.fit_to = String(p.weapons[1].id)
+	var rows: Array = main.hud._shop_rows_now()
+	for i in rows.size():
+		if String(rows[i].id) == "fit_to":
+			main.hud.shop_index = i + 1
+	main.hud._shop_follow = true
+	await frames(20)
+	await shot(out + "/shop_fit_pistol.jpg")
 	main.hud._close_shop()
 	await frames(30)
 	await shot(out + "/shop_after.jpg")

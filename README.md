@@ -13,9 +13,26 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.40
+## 🆕 What's new in v1.41
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.40.1-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.41.0-beta)
+
+### Solid maps, smooth stairs
+Stairs and kerbs walk without jumping (for bots and zombies too), map collision no longer lets you fall through
+bridges or into walls, and the Shift + Space vault can't pass through walls or out of the map any more. TOKYO's
+west edge, long stair and planters are fixed.
+
+### Arcade shop
+The shop now looks like the gunsmith, with the item's gun on a turntable. Upgrade any gun you carry, and pick which
+gun your attachments go on with **FIT TO**.
+
+| FIT TO on the pistol | Attachment preview |
+|---|---|
+| ![FIT TO](docs/screenshots/v141-shop-fit-to.jpg) | ![Preview](docs/screenshots/v141-shop-preview.jpg) |
+
+## Earlier: v1.40
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.40.0-beta)
 
 ### New map: TOKYO
 A walled-in Tokyo back street by a canal and a rail line, for Zombie Survival and matches against AI.

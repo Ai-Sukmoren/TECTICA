@@ -4,34 +4,21 @@ extends Node
 
 const Data = preload("res://scripts/weapons/weapon_data.gd")
 const Loadout = preload("res://scripts/core/loadout.gd")
-const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Skins = preload("res://scripts/skins/skins.gd")
 const Charm = preload("res://scripts/skins/charm.gd")
 const Settings = preload("res://scripts/core/settings.gd")
 
-const ROTATION_SPEED := 0.01
-const PITCH_LIMIT := PI * 0.47
+const WeaponPreview = preload("res://scripts/ui/weapon_preview.gd")
 
 var hud
 var is_open := false
 var row := 0
 var _rows: Array = []
 var _row_rects: Array = []
-var _sv: SubViewport
-var _pivot: Node3D
-var _cam: Camera3D
-var _preview_key := ""
-var _preview_rect := Rect2()
-var _dragging_preview := false
-var _manual_rotation := false
-var _spin := 0.0
-## preview camera distance for the gun shown, and the zoom on it (wheel over the preview)
-var _base_dist := 1.4
-var zoom := 1.0
-const ZOOM_MIN := 0.3
-const ZOOM_MAX := 1.6
+## the gun on its turntable (drag to turn, wheel to zoom)
+var preview: WeaponPreview
 ## attachment slots with a real part on the previewed gun (only those take a skin)
 var _skinnable: Dictionary = {}
 var _skinnable_id := ""
@@ -41,59 +28,19 @@ const SKIN_TAG_W := 150.0
 func setup(p_hud) -> void:
 	hud = p_hud
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_sv = SubViewport.new()
-	_sv.size = Vector2i(960, 480)
-	_sv.transparent_bg = true
-	_sv.own_world_3d = true
-	_sv.msaa_3d = Viewport.MSAA_4X
-	_sv.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	add_child(_sv)
-	var env := Environment.new()
-	env.background_mode = Environment.BG_CLEAR_COLOR
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.55, 0.58, 0.62)
-	env.ambient_light_energy = 0.7
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.glow_enabled = true
-	var we := WorldEnvironment.new()
-	we.environment = env
-	_sv.add_child(we)
-	var key := DirectionalLight3D.new()
-	key.rotation_degrees = Vector3(-35, 35, 0)
-	key.light_energy = 2.4
-	_sv.add_child(key)
-	var rim := DirectionalLight3D.new()
-	rim.rotation_degrees = Vector3(-20, 200, 0)
-	rim.light_energy = 1.4
-	rim.light_color = Color(1.0, 0.55, 0.45)
-	_sv.add_child(rim)
-	_cam = Camera3D.new()
-	_cam.fov = 30.0
-	_sv.add_child(_cam)
-	_pivot = Node3D.new()
-	_sv.add_child(_pivot)
+	preview = WeaponPreview.new()
+	add_child(preview)
 
 
 func open() -> void:
 	is_open = true
 	row = 0
-	_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	_preview_key = ""
-	_preview_rect = Rect2()
-	reset_view()
-
-
-## Back to the slow automatic turn at the default framing.
-func reset_view() -> void:
-	_manual_rotation = false
-	_spin = 0.0
-	zoom = 1.0
+	preview.set_active(true)
 
 
 func close() -> void:
 	is_open = false
-	_dragging_preview = false
-	_sv.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	preview.set_active(false)
 	Loadout.save()
 
 
@@ -183,24 +130,11 @@ func handle(event: InputEvent) -> bool:
 	_build_rows()
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause") or event.is_action_pressed("crouch"):
 		return true
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		_dragging_preview = event.pressed and _preview_rect.has_point(event.position)
-		if _dragging_preview:
-			return false
-	if event is InputEventMouseButton and event.pressed and _preview_rect.has_point(event.position) 			and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-		# wheel up moves in, down backs off
-		zoom = clampf(zoom * (0.88 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 0.88), ZOOM_MIN, ZOOM_MAX)
+	if preview.handle(event):
 		return false
 	if event.is_action_pressed("reload"):
-		reset_view()
+		preview.reset_view()
 		return false
-	if event is InputEventMouseMotion and _dragging_preview:
-		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
-			_manual_rotation = true
-			_pivot.rotation.y = wrapf(_pivot.rotation.y + event.relative.x * ROTATION_SPEED, -PI, PI)
-			_pivot.rotation.x = clampf(_pivot.rotation.x + event.relative.y * ROTATION_SPEED, -PITCH_LIMIT, PITCH_LIMIT)
-			return false
-		_dragging_preview = false
 	if event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
 		row = posmod(row - 1, _rows.size())
 	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
@@ -237,36 +171,21 @@ func handle(event: InputEvent) -> bool:
 	return false
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if not is_open:
 		return
 	_build_rows()
 	var e: Dictionary = Loadout.entry(_focus_slot())
-	var sk := Collection.skin_for(String(e.id))
-	var parts := Collection.parts_for(String(e.id))
-	var key := str(e.id) + str(e.att) + sk + str(parts) + String(e.get("charm", ""))
-	if key != _preview_key:
-		_preview_key = key
-		for c in _pivot.get_children():
-			c.queue_free()
-		var w := Weapon.new()
-		w.setup(String(e.id), e.att)
-		w.apply_skin(sk, parts)
+	var wid := String(e.id)
+	var before: Node3D = preview.weapon
+	preview.show_weapon(wid, e.att, Collection.skin_for(wid), Collection.parts_for(wid), String(e.get("charm", "")))
+	if preview.weapon != before:
+		# attachment slots with a real part on the gun shown (only those take a skin)
 		_skinnable = {}
 		_skinnable_id = _focus_slot()
-		for mi in w.find_children("*", "MeshInstance3D", true, false):
+		for mi in preview.weapon.find_children("*", "MeshInstance3D", true, false):
 			if mi.has_meta("skin_part"):
 				_skinnable[String(mi.get_meta("skin_part"))] = true
-		w.apply_charm(String(e.get("charm", "")))
-		_pivot.add_child(w)
-		var pistol := w.is_pistol() or w.is_melee()
-		w.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
-		_base_dist = (0.55 if w.is_melee() else 0.75) if pistol else (1.75 if e.id == "uar10" else 1.4)
-	_cam.position = Vector3(0, 0.12 * zoom, _base_dist * zoom)
-	_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
-	if not _manual_rotation and not _dragging_preview:
-		_spin += delta * 0.45
-		_pivot.rotation = Vector3(0.12 * sin(_spin * 0.7), -PI * 0.5 + sin(_spin) * 0.9, 0)
 
 
 # ---------------------------------------------------------------- drawing
@@ -342,10 +261,9 @@ func draw(c: Control, vp: Vector2) -> void:
 
 	# --- preview
 	var pr := Rect2(vp.x * 0.42, 110, vp.x * 0.54, vp.x * 0.27)
-	_preview_rect = pr
 	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.8))
 	hud._brackets(c, pr, 18.0, Color(hud.TEXT, 0.4), 1.5)
-	c.draw_texture_rect(_sv.get_texture(), pr, false)
+	preview.draw(c, pr)
 	var slot := _focus_slot()
 	var e3: Dictionary = Loadout.entry(slot)
 	var st := Data.compute(e3.id, e3.att)
@@ -358,42 +276,44 @@ func draw(c: Control, vp: Vector2) -> void:
 	hud._text(c, Vector2(pr.position.x + 18, pr.end.y - 14), "Drag to rotate  ·  Wheel to zoom  ·  [%s] reset view" % Settings.Controls.short("reload"), 12, hud.DIM)
 
 	# --- stats
-	var sy := pr.end.y + 34.0
+	draw_stats(c, st, base, Vector2(pr.position.x, pr.end.y + 34.0), pr.size.x, "Green = better than stock, red = worse.")
+	hud._text(c, Vector2(0, vp.y - 30), "W/S select   ·   A/D or click change   ·   Q/E attachment skin   ·   Esc / B save & back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+## Stat bars for `st`, each against `ref` (the gain green, the loss red), in two columns from `pos`, `width` wide;
+## then magazine, reload and action, and `legend` under them. The gunsmith and the zombie shop draw these.
+func draw_stats(c: Control, st: Dictionary, ref: Dictionary, pos: Vector2, width: float, legend: String) -> void:
 	var bars := [
-		["DAMAGE", _n(st.damage * st.pellets, 130.0), _n(base.damage * base.pellets, 130.0), "%d%s" % [int(st.damage), (" x%d" % int(st.pellets)) if int(st.pellets) > 1 else ""]],
-		["FIRE RATE", _n(st.rpm, 1100.0), _n(base.rpm, 1100.0), "%d RPM" % int(st.rpm)],
-		["RANGE", _n(st.range, 170.0), _n(base.range, 170.0), "%d m" % int(st.range)],
-		["ACCURACY", 1.0 - _n(st.spread_aim, 4.5), 1.0 - _n(base.spread_aim, 4.5), ""],
-		["HIP FIRE", 1.0 - _n(st.spread_hip, 8.0), 1.0 - _n(base.spread_hip, 8.0), ""],
-		["RECOIL CONTROL", 1.0 - _n(st.recoil, 3.2), 1.0 - _n(base.recoil, 3.2), ""],
-		["MOBILITY", _n(st.mobility - 0.7, 0.5), _n(base.mobility - 0.7, 0.5), ""],
-		["ADS SPEED", _n(st.ads_speed, 1.8), _n(base.ads_speed, 1.8), ""],
+		["DAMAGE", _n(st.damage * st.pellets, 130.0), _n(ref.damage * ref.pellets, 130.0), "%d%s" % [int(st.damage), (" x%d" % int(st.pellets)) if int(st.pellets) > 1 else ""]],
+		["FIRE RATE", _n(st.rpm, 1100.0), _n(ref.rpm, 1100.0), "%d RPM" % int(st.rpm)],
+		["RANGE", _n(st.range, 170.0), _n(ref.range, 170.0), "%d m" % int(st.range)],
+		["ACCURACY", 1.0 - _n(st.spread_aim, 4.5), 1.0 - _n(ref.spread_aim, 4.5), ""],
+		["HIP FIRE", 1.0 - _n(st.spread_hip, 8.0), 1.0 - _n(ref.spread_hip, 8.0), ""],
+		["RECOIL CONTROL", 1.0 - _n(st.recoil, 3.2), 1.0 - _n(ref.recoil, 3.2), ""],
+		["MOBILITY", _n(st.mobility - 0.7, 0.5), _n(ref.mobility - 0.7, 0.5), ""],
+		["ADS SPEED", _n(st.ads_speed, 1.8), _n(ref.ads_speed, 1.8), ""],
 	]
-	var bx := pr.position.x
-	var bw := pr.size.x * 0.5 - 30.0
+	var bw := width * 0.5 - 30.0
 	for i in bars.size():
 		var b: Array = bars[i]
-		var col_i := i % 2
-		var row_i := i / 2
-		var px := bx + col_i * (bw + 50.0)
-		var py := sy + row_i * 40.0
+		var px := pos.x + (i % 2) * (bw + 50.0)
+		var py := pos.y + (i / 2) * 40.0
 		hud._text(c, Vector2(px, py), b[0], 12, hud.DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		if b[3] != "":
 			hud._text(c, Vector2(px, py), b[3], 12, hud.TEXT, HORIZONTAL_ALIGNMENT_RIGHT, bw)
 		var track := Rect2(px, py + 8, bw, 6)
 		c.draw_rect(track, Color(1, 1, 1, 0.08))
 		var cur: float = clampf(b[1], 0.02, 1.0)
-		var ref: float = clampf(b[2], 0.02, 1.0)
-		c.draw_rect(Rect2(track.position, Vector2(bw * minf(cur, ref), 6)), Color(hud.TEXT, 0.85))
-		if cur > ref + 0.005:
-			c.draw_rect(Rect2(track.position + Vector2(bw * ref, 0), Vector2(bw * (cur - ref), 6)), hud.ACCENT)
-		elif cur < ref - 0.005:
-			c.draw_rect(Rect2(track.position + Vector2(bw * cur, 0), Vector2(bw * (ref - cur), 6)), hud.DANGER)
-	var iy := sy + 4 * 40.0 + 14.0
-	hud._text(c, Vector2(bx, iy), "MAGAZINE  %d / %d      RELOAD  %.1f s      %s" % [int(st.mag), int(st.reserve), float(st.reload), "AUTO" if st.auto else ("BOLT-ACTION" if st.cycle == "bolt" else ("PUMP-ACTION" if st.cycle == "pump" else ("LEVER-ACTION" if st.cycle == "lever" else "SEMI-AUTO")))],
+		var r: float = clampf(b[2], 0.02, 1.0)
+		c.draw_rect(Rect2(track.position, Vector2(bw * minf(cur, r), 6)), Color(hud.TEXT, 0.85))
+		if cur > r + 0.005:
+			c.draw_rect(Rect2(track.position + Vector2(bw * r, 0), Vector2(bw * (cur - r), 6)), hud.ACCENT)
+		elif cur < r - 0.005:
+			c.draw_rect(Rect2(track.position + Vector2(bw * cur, 0), Vector2(bw * (r - cur), 6)), hud.DANGER)
+	var iy := pos.y + 4 * 40.0 + 14.0
+	hud._text(c, Vector2(pos.x, iy), "MAGAZINE  %d / %d      RELOAD  %.1f s      %s" % [int(st.mag), int(st.reserve), float(st.reload), "AUTO" if st.auto else ("BOLT-ACTION" if st.cycle == "bolt" else ("PUMP-ACTION" if st.cycle == "pump" else ("LEVER-ACTION" if st.cycle == "lever" else "SEMI-AUTO")))],
 			13, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-	hud._text(c, Vector2(bx, iy + 22), "Green = better than stock, red = worse.", 11, hud.DIM)
-	hud._text(c, Vector2(0, vp.y - 30), "W/S select   ·   A/D or click change   ·   Q/E attachment skin   ·   Esc / B save & back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	hud._text(c, Vector2(pos.x, iy + 22), legend, 11, hud.DIM)
 
 
 func _n(v, maxv: float) -> float:

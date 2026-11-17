@@ -44,6 +44,9 @@ var _vault_exit_speed := 4.3
 var _saved_mask := 0
 var _vault_cooldown := 0.0
 var _vault_buffer := 0.0
+## Lowest a vault may land below where it started: over a fence onto a kerb-high step, yes; off a bridge or a
+## canal wall (3 m and more), never - a vault goes over cover, it does not drop off ledges.
+const VAULT_MAX_DROP := 1.0
 const JUMP_SPEED := 5.8          # ~0.95 m apex with GRAVITY 18
 const Terrain = preload("res://scripts/world/terrain.gd")
 var _jump_cd := 0.0
@@ -872,17 +875,22 @@ func _find_vault(dir: Vector3):
 	if edge < 0.0:
 		return null
 	var land := front + dir * (edge + 0.5)
-	land.y = maxf(base.y, Terrain.height(land.x, land.z))
-	# landing spot must fit the body
-	var shape := CapsuleShape3D.new()
-	shape.radius = 0.3
-	shape.height = 1.7
-	var sq := PhysicsShapeQueryParameters3D.new()
-	sq.shape = shape
-	sq.transform = Transform3D(Basis.IDENTITY, land + Vector3(0, 0.95, 0))
-	sq.collision_mask = Layers.WORLD
-	if not space.intersect_shape(sq, 1).is_empty():
+	# The body itself must be able to make the jump: swept up clear of the top, across to the landing spot and down
+	# onto walkable floor no more than VAULT_MAX_DROP below the take-off. These are real collision sweeps, so no
+	# wall, boundary, railing or building can be passed through, and the landing is never inside geometry or off a
+	# ledge. (Rays alone missed walls beyond their reach and could not tell the inside of a hollow mesh.)
+	var xf := global_transform
+	var lift := Vector3.UP * (top - base.y + 0.08)
+	if test_move(xf, lift):
 		return null
+	var over := xf.translated(lift)
+	var across := Vector3(land.x - base.x, 0.0, land.z - base.z)
+	if test_move(over, across):
+		return null
+	var down := KinematicCollision3D.new()
+	if not test_move(over.translated(across), -lift - Vector3.UP * VAULT_MAX_DROP, down) or down.get_normal().y < 0.7:
+		return null
+	land.y = over.origin.y + down.get_travel().y
 	return {"top": top, "plant": Vector3(front.x, top, front.z) + dir * 0.18 + Vector3(-dir.z, 0, dir.x) * -0.15, "to": land}
 
 
@@ -921,7 +929,7 @@ func _update_vault(delta: float) -> void:
 	var e := t * 0.55 + t * t * (3.0 - 2.0 * t) * 0.45
 	var p := _vault_from.lerp(_vault_to, e)
 	var prev := global_position
-	global_position = Vector3(p.x, _vault_from.y, p.z)
+	global_position = p   # along the path the sweeps cleared, ending on the landing floor
 	velocity = (global_position - prev) / maxf(delta, 0.0001)
 	velocity.y = 0.0
 	if _vault_t >= 1.0:

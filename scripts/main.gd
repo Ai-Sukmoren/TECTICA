@@ -197,6 +197,7 @@ func _ready() -> void:
 		director.shop.apply_mods(player)
 		director.shop.sync(player)
 		arcade = ArcadeShop.new()
+		arcade.director = director
 		add_child(arcade)
 		arcade.place(level.player_spawn)
 	else:

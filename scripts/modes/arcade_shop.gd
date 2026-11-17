@@ -12,11 +12,14 @@ const REACH := 2.4                   # metres from the cabinet the shop opens
 const SIZE := Vector3(0.95, 2.0, 1.3) # the cabinet's footprint and height (m)
 
 var placed := false
+## the wave director: the shop opens only between waves
+var director: Node
 
 
 ## Stands the cabinet near `spawn` once physics is ready.
 func place(spawn: Vector3) -> void:
 	name = "ArcadeShop"
+	add_to_group("arcade_shop")
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	var at := _find_spot(spawn)
@@ -31,6 +34,11 @@ func place(spawn: Vector3) -> void:
 
 func in_reach(p: Node3D) -> bool:
 	return placed and p != null and p.global_position.distance_to(global_position) < REACH
+
+
+## [interact] opens the shop here now (between waves, in reach).
+func can_interact(p: Node3D) -> bool:
+	return in_reach(p) and director != null and not director.active
 
 
 func _find_spot(spawn: Vector3) -> Vector3:

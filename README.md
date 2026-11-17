@@ -15,7 +15,7 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 
 ## 🆕 What's new in v1.40
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.40.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.40.1-beta)
 
 ### New map: TOKYO
 A walled-in Tokyo back street by a canal and a rail line, for Zombie Survival and matches against AI.

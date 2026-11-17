@@ -409,10 +409,14 @@ func set_flashlight(on: bool) -> void:
 	_update_torch_lens()
 
 
-## Interact objective in reach: F / X act on it instead of view / reload.
+## Interact objective or the zombie arcade shop in reach: F / X act on it
+## instead of view / reload.
 func _interact_context() -> bool:
 	var c = get_tree().get_first_node_in_group("campaign")
-	return c != null and c.can_interact()
+	if c != null and c.can_interact():
+		return true
+	var a = get_tree().get_first_node_in_group("arcade_shop")
+	return a != null and a.can_interact(self)
 
 
 func _input(event: InputEvent) -> void:

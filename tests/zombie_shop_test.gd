@@ -49,8 +49,14 @@ func run() -> void:
 	check(not main.hud._shop_available(), "no shop away from the arcade")
 	p.global_position = arcade.global_position + arcade.global_transform.basis.z * 1.4
 	check(main.hud._shop_available(), "shop available at the arcade before the first wave")
+	check(p._interact_context(), "at the arcade F opens the shop, not the camera view / a reload")
+	var away: Vector3 = p.global_position
+	p.global_position = arcade.global_position + Vector3(30, 0, 0)
+	check(not p._interact_context(), "away from the arcade F toggles the view again")
+	p.global_position = away
 	dir.active = true
 	check(not main.hud._shop_available(), "no shop during a wave")
+	check(not p._interact_context(), "during a wave F is the view toggle again")
 	dir.active = false
 
 	# --- points

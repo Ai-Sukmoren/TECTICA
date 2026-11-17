@@ -34,7 +34,7 @@ const CHALLENGES := [
 	{"id": "boss", "text": "Kill %d Juggernaut bosses", "goals": [1, 2, 3]},
 	{"id": "kicks", "text": "Dropkick-kill %d enemies", "goals": [3, 5, 8]},
 	{"id": "flash", "text": "Blind %d enemies with flashbangs", "goals": [8, 15, 25]},
-	{"id": "town_waves", "text": "Clear %d waves on DEAD END", "goals": [3, 6, 10]},
+	{"id": "tokyo_waves", "text": "Clear %d waves on TOKYO", "goals": [3, 6, 10]},
 	{"id": "pistol", "text": "Get %d pistol kills", "goals": [10, 20, 30]},
 	{"id": "chapter", "text": "Complete %d campaign chapters", "goals": [1, 2, 2]},
 ]
@@ -257,8 +257,8 @@ static func on_flash_blind() -> void:
 static func on_wave_cleared(wave: int, map_id: String) -> void:
 	ensure()
 	_bump("waves")
-	if map_id == "town":
-		_bump("town_waves")
+	if map_id == "tokyo":
+		_bump("tokyo_waves")
 	add_xp(XP_WAVE * wave)
 
 

@@ -1,8 +1,8 @@
 extends SceneTree
 ## Co-op Zombie Survival and PvP Deathmatch on every map: the Multiplayer panel
 ## offers each map, and a joining client loads the host's map. Host first, then client:
-##   godot --headless --path . -s res://tests/mp_zombie_maps_test.gd -- host town [pvp]
-##   godot --headless --path . -s res://tests/mp_zombie_maps_test.gd -- client town [pvp]
+##   godot --headless --path . -s res://tests/mp_zombie_maps_test.gd -- host warehouse [pvp]
+##   godot --headless --path . -s res://tests/mp_zombie_maps_test.gd -- client warehouse [pvp]
 const Net = preload("res://scripts/net/net.gd")
 var role := ""
 var map := ""
@@ -15,7 +15,7 @@ var checked_menu := false
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()
 	role = a[0]
-	map = a[1] if a.size() > 1 else "town"
+	map = a[1] if a.size() > 1 else "warehouse"
 	kind = a[2] if a.size() > 2 else "coop"
 	want_mode = "pvp" if kind == "pvp" else "zombie"
 	var ms = load("res://scripts/main.gd")

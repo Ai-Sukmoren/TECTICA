@@ -1,7 +1,8 @@
 extends SceneTree
-## Zombie Survival shop: the run starts with pistol + knife, hits and kills
-## earn points, the shop opens only between waves and sells a primary, ammo,
-## healing, grenades, gun upgrades and perks; purchases survive going down.
+## Zombie Survival shop: the run starts with a bare pistol + knife, hits and
+## kills earn points, the shop opens only between waves at the arcade cabinet and
+## sells a primary, ammo, healing, grenades, gun upgrades, perks and attachments
+## for the gun in hand (bought guns come bare); purchases survive going down.
 ##   godot --headless --path . -s res://tests/zombie_shop_test.gd
 const Main = preload("res://scripts/main.gd")
 const Shop = preload("res://scripts/modes/zombie_shop.gd")
@@ -19,7 +20,7 @@ func _initialize() -> void:
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
 	Main.saved_mode = "zombie"
-	Main.saved_map = "town"
+	Main.saved_map = "warehouse"
 	Main.quick_restart = true
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 60: await process_frame
@@ -35,9 +36,19 @@ func run() -> void:
 	check(p.weapons.size() == 2, "zombie run starts with two weapons")
 	check(p.weapons[0].is_pistol() and p.weapons[1].is_melee(), "a pistol and a knife")
 	check(shop.points == Shop.START_POINTS, "starting points")
+	var D = load("res://scripts/weapons/weapon_data.gd")
+	var pid := String(p.weapons[0].id)
+	check(p.weapons[0].attachments == D.sanitize(pid, {}), "the starting pistol is bare")
 
-	# --- the shop is open between waves, closed during one
-	check(main.hud._shop_available(), "shop available before the first wave")
+	# --- the shop opens only at the arcade, between waves
+	var arcade = main.arcade
+	check(arcade != null and arcade.placed, "an arcade cabinet stands on the map")
+	print("  arcade at ", arcade.global_position, ", spawn ", p.global_position, ", %.1f m apart" % arcade.global_position.distance_to(p.global_position))
+	check(absf(arcade.global_position.y - p.global_position.y) < 0.8, "the arcade stands on the operator's floor")
+	p.global_position = arcade.global_position + Vector3(30, 0, 0)
+	check(not main.hud._shop_available(), "no shop away from the arcade")
+	p.global_position = arcade.global_position + arcade.global_transform.basis.z * 1.4
+	check(main.hud._shop_available(), "shop available at the arcade before the first wave")
 	dir.active = true
 	check(not main.hud._shop_available(), "no shop during a wave")
 	dir.active = false
@@ -61,6 +72,7 @@ func run() -> void:
 	ids = p.weapons.map(func(w): return String(w.id))
 	print("  after buying: ", ids)
 	check(p.weapons.size() == 3 and String(p.weapons[0].id) == "marlin", "the Marlin is the primary")
+	check(p.weapons[0].attachments == D.sanitize("marlin", {}), "a bought gun comes bare")
 	check(p.weapon_index == 0, "the new gun is in hand")
 	check(p.weapons[1].reserve == pistol_reserve, "the pistol keeps its ammo")
 	check(shop.points == 5000 - 1500, "price taken")
@@ -115,6 +127,22 @@ func run() -> void:
 	check(shop.upgrade_tag("marlin") == "" and shop.upgrade_tag("aug_a1") == "", "old upgrades are gone, new gun starts at MK 0")
 	check(is_equal_approx(float(p.weapons[0].stats.reload), float(load("res://scripts/weapons/weapon_data.gd").compute("aug_a1", p.weapons[0].attachments).reload) * 0.6), "perks apply to the new gun")
 
+	# --- attachments for the gun in hand, for this run
+	shop.points = 5000
+	var att_rows: Array = shop.items(p).filter(func(r): return String(r.id).begins_with("att_"))
+	print("  attachment rows for the AUG: ", att_rows.size())
+	check(att_rows.size() >= 5, "the shop lists attachments for the gun in hand")
+	var pts_a: int = shop.points
+	var aug_ammo: int = p.weapons[0].ammo
+	check(shop.buy("att_muzzle:suppressor", p) != "", "buys a suppressor")
+	check(String(p.weapons[0].attachments.muzzle) == "suppressor" and bool(p.weapons[0].stats.suppressed), "the suppressor is on the AUG")
+	check(shop.points == pts_a - Shop.ATT_PRICES.muzzle, "attachment price taken")
+	check(p.weapons[0].ammo == aug_ammo, "the gun keeps its ammo")
+	check(is_equal_approx(float(p.weapons[0].stats.reload), float(D.compute("aug_a1", p.weapons[0].attachments).reload) * 0.6), "perks still apply")
+	check(shop.buy("att_muzzle:suppressor", p) == "", "can't buy a fitted attachment again")
+	check(shop.buy("att_underbarrel:laser", p) != "" and String(p.weapons[0].attachments.rail) == "rail", "a laser brings its rail")
+	check(String(p.weapons[0].attachments.muzzle) == "suppressor", "earlier attachments stay")
+
 	# --- an SMG adds the third gun, in its own slot next to the rifle
 	shop.points = 5000
 	check(shop.buy("smg_mgp7", p) != "", "buys the MGP7 SMG")
@@ -137,6 +165,7 @@ func run() -> void:
 	ids = p2.weapons.map(func(w): return String(w.id))
 	print("  after respawn: ", ids)
 	check(p2 != p and String(p2.weapons[0].id) == "aug_a1", "respawned operator keeps the bought gun")
+	check(String(p2.weapons[0].attachments.muzzle) == "suppressor", "and its attachments")
 	check(p2.max_health == 150.0, "and the perks")
 
 	# --- HUD panel opens, lists rows and closes

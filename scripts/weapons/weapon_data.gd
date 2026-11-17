@@ -261,6 +261,20 @@ const WEAPONS := {
 				"magazine": ["standard", "ap", "hollow"], "stock": ["standard"]},
 		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
 	},
+	# Remington 700: bolt-action hunting rifle in .308 with a hunting scope, four in the box
+	"m700": {
+		"name": "REMINGTON 700", "category": "BOLT-ACTION", "kind": "rifle", "model": "m700",
+		"mag": 5, "reserve": 35, "rpm": 50, "auto": false, "pellets": 1,
+		"damage": 105.0, "range": 150.0, "falloff_start": 100.0, "pierce": true,
+		"spread_hip": 5.0, "spread_aim": 0.1, "spread_move": 4.2,
+		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
+		"recoil": 2.5, "reload": 3.0, "reload_empty": 3.4,
+		"suppressed": false, "noise_radius": 46.0, "shake": 0.26, "sound": "shot_sniper", "volume": -1.0,
+		"mobility": 0.92, "ads_speed": 0.85, "cycle": "bolt",
+		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["builtin_10x"], "muzzle": _RIFLE_MUZZLES, "underbarrel": ["none", "laser"],
+				"magazine": ["standard", "ap", "hollow"], "stock": ["standard"]},
+		"defaults": {"handguard": "standard", "rail": "none", "optic": "builtin_10x", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
+	},
 	# ---- knives (melee slot). Starting values: damage per slash, swings per minute,
 	# reach in metres, damage multiplier for a hit from behind.
 	"knife_combat": {
@@ -314,7 +328,7 @@ const WEAPONS := {
 	},
 }
 
-const PRIMARIES := ["hk33", "aug_a1", "scar_h", "as_val", "uar10", "l96a1", "mosin", "marlin"]
+const PRIMARIES := ["hk33", "aug_a1", "scar_h", "as_val", "uar10", "l96a1", "m700", "mosin", "marlin"]
 ## The middle slot: submachine guns.
 const SMGS := ["mgp7", "gepard", "p90"]
 const SECONDARIES := ["g17", "zc57", "vp9"]

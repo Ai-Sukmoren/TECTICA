@@ -83,6 +83,10 @@ var _mp_coop_mode := "ch1"
 var _mp_pvp_map := "forest"
 var _mp_tdm_bots := 0
 ## Bots in a solo team deathmatch (split evenly between both teams).
+## Title menu: a solo match against AI picked as the MODE ("" = the scene's own
+## mode: a campaign chapter or Zombie Survival). Static: picking it reloads the
+## title scene on a map backdrop, and the pick must survive that.
+static var vs_ai := ""
 var _solo_tdm_bots := 6
 ## Bots in a solo free-for-all deathmatch.
 var _solo_ffa_bots := 5
@@ -309,13 +313,20 @@ func add_feed(text: String, color: Color = TEXT) -> void:
 
 ## Title menu rows in navigation order. Each: id, section, label, value
 ## (shown right-aligned), arrow (A/D or the arrows change it), big (DEPLOY).
+## PLAY is one MODE choice with only the rows that mode uses under it: a
+## campaign chapter plays its own map; Zombie Survival takes a MAP; a match
+## against AI takes a MAP and a number of BOTS. DEPLOY starts what is shown.
 func _menu_entries() -> Array:
+	var kind := _play_kind()
 	var e: Array = [
-		{"id": "deploy", "sec": "PLAY", "label": "DEPLOY", "big": true},
-		{"id": "mode", "sec": "PLAY", "label": "MISSION", "value": _mode_label(main.mode), "arrow": true},
-		{"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]) if main.mode in ["zombie", "pvp"] else "PINEWOOD VALLEY  (CAMPAIGN)", "arrow": main.mode in ["zombie", "pvp"]},
-		{"id": "tdm", "sec": "PLAY", "label": "TEAM DEATHMATCH", "value": "VS AI  ·  %d BOTS" % _solo_tdm_bots, "arrow": true},
-		{"id": "ffa", "sec": "PLAY", "label": "FREE FOR ALL", "value": "VS AI  ·  %d BOTS" % _solo_ffa_bots, "arrow": true},
+		{"id": "deploy", "sec": "PLAY", "label": "DEPLOY", "value": _deploy_summary(), "big": true},
+		{"id": "mode", "sec": "PLAY", "label": "MODE", "value": _play_label(kind), "arrow": true},
+	]
+	if kind != "campaign":
+		e.append({"id": "map", "sec": "PLAY", "label": "MAP", "value": String(main.MAPS[main.map_id]), "arrow": true})
+	if kind in ["tdm", "ffa"]:
+		e.append({"id": "bots", "sec": "PLAY", "label": "AI BOTS", "value": str(_solo_tdm_bots if kind == "tdm" else _solo_ffa_bots), "arrow": true})
+	e += [
 		{"id": "mp", "sec": "PLAY", "label": "MULTIPLAYER", "value": "CO-OP  /  PVP"},
 		{"id": "rooms", "sec": "PLAY", "label": "OPEN ROOMS", "value": "CLICK TO JOIN"},
 		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
@@ -335,6 +346,41 @@ func _menu_entries() -> Array:
 
 func _menu_items() -> Array:
 	return _menu_entries()
+
+
+## What the PLAY section is set to: "campaign", "zombie", "tdm" or "ffa".
+func _play_kind() -> String:
+	if vs_ai != "" and main.mode == "zombie":
+		return vs_ai
+	return "zombie" if main.mode == "zombie" else "campaign"
+
+
+## Every MODE choice in order: campaign chapters, Zombie Survival, then the
+## matches against AI (those keep the Zombie Survival scene as the map backdrop).
+func _play_choices() -> Array:
+	return MODES + ["tdm", "ffa"]
+
+
+func _play_label(kind: String) -> String:
+	match kind:
+		"tdm":
+			return "TEAM DEATHMATCH  ·  VS AI"
+		"ffa":
+			return "FREE FOR ALL  ·  VS AI"
+		"campaign":
+			return _mode_label(main.mode)
+	return _mode_label("zombie")
+
+
+## One line under DEPLOY: exactly what starts.
+func _deploy_summary() -> String:
+	var kind := _play_kind()
+	if kind == "campaign":
+		return "CAMPAIGN  ·  PINEWOOD VALLEY"
+	var map := String(main.MAPS[main.map_id])
+	if kind == "zombie":
+		return "ZOMBIE SURVIVAL  ·  " + map
+	return "%s  ·  %s  ·  %d BOTS" % ["TEAM DEATHMATCH" if kind == "tdm" else "FREE FOR ALL", map, _solo_tdm_bots if kind == "tdm" else _solo_ffa_bots]
 
 
 func _menu_index_of(id: String) -> int:
@@ -370,36 +416,43 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 		"update":
 			OS.shell_open("https://github.com/Ai-Sukmoren/TECTICA/releases/latest")
 		"deploy":
-			_deploy()
+			var kind := _play_kind()
+			if kind in ["tdm", "ffa"]:
+				# a local match (no network) on the chosen map: TDM splits the bots between
+				# the operator's team and the other side, in FFA every bot fights everyone
+				var bots := _solo_tdm_bots if kind == "tdm" else _solo_ffa_bots
+				if Net.host("pvp", Net.port, false) == OK:
+					main.net_enter_world("%s%d@%s" % [kind, bots, main.map_id])
+			else:
+				_deploy()
 		"mp":
 			_mp_open()
-		"tdm":
-			# solo team deathmatch: a local match (no network) on the chosen map,
-			# AI bots split between the operator's team and the other side
-			if dir != 0:
-				last_menu_index = i
-				_solo_tdm_bots = clampi(_solo_tdm_bots + 2 * dir, 2, 8)
-				return
-			if Net.host("pvp", Net.port, false) == OK:
-				main.net_enter_world("tdm%d@%s" % [_solo_tdm_bots, main.map_id])
-		"ffa":
-			# solo free for all: a local match where every bot fights everyone
-			if dir != 0:
-				last_menu_index = i
-				_solo_ffa_bots = clampi(_solo_ffa_bots + dir, 1, 8)
-				return
-			if Net.host("pvp", Net.port, false) == OK:
-				main.net_enter_world("ffa%d@%s" % [_solo_ffa_bots, main.map_id])
+		"bots":
+			last_menu_index = i
+			var step := dir if dir != 0 else 1
+			if _play_kind() == "tdm":
+				_solo_tdm_bots = 2 + posmod(_solo_tdm_bots - 2 + 2 * step, 8)   # 2, 4, 6, 8 (even teams)
+			else:
+				_solo_ffa_bots = 1 + posmod(_solo_ffa_bots - 1 + step, 8)       # 1 .. 8
 		"map":
-			if main.mode in ["zombie", "pvp"]:
-				last_menu_index = i
-				var ids: Array = main.MAPS.keys()
-				main.set_map(ids[posmod(ids.find(main.map_id) + (dir if dir != 0 else 1), ids.size())])
+			last_menu_index = i
+			var ids: Array = main.MAPS.keys()
+			main.set_map(ids[posmod(ids.find(main.map_id) + (dir if dir != 0 else 1), ids.size())])
 		"armory":
 			armory.open()
 		"mode":
 			last_menu_index = i
-			main.set_mode(MODES[posmod(MODES.find(main.mode) + (dir if dir != 0 else 1), MODES.size())])
+			var choices := _play_choices()
+			var kind := _play_kind()
+			var next: String = choices[posmod(choices.find(main.mode if kind in ["campaign", "zombie"] else kind) + (dir if dir != 0 else 1), choices.size())]
+			if next in ["tdm", "ffa"]:
+				vs_ai = next
+				if main.mode != "zombie":
+					main.set_mode("zombie")   # load a map backdrop to pick from
+			else:
+				vs_ai = ""
+				if next != main.mode:
+					main.set_mode(next)
 		"loadout":
 			if dir == 0:
 				gunsmith.open()
@@ -518,7 +571,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if shop_open:
 		_shop_input(event)
 		return
-	if event.is_action_pressed("shop") and _shop_available():
+	if (event.is_action_pressed("interact") or event.is_action_pressed("shop")) and _shop_available():
 		_open_shop()
 		get_viewport().set_input_as_handled()
 		return
@@ -770,7 +823,7 @@ func _draw_overlay(c: Control) -> void:
 	elif dir_node != null:
 		var line := "WAVE %d   ·   INFECTED %d   ·   %d PTS" % [dir_node.wave, dir_node.remaining(), dir_node.shop.points]
 		if not dir_node.active:
-			line = "NEXT WAVE IN %d   ·   %d PTS   ·   [%s] SHOP" % [int(ceil(dir_node.timer)), dir_node.shop.points, Settings.Controls.short("shop")]
+			line = "NEXT WAVE IN %d   ·   %d PTS   ·   %s" % [int(ceil(dir_node.timer)), dir_node.shop.points, _arcade_hint()]
 		_text(c, Vector2(0, 92), line, 14, WARN if not dir_node.active else TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		_text(c, Vector2(0, 110), "KILLS %d   ·   %s   ·   T+ %s" % [dir_node.kills, main.tod.clock_string(), main.time_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	else:
@@ -1093,6 +1146,13 @@ func _daily_lines() -> Array:
 
 ## Lines for the mission card: [text, size, color].
 func _mission_lines() -> Array:
+	var kind := _play_kind() if title else ""
+	if kind in ["tdm", "ffa"]:
+		var bots := _solo_tdm_bots if kind == "tdm" else _solo_ffa_bots
+		return [["TEAM DEATHMATCH" if kind == "tdm" else "FREE FOR ALL", 26, TEXT],
+				[String(main.MAPS[main.map_id]) + "  ·  VS AI", 12, RED],
+				["%d AI bots split between your team and theirs." % bots if kind == "tdm" else "%d AI bots, everyone for themselves." % bots, 13, Color(TEXT, 0.8)],
+				["FIRST TO %d KILLS  ·  10 MINUTES" % main.PVP_KILL_LIMIT, 13, ACCENT]]
 	if main.is_zombie_mode():
 		var out: Array = [["ZOMBIE SURVIVAL", 26, TEXT], [String(main.MAPS[main.map_id]) + "  ·  OUTBREAK", 12, RED]]
 		out.append(["Survive endless waves after dark.", 13, Color(TEXT, 0.8)])
@@ -1158,10 +1218,10 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(0, vp.y - bar_h, vp.x, bar_h), Color(0, 0, 0, 0.85))
 	var lines := [
 		["TECTICA  //  ZOMBIE SURVIVAL", RED, 20],
-		[String({"town": "LOCATION   DEAD END - CROSSROADS BARRICADE, OVERRUN", "desert": "LOCATION   ATOMIC ACRES - TEST TOWN CUL-DE-SAC, OVERRUN", "warehouse": "LOCATION   WAREHOUSE - LOADING FLOOR, OVERRUN", "backrooms": "LOCATION   THE BACKROOMS - LEVEL 0, NO EXIT"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
-		[String({"town": "SITREP     NIGHT IS FALLING. THEY POUR IN FROM EVERY STREET", "desert": "SITREP     THE TEST SHOT IS LIVE. EVERY BOSS WAVE, LOOK AWAY FROM THE FLASH", "warehouse": "SITREP     CLOSE QUARTERS BETWEEN THE CRATES. WATCH EVERY AISLE", "backrooms": "SITREP     THE LIGHTS HUM. SOMETHING WALKS THE YELLOW HALLS"}.get(main.map_id, "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES")), TEXT, 14],
+		[String({"warehouse": "LOCATION   WAREHOUSE - LOADING FLOOR, OVERRUN", "backrooms": "LOCATION   THE BACKROOMS - LEVEL 0, NO EXIT", "tokyo": "LOCATION   TOKYO - CANAL STREET BY THE RAIL LINE, WALLED IN"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
+		[String({"warehouse": "SITREP     CLOSE QUARTERS BETWEEN THE CRATES. WATCH EVERY AISLE", "backrooms": "SITREP     THE LIGHTS HUM. SOMETHING WALKS THE YELLOW HALLS", "tokyo": "SITREP     THEY COME OVER THE BRIDGE AND DOWN THE TRACKS. HOLD THE STREET"}.get(main.map_id, "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES")), TEXT, 14],
 		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
-		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("shop") + "] SHOP BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
+		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("interact") + "] SHOP AT THE ARCADE BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
 		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
 	] if main.is_zombie_mode() else (_pvp_briefing() if main.mode == "pvp" else _campaign_briefing())
 	var chars := int(t * 75.0)
@@ -1699,7 +1759,17 @@ func _copy_public() -> void:
 
 func _shop_available() -> bool:
 	var d = main.director if main != null else null
-	return d != null and not d.active and _deployed_hud() and player != null and not player.is_dead and not main.game_over
+	return d != null and not d.active and _deployed_hud() and player != null and not player.is_dead and not main.game_over 			and main.arcade != null and main.arcade.in_reach(player)
+
+
+## Where the shop is: the key when the arcade is in reach, its distance otherwise.
+func _arcade_hint() -> String:
+	var a = main.arcade
+	if a == null or not a.placed or player == null:
+		return "SHOP AT THE ARCADE"
+	if a.in_reach(player):
+		return "[%s] OPEN SHOP" % Settings.Controls.short("interact")
+	return "ARCADE SHOP  %d M" % int(round(player.global_position.distance_to(a.global_position)))
 
 
 func _deployed_hud() -> bool:
@@ -1755,8 +1825,10 @@ func _shop_activate(i: int) -> void:
 
 func _shop_input(event: InputEvent) -> void:
 	var n := _shop_rows_now().size()
-	if event.is_action_pressed("shop") or event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+	if event.is_action_pressed("shop") or event.is_action_pressed("interact") or event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
 		_close_shop()
+	elif event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		shop_index = clampi(shop_index + (-1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1), 0, n - 1)
 	elif event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
 		shop_index = posmod(shop_index - 1, n)
 	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
@@ -1781,10 +1853,26 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	shop_index = clampi(shop_index, 0, rows.size() - 1)
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.6))
 	var w := minf(760.0, vp.x - 40.0)
-	var row_h := minf(30.0, (vp.y - 230.0) / (rows.size() + 5))
+	var row_h := 28.0
+	# the list scrolls: lines (section headers + rows) that fit, kept round the selection
+	var lines: Array = []   # [row index or -1 for a header, section name]
+	var section0 := ""
+	for i in rows.size():
+		var sec := String(rows[i].section)
+		if sec != section0 and sec != "":
+			section0 = sec
+			lines.append([-1, sec])
+		lines.append([i, sec])
+	var cap := maxi(6, int((vp.y - 250.0) / row_h))
+	var sel_line := 0
+	for k in lines.size():
+		if int(lines[k][0]) == shop_index:
+			sel_line = k
+	var first := clampi(sel_line - cap / 2, 0, maxi(0, lines.size() - cap))
+	var shown: Array = lines.slice(first, first + cap)
 	var x0 := (vp.x - w) * 0.5
-	var y := maxf(40.0, (vp.y - (rows.size() + 5) * row_h - 120.0) * 0.5)
-	var panel := Rect2(x0 - 18, y - 18, w + 36, (rows.size() + 5) * row_h + 130)
+	var y := maxf(40.0, (vp.y - shown.size() * row_h - 150.0) * 0.5)
+	var panel := Rect2(x0 - 18, y - 18, w + 36, shown.size() * row_h + 160)
 	c.draw_rect(panel, Color(0.025, 0.045, 0.055, 0.92))
 	c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
 	_brackets(c, panel, 14.0, Color(WARN, 0.6), 1.5)
@@ -1796,18 +1884,21 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	_text(c, Vector2(x0, y + 50), sub, 12, DIM)
 	y += 70.0
 	_shop_rects.clear()
-	var section := ""
 	for i in rows.size():
+		_shop_rects.append(Rect2())   # rows scrolled out of view take no clicks
+	if first > 0:
+		_text(c, Vector2(x0, y - 4), "▲  MORE", 10, DIM, HORIZONTAL_ALIGNMENT_RIGHT, w)
+	for ln in shown:
+		var i: int = ln[0]
+		if i < 0:
+			_text(c, Vector2(x0, y + row_h * 0.7), String(ln[1]), 11, Color(ACCENT, 0.9), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			y += row_h
+			continue
 		var r: Dictionary = rows[i]
-		if String(r.section) != section and String(r.section) != "":
-			section = String(r.section)
+		if r.id == "start":
 			y += 6.0
-			_text(c, Vector2(x0, y + row_h * 0.62), section, 11, Color(ACCENT, 0.9), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-			y += row_h * 0.7
-		elif r.id == "start":
-			y += 10.0
 		var rect := Rect2(x0, y, w, row_h - 3.0)
-		_shop_rects.append(rect)
+		_shop_rects[i] = rect
 		var sel := i == shop_index
 		if sel:
 			c.draw_rect(rect, Color(RED, 0.22))
@@ -1823,9 +1914,11 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 			var tcol := Color(DIM, 0.8) if String(r.note) != "" else (WARN if bool(r.afford) else DANGER)
 			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.66), tag, 15, tcol, HORIZONTAL_ALIGNMENT_RIGHT, w - 10, true)
 		y += row_h
+	if first + cap < lines.size():
+		_text(c, Vector2(x0, y + 8), "▼  MORE", 10, DIM, HORIZONTAL_ALIGNMENT_RIGHT, w)
 	if _shop_msg_t > 0.0:
 		_text(c, Vector2(x0, y + 26), _shop_msg, 14, Color(WARN, clampf(_shop_msg_t, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, w, true)
-	_text(c, Vector2(x0, y + 50), "W/S or mouse select  ·  ENTER / click buy  ·  [%s] or ESC close" % Settings.Controls.short("shop"), 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
+	_text(c, Vector2(x0, y + 50), "W/S or mouse select  ·  ENTER / click buy  ·  [%s] or ESC close" % Settings.Controls.short("interact"), 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
 
 
 ## A gunsmith pick in a solo match: the operator is re-issued the loadout at
@@ -1833,7 +1926,16 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 func gunsmith_live_update() -> void:
 	if title or Net.active or player == null or player.is_dead:
 		return
-	player.apply_loadout()
+	_reissue_loadout()
+
+
+## Re-issues the operator's guns. In Zombie Survival the shop's list (bare guns,
+## attachments bought this run) keeping ammo, upgrades and perks; else the loadout.
+func _reissue_loadout() -> void:
+	if main.director != null:
+		main.director.shop.reissue(player, player.weapon_index)
+	else:
+		player.apply_loadout()
 
 
 ## Back from the gunsmith to the pause menu. Solo the new loadout is issued at
@@ -1843,8 +1945,8 @@ func _gunsmith_closed_in_match() -> void:
 	if Net.active:
 		add_feed("LOADOUT SAVED  ·  YOU DEPLOY WITH IT ON YOUR NEXT RESPAWN", ACCENT)
 	elif player != null and not player.is_dead:
-		player.apply_loadout()
-		add_feed("LOADOUT UPDATED", ACCENT)
+		_reissue_loadout()
+		add_feed("LOADOUT UPDATED" if main.director == null else "LOADOUT UPDATED  ·  ATTACHMENTS ARE BOUGHT AT THE ARCADE", ACCENT)
 
 
 ## Applies equipped finishes without rebuilding the inventory (Zombie Survival

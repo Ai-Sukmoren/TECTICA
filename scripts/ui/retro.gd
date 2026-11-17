@@ -1,8 +1,8 @@
 extends RefCounted
-## Retro UI theme: pixel fonts (both SIL Open Font License, see assets/fonts)
-## and the phosphor / amber palette shared by every screen.
-##   body + labels   Pixelify Sans (regular / bold weights of the variable font)
-##   headlines       Press Start 2P (8-bit arcade)
+## Retro UI theme: 16-bit pixel text everywhere (SIL Open Font License, see
+## assets/fonts) and the phosphor / amber palette shared by every screen.
+##   body, labels, headlines   Pixelify Sans (regular / bold weights of the variable
+##                             font); Bahnschrift-style system sans if it is missing
 
 const BODY_PATH := "res://assets/fonts/PixelifySans.ttf"
 const DISPLAY_PATH := "res://assets/fonts/PressStart2P.ttf"
@@ -20,10 +20,13 @@ static var _display: Font
 
 
 static func _load(path: String) -> FontFile:
-	var f := FontFile.new()
-	# load straight from the .ttf so it works without an editor import step
-	if f.load_dynamic_font(path) != OK:
-		return null
+	# the imported font (the only form an exported game has); straight from the
+	# .ttf when it has not been imported yet
+	var f: FontFile = (load(path) as FontFile).duplicate() if ResourceLoader.exists(path) else null
+	if f == null:
+		f = FontFile.new()
+		if f.load_dynamic_font(path) != OK:
+			return null
 	f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
 	f.hinting = TextServer.HINTING_NONE
 	f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
@@ -37,8 +40,8 @@ static func _fallback() -> Font:
 	return sf
 
 
-## Clean DIN-style UI face (Bahnschrift ships with Windows 10/11), with
-## common sans fallbacks elsewhere. The pixel fonts stay in assets/fonts.
+## Fallback UI face when the pixel font cannot be loaded (Bahnschrift ships with
+## Windows 10/11), with common sans fallbacks elsewhere.
 static func _clean() -> Font:
 	var sf := SystemFont.new()
 	sf.font_names = PackedStringArray(["Bahnschrift", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "DejaVu Sans"])
@@ -50,7 +53,9 @@ static func _clean() -> Font:
 
 static func body() -> Font:
 	if _body == null:
-		_body = _clean()
+		_body = _load(BODY_PATH)
+		if _body == null:
+			_body = _clean()
 	return _body
 
 
@@ -64,13 +69,13 @@ static func bold() -> Font:
 	return _bold
 
 
-## Headlines: bold, slightly condensed (uses Bahnschrift's width axis).
+## Headlines: the bold pixel weight, letters spaced a touch wider.
 static func display() -> Font:
 	if _display == null:
 		var fv := FontVariation.new()
 		fv.base_font = body()
 		var ts := TextServerManager.get_primary_interface()
-		fv.variation_opentype = {ts.name_to_tag("wght"): 700, ts.name_to_tag("wdth"): 85}
+		fv.variation_opentype = {ts.name_to_tag("wght"): 700}
 		fv.spacing_glyph = 1
 		_display = fv
 	return _display

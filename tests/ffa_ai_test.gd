@@ -20,7 +20,7 @@ func run() -> void:
 	preload("res://scripts/core/profile.gd").current = "ffa_ai_test"
 	check(Net.host("pvp", 17897, false) == OK, "local match starts")
 	Main.saved_mode = "pvp"
-	Main.saved_map = "desert"
+	Main.saved_map = "warehouse"
 	Main.saved_tdm = false
 	Main.saved_bots = 5
 	Main.saved_quality = 0
@@ -28,7 +28,7 @@ func run() -> void:
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 60: await process_frame
 	var m = current_scene
-	check(m.mode_token() == "ffa5@desert", "mode token round-trips (%s)" % m.mode_token())
+	check(m.mode_token() == "ffa5@warehouse", "mode token round-trips (%s)" % m.mode_token())
 	m.player.health = 1.0e9
 	m.player.max_health = 1.0e9
 	check(m.enemies.size() == 5, "five bots spawned (%d)" % m.enemies.size())

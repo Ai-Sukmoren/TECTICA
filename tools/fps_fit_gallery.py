@@ -4,7 +4,7 @@ import sys
 from PIL import Image, ImageDraw
 
 out = Path(sys.argv[1]).resolve()
-ids = ["hk33", "aug_a1", "scar_h", "as_val", "uar10", "l96a1", "mosin", "marlin",
+ids = ["hk33", "aug_a1", "scar_h", "as_val", "uar10", "l96a1", "m700", "mosin", "marlin",
        "mgp7", "gepard", "p90", "g17", "zc57", "vp9", "knife_combat", "karambit", "butterfly"]
 states = ["idle", "ads", "inspect", "reload_mag", "reload_action", "cycle", "sprint"]
 for state in states:

@@ -1,6 +1,6 @@
 extends SceneTree
 ## Campaign pause menu with the GUNSMITH entry, then the gunsmith open mid-match
-## (needs a window).
+## (needs a window), and its gun turned by hand and zoomed in.
 ##   godot --path . -s res://tests/previews/gunsmith_match_preview.gd -- <out_dir>
 const Main = preload("res://scripts/main.gd")
 
@@ -31,5 +31,12 @@ func run() -> void:
 	hud._pause_activate(hud._pause_items().find("GUNSMITH"))
 	await frames(30)
 	await snap(out + "/gunsmith_in_match.jpg")
+	# turned by hand and zoomed in on the action
+	var gs = hud.gunsmith
+	gs._manual_rotation = true
+	gs._pivot.rotation = Vector3(0.25, -2.2, 0)
+	gs.zoom = 0.45
+	await frames(20)
+	await snap(out + "/gunsmith_zoomed.jpg")
 	preload("res://scripts/core/settings.gd").mark_clean_exit()
 	quit(0)

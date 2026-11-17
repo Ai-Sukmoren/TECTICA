@@ -25,7 +25,7 @@ func start(mode: String, map: String) -> Node:
 
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
-	for m in [["ch1", "forest", true], ["pvp", "town", true], ["zombie", "town", true]]:
+	for m in [["ch1", "forest", true], ["pvp", "warehouse", true], ["zombie", "tokyo", true]]:
 		var main = await start(m[0], m[1])
 		var hud = main.hud
 		var items: Array = hud._pause_items()

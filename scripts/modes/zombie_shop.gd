@@ -3,7 +3,9 @@ extends RefCounted
 ## and a knife, earns points by hitting and killing infected, and spends them
 ## in the shop between waves (B), building up to three guns like the other
 ## modes (a rifle and an SMG next to the pistol), plus ammo, healing,
-## grenades, gun upgrades and perks. Each peer runs its own wallet for its own operator;
+## grenades, gun upgrades, perks and attachments. Every gun is bare (its own
+## sights, standard parts): attachments for the gun in hand are bought here and
+## last for the run. Each peer runs its own wallet for its own operator;
 ## a new loadout is sent to the others as a "loadout" event.
 ##
 ## Points: hit 10, kill 60, headshot kill +40, wave cleared 100 + 50 x wave.
@@ -22,8 +24,10 @@ const MAX_UPGRADE := 3
 ## Rifles for sale (the primary slot), cheapest first.
 const GUNS := [
 	["marlin", 1500], ["mosin", 1600], ["hk33", 1700], ["aug_a1", 1900],
-	["as_val", 2000], ["scar_h", 2200], ["uar10", 2400], ["l96a1", 2600],
+	["as_val", 2000], ["scar_h", 2200], ["m700", 2300], ["uar10", 2400], ["l96a1", 2600],
 ]
+## Attachment prices by slot (the rail comes free with an underbarrel part).
+const ATT_PRICES := {"optic": 600, "muzzle": 500, "handguard": 350, "underbarrel": 550, "magazine": 450, "stock": 400}
 ## SMGs for sale (their own slot, carried alongside the rifle).
 const SMG_GUNS := [["mgp7", 1100], ["gepard", 1300], ["p90", 1500]]
 ## id -> [name, price, description]
@@ -46,14 +50,24 @@ var primary := ""
 var smg := ""
 ## weapon id -> upgrade level 1..MAX_UPGRADE
 var upgrades := {}
+## weapon id -> {slot: option} attachments bought this run
+var attach := {}
 var perks := {}
 
 
 ## The weapon list an operator starts a zombie run with: the class pistol
-## and the knife, no primary.
+## (bare) and the knife, no primary.
 static func starting_specs() -> Array:
 	var full: Array = Loadout.weapon_list()
-	return [full[2], full[3]]   # [rifle, SMG, pistol, knife] -> pistol and knife
+	return [_bare(full[2], {}), full[3]]   # [rifle, SMG, pistol, knife] -> pistol and knife
+
+
+## A weapon spec with its attachments replaced: the gun's defaults plus `extra`
+## (skin, sticker, charm and part skins stay the player's own).
+static func _bare(spec: Array, extra: Dictionary) -> Array:
+	var out := spec.duplicate(true)
+	out[1] = Data.sanitize(String(out[0]), extra)
+	return out
 
 
 func earn(amount: int) -> void:
@@ -86,15 +100,17 @@ func specs() -> Array:
 		out.append(_primary_spec(primary))
 	if smg != "":
 		out.append(_smg_spec(smg))
-	return out + starting_specs()
+	var start := starting_specs()
+	start[0] = _bare(start[0], attach.get(String(start[0][0]), {}))
+	return out + start
 
 
 ## The player's own SMG attachments / skin when they bought their class SMG.
 func _smg_spec(id: String) -> Array:
 	var full: Array = Loadout.weapon_list()
 	if String(full[1][0]) == id:
-		return full[1]
-	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), "", Collection.parts_for(id)]
+		return _bare(full[1], attach.get(id, {}))
+	return [id, Data.sanitize(id, attach.get(id, {})), Collection.skin_for(id), Collection.sticker_for(id), "", Collection.parts_for(id)]
 
 
 ## The player's own attachments / skin when they bought their class primary,
@@ -102,8 +118,8 @@ func _smg_spec(id: String) -> Array:
 func _primary_spec(id: String) -> Array:
 	var full: Array = Loadout.weapon_list()
 	if String(full[0][0]) == id:
-		return full[0]
-	return [id, Data.sanitize(id, {}), Collection.skin_for(id), Collection.sticker_for(id), "", Collection.parts_for(id)]
+		return _bare(full[0], attach.get(id, {}))
+	return [id, Data.sanitize(id, attach.get(id, {})), Collection.skin_for(id), Collection.sticker_for(id), "", Collection.parts_for(id)]
 
 
 ## Shop rows for the HUD: {id, section, label, desc, price, ok, note}.
@@ -123,6 +139,9 @@ func items(p) -> Array:
 					"+30% DAMAGE, +25% MAGAZINE PER LEVEL", upgrade_price(lv), true))
 		else:
 			out.append(_row("upgrade", "UPGRADE", "%s  MK %s" % [String(w.stats.name), _roman(lv)], "FULLY UPGRADED", 0, false, "MAX"))
+	# attachments for the gun in hand
+	if w != null and not w.is_melee():
+		out += _attachment_rows(w)
 	# perks
 	for id in PERKS:
 		var pk: Array = PERKS[id]
@@ -145,6 +164,27 @@ func items(p) -> Array:
 		var desc := "%s  ·  DMG %d  ·  %d RPM" % [String(st.category), int(st.damage), int(st.rpm)]
 		desc += ("  ·  REPLACES " + String(Data.WEAPONS[smg].name)) if smg != "" and not have else "  ·  ADDS A GUN SLOT"
 		out.append(_row("smg_" + gid, "SMGS", String(st.name), desc, int(g[1]), not have, "EQUIPPED" if have else ""))
+	return out
+
+
+## One row per attachment the gun in hand can take (its defaults left out):
+## "att_<slot>:<option>", FITTED when it is on the gun.
+func _attachment_rows(w) -> Array:
+	var out: Array = []
+	var wid := String(w.id)
+	var st: Dictionary = Data.WEAPONS[wid]
+	var on := Data.sanitize(wid, attach.get(wid, {}))
+	for slot in Data.SLOTS:
+		if not ATT_PRICES.has(slot):
+			continue
+		for opt in st.options[slot]:
+			if opt == st.defaults[slot]:
+				continue
+			var fitted := String(on[slot]) == String(opt)
+			var label := "%s  ·  %s" % [String(Data.SLOT_NAMES[slot]), String(Data.ATTACHMENTS[slot][opt].name).to_upper()]
+			out.append(_row("att_%s:%s" % [slot, opt], "ATTACHMENTS  ·  " + String(st.name), label,
+					"REPLACES " + String(Data.ATTACHMENTS[slot][on[slot]].name).to_upper() if not fitted else "ON THIS GUN",
+					int(ATT_PRICES[slot]), not fitted, "FITTED" if fitted else ""))
 	return out
 
 
@@ -194,6 +234,13 @@ func buy(id: String, p) -> String:
 					for w in p.weapons:
 						if not w.is_melee():
 							w.reserve = maxi(w.reserve, int(w.stats.reserve))
+			elif id.begins_with("att_"):
+				var pair := id.substr(4).split(":")
+				var wid := String(p.current_weapon().id)
+				var a: Dictionary = attach.get(wid, {})
+				a[pair[0]] = pair[1]
+				attach[wid] = a
+				reissue(p, p.weapon_index)
 			elif id.begins_with("gun_"):
 				_equip_primary(id.substr(4), p)
 			elif id.begins_with("smg_"):
@@ -206,35 +253,33 @@ func buy(id: String, p) -> String:
 func _equip_smg(gid: String, p) -> void:
 	if smg != "":
 		upgrades.erase(smg)
-	var keep := {}
-	for w in p.weapons:
-		keep[String(w.id)] = [w.ammo, w.reserve]
+		attach.erase(smg)
 	smg = gid
-	p.set_loadout(specs())
-	for w in p.weapons:
-		if keep.has(String(w.id)):
-			w.ammo = int(keep[w.id][0])
-			w.reserve = int(keep[w.id][1])
-	apply_mods(p)
-	p.weapon_index = 1 if primary != "" else 0
-	p._equip_current()
-	sync(p)
+	reissue(p, 1 if primary != "" else 0)
 
 
 func _equip_primary(gid: String, p) -> void:
 	if primary != "":
-		upgrades.erase(primary)   # the old gun's upgrades leave with it
+		upgrades.erase(primary)   # the old gun's upgrades and attachments leave with it
+		attach.erase(primary)
+	primary = gid
+	reissue(p, 0)
+
+
+## Hands operator p the shop's current weapon list, keeping every gun's ammo
+## (a magazine larger than the new one's is trimmed), draws weapon `index`
+## and tells the others.
+func reissue(p, index: int) -> void:
 	var keep := {}
 	for w in p.weapons:
 		keep[String(w.id)] = [w.ammo, w.reserve]
-	primary = gid
 	p.set_loadout(specs())
 	for w in p.weapons:
 		if keep.has(String(w.id)):
 			w.ammo = int(keep[w.id][0])
 			w.reserve = int(keep[w.id][1])
 	apply_mods(p)
-	p.weapon_index = 0
+	p.weapon_index = clampi(index, 0, p.weapons.size() - 1)
 	p._equip_current()
 	sync(p)
 

@@ -64,7 +64,7 @@ static func first_launch_defaults(main_script) -> void:
 	_defaults_done = true
 	if touch_mode() and not main_script.quick_restart:
 		main_script.saved_mode = "zombie"
-		main_script.saved_map = "town"
+		main_script.saved_map = "warehouse"
 
 
 ## Once per launch, after the input map and saved settings are loaded.

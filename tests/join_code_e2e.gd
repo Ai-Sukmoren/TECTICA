@@ -16,7 +16,7 @@ func _initialize() -> void:
 	if role == "host":
 		Net.player_name = "HOSTY"
 		Main.saved_mode = "zombie"
-		Main.saved_map = "town"
+		Main.saved_map = "warehouse"
 		Main.quick_restart = true
 		print("[e2e] host err=%d code=%s" % [Net.host("coop", Net.DEFAULT_PORT), Net.join_code("127.0.0.1")])
 	else:

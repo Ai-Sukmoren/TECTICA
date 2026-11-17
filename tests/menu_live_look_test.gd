@@ -26,7 +26,7 @@ func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
 	var mode: String = OS.get_cmdline_user_args()[0] if OS.get_cmdline_user_args().size() > 0 else "ch1"
 	Main.saved_mode = mode
-	Main.saved_map = "town"
+	Main.saved_map = "warehouse"
 	Main.quick_restart = false
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 40: await process_frame

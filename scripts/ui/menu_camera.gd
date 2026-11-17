@@ -52,9 +52,6 @@ func setup(main: Node) -> void:
 	shots.append([p + Vector3(16, 10, 16), p + Vector3(9, 8, 21), p, p + Vector3(-2, 0, 0)])
 	# landmark of the map
 	var lm := _landmark(main, p)
-	if String(main.get("map_id")) == "town":
-		# look up at the hotel from across the crossroads
-		shots.append([Vector3(9, 5, 12), Vector3(3, 8, 17), Vector3(-25, 9, -22), Vector3(-25, 11, -22)])
 	shots.append([lm + Vector3(15, 9.5, 13), lm + Vector3(8, 7.5, 18), lm + Vector3(0, 1.0, 0), lm + Vector3(-2, 1.0, 0)])
 	# low dolly past the operator's boots
 	shots.append([chest - fwd * 2.6 + right * 2.2 + Vector3.DOWN * 0.8, chest - fwd * 1.8 + right * 3.2 + Vector3.DOWN * 0.6, chest + fwd * 4.0, chest + fwd * 4.0 + Vector3.UP * 0.6])
@@ -64,12 +61,8 @@ func setup(main: Node) -> void:
 	make_current()
 
 
-## Logging camp (forest), gas station (DEAD END), cafe (ATOMIC ACRES), else a spot near spawn.
+## Logging camp (forest), else a spot near spawn.
 func _landmark(main: Node, fallback: Vector3) -> Vector3:
-	if String(main.get("map_id")) == "town":
-		return Vector3(18, 0, -16)
-	if String(main.get("map_id")) == "desert":
-		return Vector3(14, 0, 22)
 	var camp = main.level.get("camp")
 	if camp is Vector3 and (camp as Vector3).distance_to(fallback) > 12.0:
 		return camp

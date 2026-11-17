@@ -1,7 +1,7 @@
 """Runs every automated test in tests/ and prints a pass/fail summary.
 
     python tools/run_tests.py                 # all tests
-    python tools/run_tests.py knife town      # only tests whose name contains a word
+    python tools/run_tests.py knife tokyo      # only tests whose name contains a word
 
 The Godot executable comes from the GODOT environment variable, or `godot` on
 PATH. Tests run headless, except the few that need a real window (listed in
@@ -32,7 +32,7 @@ WINDOWED = {
 PAIRS = {
     "multiplayer_test": [["host", "coop"], ["client", "coop"]],
     "join_code_e2e": [["host"], ["client"]],
-    "mp_zombie_maps_test": [["host", "town"], ["client", "town"]],
+    "mp_zombie_maps_test": [["host", "warehouse"], ["client", "warehouse"]],
 }
 
 

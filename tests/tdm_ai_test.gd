@@ -18,7 +18,7 @@ func run() -> void:
 	preload("res://scripts/core/profile.gd").current = "tdm_ai_test"
 	check(Net.host("pvp", 17894, false) == OK, "local match starts")
 	Main.saved_mode = "pvp"
-	Main.saved_map = "desert"
+	Main.saved_map = "warehouse"
 	Main.saved_tdm = true
 	Main.saved_bots = 6
 	Main.saved_quality = 0

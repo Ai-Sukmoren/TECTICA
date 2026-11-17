@@ -22,7 +22,7 @@ func run() -> void:
 	check(Data.sanitize("hk33", {"underbarrel": "gp25"}).rail == "rail", "the GP-25 puts the rail on")
 	check(bool(Data.compute("hk33", {"underbarrel": "gp25"}).launcher), "HK33 + GP-25 has a launcher")
 	check(not bool(Data.compute("hk33", {}).launcher), "plain HK33 has none")
-	Main.saved_mode = "zombie"; Main.saved_map = "town"; Main.quick_restart = true
+	Main.saved_mode = "zombie"; Main.saved_map = "warehouse"; Main.quick_restart = true
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 90: await process_frame
 	var m = current_scene

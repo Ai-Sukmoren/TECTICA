@@ -112,8 +112,8 @@ func _layout() -> void:
 		["shop", Vector2(s.x * 0.5, s.y - 140.0), 0.0, "SHOP", "shop", "tap"],
 		["nvg", Vector2(110.0, 140.0), 26.0, "NVG", "nvg", "tap"],
 	]
-	# zombie shop button only between waves
-	if main != null and main.director != null and not main.director.active and main.player != null and not main.player.is_dead:
+	# zombie shop button only between waves, at the arcade
+	if main != null and main.director != null and not main.director.active and main.player != null and not main.player.is_dead 			and main.arcade != null and main.arcade.in_reach(main.player):
 		_buttons[12][2] = 34.0
 	# kick only shows while sprinting (it is a sprinting move)
 	if main != null and main.player != null and main.player.sprinting:

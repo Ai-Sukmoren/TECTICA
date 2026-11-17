@@ -14,7 +14,7 @@ func _initialize() -> void:
 
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "model_maps_test"
-	for id in ModelLevel.CONFIGS.keys():
+	for id in (OS.get_cmdline_user_args() if not OS.get_cmdline_user_args().is_empty() else ModelLevel.CONFIGS.keys()):
 		for mode in ["zombie", "pvp"]:
 			# Deathmatch outside a multiplayer session is solo Team Deathmatch vs bots
 			Main.saved_mode = mode; Main.saved_map = id; Main.quick_restart = true

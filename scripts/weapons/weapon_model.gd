@@ -557,6 +557,11 @@ const LP_GUNS := {
 	"mosin": {"bolt_action": [1.55, 0.105], "length": 1.24, "grip": Vector2(-3.2, -0.05), "support": Vector2(0.2, 0.1), "mag": Vector2(-1.7, -0.3),
 			"muzzle": Vector2(6.2, 0.513), "eject": Vector2(-1.5, 0.6), "charge": Vector2(-2.3, 0.45), "under": Vector2(2.5, 0.0), "rail_adapter": true,
 			"sight": Vector2(0.05, 0.8), "rail": Vector2(-1.5, 0.75), "relief": 0.45},
+	# Remington 700: two-lug push-feed bolt, a full 90 degree lift and a long-action throw;
+	# source scaled x1.3 at conversion (the model is drawn at 0.83 m)
+	"m700": {"bolt_action": [1.5, 0.1], "length": 1.08, "grip": Vector2(-1.625, -0.39), "support": Vector2(1.69, -0.04), "mag": Vector2(0.17, -0.36),
+			"muzzle": Vector2(6.2, 0.25), "eject": Vector2(-0.26, 0.29), "charge": Vector2(-0.72, 0.0), "under": Vector2(2.98, -0.09), "rail_adapter": true,
+			"sight": Vector2(-1.9, 0.72), "rail": Vector2(0.0, 0.3), "relief": 0.1},
 	"g17": {"length": 0.2, "pistol": true, "grip": Vector2(-0.62, -0.08), "mag": Vector2(-0.5, 0.3),
 			"muzzle": Vector2(1.17, 0.566), "eject": Vector2(0.2, 0.62), "charge": Vector2(-0.75, 0.55), "under": Vector2(0.524, 0.295),
 			"sight": Vector2(-0.787, 0.69)},

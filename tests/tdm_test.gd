@@ -11,7 +11,7 @@ func run() -> void:
 	preload("res://scripts/core/profile.gd").current = "tdm_test"
 	check(Net.host("pvp", 17893, false) == OK, "host starts")
 	Main.saved_mode = "pvp"
-	Main.saved_map = "town"
+	Main.saved_map = "warehouse"
 	Main.saved_tdm = true
 	Main.saved_bots = 2
 	Main.saved_quality = 0
@@ -20,7 +20,7 @@ func run() -> void:
 	for i in 60: await process_frame
 	var m = current_scene
 	paused = true
-	check(m.mode_token() == "tdm2@town", "join token preserves TDM, bots and map")
+	check(m.mode_token() == "tdm2@warehouse", "join token preserves TDM, bots and map")
 	check(m.enemies.size() == 2, "optional bots spawned")
 	check(m.enemies[0].team != m.player.team, "first bot balances onto opponent team")
 	check(m.enemies[1].team == m.player.team, "second bot joins player's team")

@@ -50,7 +50,7 @@ func run() -> void:
 			if mi.has_meta("skin_part"):
 				tags[String(mi.get_meta("skin_part"))] = true
 		# the Marlin (tube) and Mosin (stripper-fed box) have no detachable magazine
-		if not w.is_melee() and not String(w.stats.model) in ["marlin", "mosin"]:
+		if not w.is_melee() and not String(w.stats.model) in ["marlin", "mosin", "m700"]:
 			check(tags.has("magazine"), id + " magazine is its own skinnable part")
 		if String(w.attachments.get("underbarrel", "none")) == "gp25":
 			check(tags.has("underbarrel"), id + " GP-25 tagged")

@@ -40,7 +40,7 @@ func run() -> void:
 	check(zs.size() == 2 and Data.SECONDARIES.has(String(zs[0][0])) and String(zs[1][0]) in Data.KNIVES, "zombie runs start with pistol and knife")
 	# in game: keys 1-4
 	Main.saved_mode = "pvp"
-	Main.saved_map = "desert"
+	Main.saved_map = "warehouse"
 	Main.quick_restart = true
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 60: await process_frame

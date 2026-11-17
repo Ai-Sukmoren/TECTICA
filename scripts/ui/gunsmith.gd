@@ -9,6 +9,7 @@ const Sfx = preload("res://scripts/fx/sfx.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Skins = preload("res://scripts/skins/skins.gd")
 const Charm = preload("res://scripts/skins/charm.gd")
+const Settings = preload("res://scripts/core/settings.gd")
 
 const ROTATION_SPEED := 0.01
 const PITCH_LIMIT := PI * 0.47
@@ -26,6 +27,11 @@ var _preview_rect := Rect2()
 var _dragging_preview := false
 var _manual_rotation := false
 var _spin := 0.0
+## preview camera distance for the gun shown, and the zoom on it (wheel over the preview)
+var _base_dist := 1.4
+var zoom := 1.0
+const ZOOM_MIN := 0.3
+const ZOOM_MAX := 1.6
 ## attachment slots with a real part on the previewed gun (only those take a skin)
 var _skinnable: Dictionary = {}
 var _skinnable_id := ""
@@ -74,8 +80,14 @@ func open() -> void:
 	_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_preview_key = ""
 	_preview_rect = Rect2()
+	reset_view()
+
+
+## Back to the slow automatic turn at the default framing.
+func reset_view() -> void:
 	_manual_rotation = false
 	_spin = 0.0
+	zoom = 1.0
 
 
 func close() -> void:
@@ -175,6 +187,13 @@ func handle(event: InputEvent) -> bool:
 		_dragging_preview = event.pressed and _preview_rect.has_point(event.position)
 		if _dragging_preview:
 			return false
+	if event is InputEventMouseButton and event.pressed and _preview_rect.has_point(event.position) 			and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		# wheel up moves in, down backs off
+		zoom = clampf(zoom * (0.88 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 0.88), ZOOM_MIN, ZOOM_MAX)
+		return false
+	if event.is_action_pressed("reload"):
+		reset_view()
+		return false
 	if event is InputEventMouseMotion and _dragging_preview:
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
 			_manual_rotation = true
@@ -242,9 +261,9 @@ func _process(delta: float) -> void:
 		_pivot.add_child(w)
 		var pistol := w.is_pistol() or w.is_melee()
 		w.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
-		var dist := (0.55 if w.is_melee() else 0.75) if pistol else (1.75 if e.id == "uar10" else 1.4)
-		_cam.position = Vector3(0, 0.12, dist)
-		_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
+		_base_dist = (0.55 if w.is_melee() else 0.75) if pistol else (1.75 if e.id == "uar10" else 1.4)
+	_cam.position = Vector3(0, 0.12 * zoom, _base_dist * zoom)
+	_cam.look_at(Vector3(0, 0.02, 0), Vector3.UP)
 	if not _manual_rotation and not _dragging_preview:
 		_spin += delta * 0.45
 		_pivot.rotation = Vector3(0.12 * sin(_spin * 0.7), -PI * 0.5 + sin(_spin) * 0.9, 0)
@@ -336,7 +355,7 @@ func draw(c: Control, vp: Vector2) -> void:
 	var sk2 := Collection.skin_for(String(e3.id))
 	hud._text(c, pr.position + Vector2(18, 76), "SKIN  ·  " + (Skins.finish_name(sk2).to_upper() if sk2 != "" else "FACTORY  (ARMORY TO CHANGE)"), 12,
 			Skins.RARITY_COLORS[Skins.rarity_of(sk2)] if sk2 != "" else hud.DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-	hud._text(c, Vector2(pr.position.x + 18, pr.end.y - 14), "Left-drag to rotate", 12, hud.DIM)
+	hud._text(c, Vector2(pr.position.x + 18, pr.end.y - 14), "Drag to rotate  ·  Wheel to zoom  ·  [%s] reset view" % Settings.Controls.short("reload"), 12, hud.DIM)
 
 	# --- stats
 	var sy := pr.end.y + 34.0

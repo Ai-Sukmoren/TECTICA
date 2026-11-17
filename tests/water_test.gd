@@ -49,7 +49,7 @@ func run() -> void:
 		s.save_to_wav(args[0])
 		print("  saved ", args[0])
 	# other maps clear the water
-	Main.saved_map = "town"
+	Main.saved_map = "warehouse"
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 60: await process_frame
 	check(Water.line.is_empty() and not Water.wading(bed), "Dead End has no creek")

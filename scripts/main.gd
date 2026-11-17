@@ -4,13 +4,13 @@ extends Node3D
 
 const InputSetup = preload("res://scripts/core/input_setup.gd")
 const Level = preload("res://scripts/world/forest_level.gd")
-const TownLevel = preload("res://scripts/world/town_level.gd")
-const DesertLevel = preload("res://scripts/world/desert_level.gd")
 const ModelLevel = preload("res://scripts/world/model_level.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 ## Maps for Zombie Survival / Deathmatch (the campaign is always the forest).
-const MAPS := {"forest": "PINEWOOD VALLEY", "town": "DEAD END", "desert": "ATOMIC ACRES",
-		"warehouse": "WAREHOUSE", "backrooms": "BACKROOMS"}
+## DEAD END (town_level.gd) and ATOMIC ACRES (desert_level.gd) were removed on
+## 17 Nov 2026; their scripts stay (model maps build on town_level.gd).
+const MAPS := {"forest": "PINEWOOD VALLEY", "warehouse": "WAREHOUSE", "backrooms": "BACKROOMS",
+		"tokyo": "TOKYO"}
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
 const Nature = preload("res://scripts/world/nature.gd")
@@ -28,6 +28,7 @@ const Sfx = preload("res://scripts/fx/sfx.gd")
 const FX = preload("res://scripts/fx/fx.gd")
 const WaveDirector = preload("res://scripts/modes/wave_director.gd")
 const ZombieShop = preload("res://scripts/modes/zombie_shop.gd")
+const ArcadeShop = preload("res://scripts/modes/arcade_shop.gd")
 const Settings = preload("res://scripts/core/settings.gd")
 const Loadout = preload("res://scripts/core/loadout.gd")
 const PostFX = preload("res://scripts/fx/post_fx.gd")
@@ -49,7 +50,7 @@ static var saved_first_person := false
 static var saved_muted := false
 ## "ch1", "ch2" (campaign chapters) or "zombie"
 static var saved_mode := "ch1"
-## "forest", "town" or "desert"; only used by zombie and pvp modes.
+## A MAPS id; only used by zombie and pvp modes.
 static var saved_map := "forest"
 static var saved_tdm := false
 static var saved_bots := 0
@@ -71,6 +72,8 @@ var quality := 2
 var start_first_person := false
 var mode := "operation"
 var director: WaveDirector
+## Zombie Survival: the arcade cabinet the shop is bought at.
+var arcade: ArcadeShop
 var _ammo_by_pos: Dictionary = {}
 var post_fx: PostFX
 var damage_taken := 0.0
@@ -140,7 +143,7 @@ func _ready() -> void:
 	if ModelLevel.CONFIGS.has(map_id):
 		level = ModelLevel.new(map_id)
 	else:
-		level = TownLevel.new() if map_id == "town" else (DesertLevel.new() if map_id == "desert" else Level.new())
+		level = Level.new()
 	level.name = "Level"
 	level.mode = mode
 	add_child(level)
@@ -193,6 +196,9 @@ func _ready() -> void:
 		director.setup(self)
 		director.shop.apply_mods(player)
 		director.shop.sync(player)
+		arcade = ArcadeShop.new()
+		add_child(arcade)
+		arcade.place(level.player_spawn)
 	else:
 		campaign = Campaign.new()
 		campaign.name = "Campaign"

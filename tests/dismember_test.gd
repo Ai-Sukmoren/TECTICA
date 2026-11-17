@@ -34,7 +34,7 @@ func debris_count(root: Node) -> int:
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
 	Main.saved_mode = "zombie"
-	Main.saved_map = "town"
+	Main.saved_map = "warehouse"
 	Main.quick_restart = true
 	change_scene_to_file("res://scenes/main.tscn")
 	for i in 60: await process_frame

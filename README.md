@@ -4,7 +4,7 @@
 
 A tactical military shooter for **Godot 4.7** (GDScript, Forward+), playable in top-down or first person —
 campaign chapters, zombie survival, online co-op and PvP deathmatch.
-Soldiers, most weapons, both maps, FX and sound are generated in code; a few props and two guns come from an optional asset pack.
+Soldiers, the forest map, FX and sound are generated in code; the other maps, most guns and some props come from asset packs.
 
 ## 🎬 Trailers
 
@@ -13,9 +13,38 @@ Soldiers, most weapons, both maps, FX and sound are generated in code; a few pro
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.39
+## 🆕 What's new in v1.40
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.39.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.40.0-beta)
+
+### New map: TOKYO
+A walled-in Tokyo back street by a canal and a rail line, for Zombie Survival and matches against AI.
+
+| From above | The west plaza |
+|---|---|
+| ![TOKYO from above](docs/screenshots/v140-tokyo-overview.jpg) | ![TOKYO west plaza](docs/screenshots/v140-tokyo-plaza.jpg) |
+
+### Zombie Survival: arcade shop, bought attachments
+The shop is an arcade cabinet near the start of every zombie map: walk up between waves and press **F**.
+Guns start bare; attachments for the gun in hand are bought with points and last for the run.
+
+| The arcade | Attachments in the shop |
+|---|---|
+| ![Arcade shop](docs/screenshots/v140-arcade-shop.jpg) | ![Shop attachments](docs/screenshots/v140-shop-attachments.jpg) |
+
+### Also new
+- **Remington 700** bolt-action rifle with its own scope.
+- Title menu: one **MODE** choice (campaign, zombie, TDM vs AI, FFA vs AI) with only its MAP / AI BOTS rows; all text in a 16-bit pixel font.
+- Gunsmith preview zooms with the mouse wheel, **R** resets it.
+- DEAD END and ATOMIC ACRES removed.
+
+| Title menu | Gunsmith zoom |
+|---|---|
+| ![Menu](docs/screenshots/v140-menu.jpg) | ![Gunsmith zoom](docs/screenshots/v140-gunsmith-zoom.jpg) |
+
+## Earlier: v1.39
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.39.0-beta)
 
 ### New first-person hands
 The original TECTICA arms are back in first person, with a rebuilt glove: rounded palm, jointed fingers with knuckles,
@@ -431,11 +460,13 @@ multi-computer multiplayer session still needs manual playtesting.
 
 - **Licence not yet verified** — these came as Sketchfab-style downloads without a licence file. Check each model's
   page and add its author and licence here before a public release (all are kept outside the repository):
-  - Guns: low-poly HK33, AUG A1, UAR-10, AS VAL, Gepard SMG, Glock 17 Gen 6, B&T VP9, Marlin 1895, FN P90, FN SCAR-H, L96A1, Mosin-Nagant 91/30.
+  - Guns: low-poly HK33, AUG A1, UAR-10, AS VAL, Gepard SMG, Glock 17 Gen 6, B&T VP9, Marlin 1895, FN P90, FN SCAR-H, L96A1, Mosin-Nagant 91/30, Remington 700.
   - Attachments: low-poly collimator set (Aimpoint Comp M4, EOTech EXPS3, Holosun 403R, Holosun 510C, Vortex AMG UH-1),
     AN/PEQ-2, muzzle device set, AK hexagon handguard (hex tube and rail), GP-25 launcher and VOG-25 round, SureFire X300U.
   - Knives: karambit, PS1-style butterfly knife.
   - First-person arms: Low Poly Arm Rig (rigged arms, `assets/thirdparty/fps_arms/`).
-  - Vehicles and props: Panzer I Ausf. A, Toyota Corolla E80, Tequila Zombie Café, "Everything Must Go" sign, low-poly UFO scene.
+  - Vehicles and props: Panzer I Ausf. A, Toyota Corolla E80, Tequila Zombie Café, "Everything Must Go" sign, low-poly UFO scene,
+    Neo-Tokyo Arcade cabinet (the Zombie Survival shop).
   - Maps: neighbourhood city modular low-poly (NEIGHBOURHOOD), fps-map (WALLED VILLAGE),
-    low-poly FPS TDM game map by **ResoForge** (WAREHOUSE), location underground laboratory (UNDERGROUND LAB).
+    low-poly FPS TDM game map by **ResoForge** (WAREHOUSE), location underground laboratory (UNDERGROUND LAB),
+    WIP City Scene Tokyo (TOKYO).

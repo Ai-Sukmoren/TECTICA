@@ -1,6 +1,6 @@
 extends "res://scripts/world/town_level.gd"
 ## A Zombie Survival / Deathmatch map built from one third-party model (local
-## only, not in the repository): WAREHOUSE, BACKROOMS. To add a map, convert
+## only, not in the repository): WAREHOUSE, BACKROOMS, TOKYO. To add a map, convert
 ## its model into assets/thirdparty/ and add a CONFIGS entry and a MAPS name.
 ## The model is converted with Blender, centred on the origin with its lowest
 ## point at 0. Collision comes from its own meshes; spawns from the largest
@@ -9,12 +9,28 @@ extends "res://scripts/world/town_level.gd"
 
 const MAP_DIR := "res://assets/thirdparty/"
 ## id -> glb, lights: mesh-name hints that get a lamp, indoor: add soft fill lights,
-## floor_only: spawn only near the lowest floor (a flat roof is walkable too).
+## floor_only: spawn only near the lowest floor (a flat roof is walkable too),
+## wall: height (m above the lowest point) of a solid concrete wall drawn round the
+## whole map; without it the edge is invisible,
+## stairs: [[foot, top, width], ...] an invisible slope along a stair's step edges,
+## so feet glide up it and navigation can follow,
+## agent_radius: narrower navigation agents for narrow stairs (default 0.5 m; it
+## rounds up to whole 0.25 m cells),
+## play_at: a point in the area to play in, when the largest walkable area is not
+## it (the play area is then the walkable area nearest this point),
+## ramps: [[foot, top], ...] concrete ramps joining walkable areas the model
+## leaves apart (kerbs, ledges); found by tools/link_map_islands.gd.
 const CONFIGS := {
 	"warehouse": {"glb": "warehouse/warehouse.glb", "lights": [], "indoor": true},
 	"backrooms": {"glb": "backrooms/backrooms.glb", "lights": [], "indoor": true, "floor_only": true},
+	# open-air Tokyo back street (canal, bridge, rail line), car removed, walled in
+	"tokyo": {"glb": "tokyo/tokyo.glb", "lights": [], "indoor": false, "wall": 12.0, "ramps": TOKYO_RAMPS, "play_at": Vector3(-14.0, 3.8, 10.0), "agent_radius": 0.25,
+			# the long stair from the west plaza up to the hotel level, between its walls
+			"stairs": [[Vector3(-12.32, 3.34, 5.6), Vector3(-12.32, 7.68, -7.7), 0.95]]},
 }
 const MAX_LAMPS := 24
+const RAMP_WIDTH := 1.8
+const TOKYO_RAMPS := [[Vector3(-9.79, 3.00, 13.16), Vector3(-12.17, 3.75, 13.16)], [Vector3(-9.50, 8.00, -11.54), Vector3(-5.98, 9.25, -12.20)]]
 
 var map_key := "warehouse"
 var _walkable: Array = []
@@ -58,6 +74,10 @@ func build() -> void:
 	if not ResourceLoader.exists(path):
 		_mesh(g, ML.plane(size), M.concrete("model_ground", Color(0.22, 0.22, 0.23), 0.5), Vector3(0, -0.01, 0))
 	_build_edges()
+	for r in cfg.get("ramps", []):
+		_build_ramp(r[0], r[1])
+	for r in cfg.get("stairs", []):
+		_build_ramp(r[0], r[1], r[2], false)
 	_bake_navigation()
 	_collect_walkable()
 	_define_mode()
@@ -92,6 +112,7 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 		# small clutter gets no collision
 		if aabb.size.x * aabb.size.y * aabb.size.z > 0.02 or aabb.size.y > 1.5 or aabb.size.x > 3.0 or aabb.size.z > 3.0:
 			var cs := CollisionShape3D.new()
+			cs.name = mi.name
 			cs.shape = mi.mesh.create_trimesh_shape()
 			cs.transform = xf
 			body.add_child(cs)
@@ -125,19 +146,28 @@ func _build_model(path: String, cfg: Dictionary) -> void:
 			x += step
 
 
-## Invisible walls just outside the model keep everyone in.
+## Walls just outside the model keep everyone in: invisible, or solid concrete
+## (with the invisible part above it) when the map's config asks for a wall.
 func _build_edges() -> void:
 	var c := (_lo + _hi) * 0.5
 	var s := _hi - _lo
 	var h := s.y + 6.0
-	for e in [[Vector3(c.x, _lo.y, _lo.z - 0.3), Vector3(s.x + 1.0, h, 0.6)], [Vector3(c.x, _lo.y, _hi.z + 0.3), Vector3(s.x + 1.0, h, 0.6)],
-			[Vector3(_lo.x - 0.3, _lo.y, c.z), Vector3(0.6, h, s.z + 1.0)], [Vector3(_hi.x + 0.3, _lo.y, c.z), Vector3(0.6, h, s.z + 1.0)]]:
+	var wall := float(CONFIGS[map_key].get("wall", 0.0))
+	var t := 0.6 if wall <= 0.0 else 1.0
+	for e in [[Vector3(c.x, _lo.y, _lo.z - t * 0.5), Vector3(s.x + t * 2.0, h, t)], [Vector3(c.x, _lo.y, _hi.z + t * 0.5), Vector3(s.x + t * 2.0, h, t)],
+			[Vector3(_lo.x - t * 0.5, _lo.y, c.z), Vector3(t, h, s.z + t * 2.0)], [Vector3(_hi.x + t * 0.5, _lo.y, c.z), Vector3(t, h, s.z + t * 2.0)]]:
 		var b := _body(e[0])
 		_box_shape(b, e[1], Vector3(0, h * 0.5, 0))
+		if wall > 0.0:
+			var size: Vector3 = e[1]
+			size.y = wall
+			_mesh(b, ML.box(size), _mat_wall, Vector3(0, wall * 0.5, 0))
+			# a darker coping along the top
+			_mesh(b, ML.box(Vector3(size.x + 0.1, 0.25, size.z + 0.1)), _mat_wall_trim, Vector3(0, wall + 0.125, 0))
 
 
-func _bake_navigation() -> void:
-	if _navs.has(map_key):
+func _bake_navigation(fresh: bool = false) -> void:
+	if _navs.has(map_key) and not fresh:
 		nav_region.navigation_mesh = (_navs[map_key] as NavigationMesh).duplicate()
 		return
 	var nm := NavigationMesh.new()
@@ -145,7 +175,7 @@ func _bake_navigation() -> void:
 	nm.geometry_collision_mask = Layers.WORLD
 	nm.cell_size = 0.25
 	nm.cell_height = 0.25
-	nm.agent_radius = 0.5
+	nm.agent_radius = float(CONFIGS[map_key].get("agent_radius", 0.5))
 	nm.agent_height = 2.0
 	nm.agent_max_climb = 0.5
 	nm.agent_max_slope = 40.0
@@ -156,13 +186,13 @@ func _bake_navigation() -> void:
 	_navs[map_key] = nm.duplicate()
 
 
-## Centres of the largest connected group of navigation polygons: the map's
-## real walkable area (roofs, crate tops and sealed rooms are islands, left out).
-func _collect_walkable() -> void:
-	_walkable.clear()
+## Connected groups of navigation polygons (they touch where they share a
+## vertex position): {"polys": [index...], "centres": [Vector3...], "area": m2}.
+## With floor_only, islands grow only from polygons near the lowest floor.
+func _nav_islands() -> Array:
 	var nm := nav_region.navigation_mesh
 	if nm == null or nm.get_polygon_count() == 0:
-		return
+		return []
 	var verts := nm.get_vertices()
 	var n := nm.get_polygon_count()
 	var centres: Array = []
@@ -172,7 +202,6 @@ func _collect_walkable() -> void:
 		var c := Vector3.ZERO
 		for k in poly:
 			c += verts[k]
-			# polygons touch where they share a vertex position
 			var key := Vector3i((verts[k] * 20.0).round())
 			if not by_vert.has(key):
 				by_vert[key] = []
@@ -183,23 +212,65 @@ func _collect_walkable() -> void:
 	var floor_y := INF
 	for c in centres:
 		floor_y = minf(floor_y, (c as Vector3).y)
+	var islands: Array = []
 	var seen := {}
 	for s0 in n:
 		if seen.has(s0) or (floor_only and (centres[s0] as Vector3).y > floor_y + 1.0):
 			continue
+		var polys: Array = []
 		var group: Array = []
+		var area := 0.0
 		seen[s0] = true
 		var queue: Array = [s0]
 		while not queue.is_empty():
 			var i: int = queue.pop_back()
+			polys.append(i)
 			group.append(centres[i])
-			for k in nm.get_polygon(i):
+			var poly := nm.get_polygon(i)
+			for t in range(1, poly.size() - 1):
+				area += (verts[poly[t]] - verts[poly[0]]).cross(verts[poly[t + 1]] - verts[poly[0]]).length() * 0.5
+			for k in poly:
 				for j in by_vert[Vector3i((verts[k] * 20.0).round())]:
 					if not seen.has(j):
 						seen[j] = true
 						queue.append(j)
-		if group.size() > _walkable.size():
-			_walkable = group
+		islands.append({"polys": polys, "centres": group, "area": area})
+	return islands
+
+
+## Centres of the largest (by floor area) connected group of navigation polygons:
+## the map's real walkable area (roofs, crate tops and sealed rooms are left out).
+func _collect_walkable() -> void:
+	_walkable.clear()
+	var best := -INF
+	var cfg: Dictionary = CONFIGS[map_key]
+	for isl in _nav_islands():
+		var score := float(isl.area)
+		if cfg.has("play_at"):
+			score = -INF
+			for c in isl.centres:
+				score = maxf(score, -(c as Vector3).distance_to(cfg.play_at))
+		if score > best:
+			best = score
+			_walkable = isl.centres
+
+
+## A concrete ramp slab from foot to top (its upper face runs between them);
+## an invisible one when `visible` is off (laid over a stair).
+func _build_ramp(foot: Vector3, top: Vector3, width: float = RAMP_WIDTH, visible: bool = true) -> StaticBody3D:
+	var along := top - foot
+	var b := _body((foot + top) * 0.5)
+	b.basis = Basis.looking_at(along.normalized(), Vector3.UP)
+	var size := Vector3(width, 0.3, along.length() + 0.2)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = size
+	cs.shape = bs
+	cs.position = Vector3(0, -0.15, 0)
+	b.add_child(cs)
+	if visible:
+		_mesh(b, ML.box(size), _mat_concrete, Vector3(0, -0.15, 0))
+	return b
 
 
 func _free(p: Vector3, _margin: float = 0.0) -> bool:

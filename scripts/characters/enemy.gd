@@ -59,6 +59,8 @@ var _flank_t := 0.0
 var _flank_check := 3.0
 var _fell_back := false
 var _callout_cd := 0.0
+## A training target (training.gd): stands where it is put, never perceives, moves or fires.
+var dummy := false
 
 
 func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
@@ -67,6 +69,7 @@ func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
 	home_pos = global_position
 	home_yaw = float(data.get("yaw", 0.0))
 	patrol = data.get("patrol", [])
+	dummy = bool(data.get("dummy", false))
 	setup_soldier(Palettes.enemy(variant), ["akm"], Layers.ENEMY, Layers.WORLD | Layers.PLAYER | Layers.ENEMY, home_yaw)
 	# desert / olive / dark tints so hostiles read differently from the (grey) player
 	use_character_model([Color(1.25, 1.05, 0.72), Color(0.85, 1.0, 0.7), Color(0.75, 0.72, 0.7)][posmod(variant, 3)])
@@ -95,6 +98,10 @@ func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
 	nav.path_max_distance = 2.0
 	add_child(nav)
 	add_to_group("enemies")
+	if dummy:
+		add_name_tag("TARGET")
+		if bool(data.get("crouch", false)):
+			set_crouch(true)
 	call_deferred("optimize_detail")
 
 
@@ -109,7 +116,7 @@ func _physics_process(delta: float) -> void:
 	if puppet:
 		_puppet_physics(delta)
 		return
-	if is_dead:
+	if is_dead or dummy:
 		move_with(Vector3.ZERO, delta)
 		_sync_rig()
 		return
@@ -271,7 +278,7 @@ func vision_scale(p = null) -> float:
 
 
 func hear_noise(pos: Vector3, radius: float) -> void:
-	if is_dead:
+	if is_dead or dummy:
 		return
 	var d := global_position.distance_to(pos)
 	if d > radius:
@@ -316,7 +323,7 @@ func hear_footstep(pos: Vector3, radius: float) -> void:
 
 
 func alert(pos: Vector3) -> void:
-	if is_dead or state == State.COMBAT:
+	if is_dead or dummy or state == State.COMBAT:
 		return
 	last_known = pos
 	_enter_combat(false)

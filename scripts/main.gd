@@ -13,6 +13,8 @@ const MAPS := {"forest": "PINEWOOD VALLEY", "warehouse": "WAREHOUSE", "backrooms
 		"tokyo": "TOKYO"}
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
+const Training = preload("res://scripts/modes/training.gd")
+const TrainingLevel = preload("res://scripts/world/training_level.gd")
 const Nature = preload("res://scripts/world/nature.gd")
 const Player = preload("res://scripts/characters/player.gd")
 const Enemy = preload("res://scripts/characters/enemy.gd")
@@ -48,7 +50,7 @@ static var best_grade := ""
 static var saved_quality := 1
 static var saved_first_person := false
 static var saved_muted := false
-## "ch1", "ch2" (campaign chapters) or "zombie"
+## "ch1", "ch2" (campaign chapters), "training" or "zombie"
 static var saved_mode := "ch1"
 ## A MAPS id; only used by zombie and pvp modes.
 static var saved_map := "forest"
@@ -91,6 +93,8 @@ var tod: TimeOfDay
 ## Night vision 0..1 (fades in / out; see player.nvg_on).
 var nvg_amt := 0.0
 var campaign: Campaign
+## The training course (mode "training" only).
+var training: Training
 var _variant := 0
 
 # ---- multiplayer
@@ -118,7 +122,7 @@ func _ready() -> void:
 	Engine.time_scale = 1.0   # never carry a slow-mo / kill freeze / bullet time into a new map
 	AudioServer.playback_speed_scale = 1.0
 	preload("res://scripts/core/platform.gd").first_launch_defaults(get_script())   # phones start on the light map
-	mode = saved_mode if saved_mode in ["ch1", "ch2", "zombie", "pvp"] else "ch1"
+	mode = saved_mode if saved_mode in ["ch1", "ch2", "training", "zombie", "pvp"] else "ch1"
 	if mode == "pvp" and not Net.is_pvp():
 		mode = "ch1"   # deathmatch only exists in a multiplayer session
 	Campaign.load_progress()
@@ -141,7 +145,9 @@ func _ready() -> void:
 	net.setup(self)
 
 	map_id = saved_map if mode in ["zombie", "pvp"] and MAPS.has(saved_map) else "forest"
-	if ModelLevel.CONFIGS.has(map_id):
+	if mode == "training":
+		level = TrainingLevel.new()
+	elif ModelLevel.CONFIGS.has(map_id):
 		level = ModelLevel.new(map_id)
 	else:
 		level = Level.new()
@@ -154,7 +160,7 @@ func _ready() -> void:
 	tod = TimeOfDay.new()
 	tod.name = "TimeOfDay"
 	add_child(tod)
-	var start_hour := 18.4 if mode == "zombie" else (15.5 if mode == "pvp" else float(Campaign.chapter_info(mode).hour))
+	var start_hour := 18.4 if mode == "zombie" else (15.5 if mode == "pvp" else (11.0 if mode == "training" else float(Campaign.chapter_info(mode).hour)))
 	tod.setup(env, sun, level, start_hour)
 	if mode == "zombie":
 		tod.red_tint = 0.6
@@ -202,6 +208,11 @@ func _ready() -> void:
 		arcade.director = director
 		add_child(arcade)
 		arcade.place(level.player_spawn)
+	elif mode == "training":
+		training = Training.new()
+		training.name = "Training"
+		add_child(training)
+		training.setup(self)
 	else:
 		campaign = Campaign.new()
 		campaign.name = "Campaign"
@@ -274,6 +285,12 @@ func is_campaign() -> bool:
 	return mode == "ch1" or mode == "ch2"
 
 
+## What the HUD's objective line, waypoint and radar marker follow: the campaign
+## chapter or the training course (null in other modes).
+func objectives():
+	return campaign if campaign != null else training
+
+
 ## `net_name` / `variant` are given when the host replicates a spawn.
 func spawn_enemy(data: Dictionary, net_name: String = "", variant: int = -1):
 	var v := _variant if variant < 0 else variant
@@ -333,6 +350,20 @@ func on_chapter_complete() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
+## The last training step is done: the course ends here (no grade). `reward` is the
+## first-time credit bonus (0 after that).
+func on_training_complete(reward: int) -> void:
+	if game_over:
+		return
+	game_over = true
+	victory = true
+	if reward > 0:
+		Collection.add_credits(reward)
+	hud.add_feed("TRAINING COMPLETE" + ("  ·  +%d CR" % reward if reward > 0 else ""), Color(0.5, 1.0, 0.7))
+	hud.wave_banner("TRAINING COMPLETE")
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
 func set_mode(m: String) -> void:
 	if _net_reload(m):
 		return
@@ -385,6 +416,8 @@ func on_deploy() -> void:
 	saved_first_person = start_first_person
 	saved_muted = music.muted
 	hud.add_feed("OPERATOR DEPLOYED", Color(0.62, 0.92, 0.58))
+	if training != null:
+		training.start()
 
 
 # ================================================================ audio
@@ -719,7 +752,10 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 				director.on_kill(result.headshot)
 			if director != null and result.hit.is_in_group("zombies"):
 				director.shop.on_hit(bool(result.killed), bool(result.headshot))
-			if result.killed:
+			if result.killed and result.hit.get("dummy") == true:
+				player.add_focus(bool(result.headshot))
+				hud.add_feed(("HEADSHOT  ·  " if result.headshot else "") + "TARGET DOWN", Color(1.0, 0.75, 0.45))
+			elif result.killed:
 				player.add_focus(bool(result.headshot))
 				if result.headshot:
 					headshot_kills += 1
@@ -774,6 +810,9 @@ func _on_player_died(_soldier: Node) -> void:
 			respawn_t = -1.0   # zombies: back up when the wave is cleared
 		if Net.is_server():
 			on_any_player_died(player)
+		return
+	if training != null:
+		training.on_player_died()   # back up at the last station, the run goes on
 		return
 	if director != null:
 		director.on_player_died()
@@ -1265,7 +1304,7 @@ func on_net_kill(victim: Node, killer: String, headshot: bool) -> void:
 func on_kick_hit(target: Node) -> void:
 	var killed: bool = target.get("is_dead") == true
 	hud.on_hit(killed, false, player.kick_damage, (target as Node3D).global_position + Vector3.UP * 1.3, target)
-	if killed:
+	if killed and target.get("dummy") != true:   # training targets give nothing
 		Collection.add_credits(15)
 		Progression.on_kick_kill()
 		hud.add_feed(("FLYING KICK KILL" if player.flying_kick else "KICK KILL") + "  ·  +15 CR", Color(1.0, 0.55, 0.45))

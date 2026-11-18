@@ -383,10 +383,11 @@ func _play_kind() -> String:
 	return "zombie" if main.mode == "zombie" else "campaign"
 
 
-## Every MODE choice in order: campaign chapters, Zombie Survival, then the
-## matches against AI (those keep the Zombie Survival scene as the map backdrop).
+## Every MODE choice in order: training, campaign chapters, Zombie Survival, then
+## the matches against AI (those keep the Zombie Survival scene as the map backdrop).
+## Training plays its own map like a chapter (kind "campaign": no MAP row).
 func _play_choices() -> Array:
-	return MODES + ["tdm", "ffa"]
+	return ["training"] + MODES + ["tdm", "ffa"]
 
 
 func _play_label(kind: String) -> String:
@@ -404,7 +405,7 @@ func _play_label(kind: String) -> String:
 func _deploy_summary() -> String:
 	var kind := _play_kind()
 	if kind == "campaign":
-		return "CAMPAIGN  ·  PINEWOOD VALLEY"
+		return "TRAINING  ·  THE RANGE" if main.mode == "training" else "CAMPAIGN  ·  PINEWOOD VALLEY"
 	var map := String(main.MAPS[main.map_id])
 	if kind == "zombie":
 		return "ZOMBIE SURVIVAL  ·  " + map
@@ -427,6 +428,8 @@ func _menu_arrow(i: int) -> bool:
 func _mode_label(m: String) -> String:
 	if m == "zombie":
 		return "ZOMBIE SURVIVAL"
+	if m == "training":
+		return "TRAINING  ·  LEARN THE CONTROLS" + ("  [DONE]" if Campaign.completed.has("training") else "")
 	var inf := Campaign.chapter_info(m)
 	var lbl := "CHAPTER %d  %s" % [int(inf.num), String(inf.name)]
 	if Campaign.completed.has(m):
@@ -517,7 +520,7 @@ func _deploy() -> void:
 		menu_cam.queue_free()
 		menu_cam = null
 	briefing_t = 0.0
-	help_timer = 18.0
+	help_timer = 0.0 if main.training != null else 18.0
 	get_tree().paused = false
 	player.set_first_person(main.start_first_person)
 	if not main.start_first_person:
@@ -623,7 +626,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("restart") and main.game_over:
 		if Net.active and not Net.is_server():
 			return   # the host decides what comes next
-		if main.victory and main.mode == "ch1":
+		if main.victory and main.mode == "training":
+			main.continue_to("ch1")
+		elif main.victory and main.mode == "ch1":
 			main.continue_to("ch2")
 		elif main.victory and main.mode == "ch2":
 			main.set_mode("ch1")
@@ -860,6 +865,8 @@ func _draw_overlay(c: Control) -> void:
 			line = "NEXT WAVE IN %d   ·   %d PTS   ·   %s" % [int(ceil(dir_node.timer)), dir_node.shop.points, _arcade_hint()]
 		_text(c, Vector2(0, 92), line, 14, WARN if not dir_node.active else TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		_text(c, Vector2(0, 110), "KILLS %d   ·   %s   ·   T+ %s" % [dir_node.kills, main.tod.clock_string(), main.time_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	elif main.training != null:
+		_draw_training(c, vp)
 	else:
 		var cp = main.campaign
 		if cp != null:
@@ -968,7 +975,7 @@ func _draw_overlay(c: Control) -> void:
 		else:
 			var head := "OPERATOR DOWN"
 			if won:
-				head = "CAMPAIGN COMPLETE" if main.mode == "ch2" else "CHAPTER 1 COMPLETE"
+				head = {"ch2": "CAMPAIGN COMPLETE", "training": "TRAINING COMPLETE"}.get(main.mode, "CHAPTER 1 COMPLETE")
 			_text(c, Vector2(0, vp.y * 0.5), head, 44, ACCENT if won else DANGER, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 			_text(c, Vector2(0, vp.y * 0.5 + 40), "KILLS %d    ·    ACCURACY %d%%    ·    TIME %s" % [total - alive, int(acc), main.time_string()],
 					15, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -978,7 +985,9 @@ func _draw_overlay(c: Control) -> void:
 				_text(c, Vector2(0, vp.y * 0.5 + 136), "SCORE %d   ·   HEADSHOTS %d   ·   DAMAGE TAKEN %d   ·   BEST %s" % [main.mission_score, main.headshot_kills, int(main.damage_taken), main.best_grade],
 						12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 		var prompt := "Enter / A to redeploy"
-		if won and main.mode == "ch1":
+		if won and main.mode == "training":
+			prompt = "Enter / A  ·  START CHAPTER 1: TIMBERLINE"
+		elif won and main.mode == "ch1":
 			prompt = "Enter / A  ·  CONTINUE TO CHAPTER 2: NIGHTFALL"
 		elif won and main.mode == "ch2":
 			prompt = "Enter / A  ·  BACK TO CHAPTER 1"
@@ -1272,7 +1281,7 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
 		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("interact") + "] SHOP AT THE ARCADE BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
 		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
-	] if main.is_zombie_mode() else (_pvp_briefing() if main.mode == "pvp" else _campaign_briefing())
+	] if main.is_zombie_mode() else (_pvp_briefing() if main.mode == "pvp" else (_training_briefing() if main.training != null else _campaign_briefing()))
 	var chars := int(t * 75.0)
 	var y := vp.y * 0.36
 	for line in lines:
@@ -1299,6 +1308,28 @@ func _pvp_briefing() -> Array:
 	]
 
 
+func _training_briefing() -> Array:
+	return [
+		["TECTICA  //  TRAINING", RED, 20],
+		["LOCATION   THE RANGE", TEXT, 14],
+		["OBJECTIVE  LEARN TO MOVE, SHOOT AND FIGHT, ONE STEP AT A TIME", TEXT, 14],
+		["INTEL      EACH STEP IS AT THE TOP OF THE SCREEN, WITH YOUR KEYS", TEXT, 14],
+		["ROE        TARGETS STAND STILL  -  THE KILL HOUSE SHOOTS BACK", ACCENT, 14],
+	]
+
+
+## Training: the current step, how to do it with this operator's keys, the
+## step count, the waypoint, and the countdown while down.
+func _draw_training(c: Control, vp: Vector2) -> void:
+	var tr = main.training
+	_text(c, Vector2(0, 92), "> " + tr.objective_text(), 15, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_text(c, Vector2(0, 112), tr.how_text(), 13, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_text(c, Vector2(0, 130), "TRAINING   ·   STEP %d / %d" % [mini(tr.step + 1, tr.STEPS.size()), tr.STEPS.size()], 10, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	if player.is_dead and tr.respawn_t >= 0.0:
+		_text(c, Vector2(0, vp.y * 0.62), "BACK UP IN %d" % int(ceil(tr.respawn_t)), 26, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	_draw_waypoint(c, vp)
+
+
 func _campaign_briefing() -> Array:
 	var ci: Dictionary = Campaign.chapter_info(main.mode)
 	var objs: Array = []
@@ -1317,7 +1348,7 @@ func _campaign_briefing() -> Array:
 
 ## Objective marker: diamond + distance, clamped to the screen edge.
 func _draw_waypoint(c: Control, vp: Vector2) -> void:
-	var cp = main.campaign
+	var cp = main.objectives()
 	var wp = cp.objective_pos()
 	if wp == null or player.is_dead:
 		return
@@ -1454,8 +1485,9 @@ func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
 		else:
 			c.draw_circle(sh[0], sh[2], sh[1])
 	c.draw_set_transform_matrix(Transform2D.IDENTITY)
-	if main.campaign != null and main.campaign.objective_pos() != null:
-		var lo: Vector3 = inv * ((main.campaign.objective_pos() as Vector3) - ppos)
+	var obj = main.objectives()
+	if obj != null and obj.objective_pos() != null:
+		var lo: Vector3 = inv * ((obj.objective_pos() as Vector3) - ppos)
 		var op := center + Vector2(lo.x, lo.z) * sc
 		if op.distance_to(center) > radius - 6.0:
 			op = center + (op - center).normalized() * (radius - 6.0)

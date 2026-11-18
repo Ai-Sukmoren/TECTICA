@@ -13,9 +13,24 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.42
+## 🆕 What's new in v1.43
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.42.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.43.0-beta)
+
+### Training mode
+New to TECTICA? Pick **MODE → TRAINING** on the title screen. A guided course on its own map, THE RANGE, teaches every
+move in 16 steps: look, walk, sprint, vault, crouch, slide, shoot, aim down sights, reload, peek, switch weapons, throw a
+grenade, dropkick, bullet time, and finally a live-fire kill house. Each step shows your own keys (or gamepad buttons);
+range targets stand still and don't shoot, and going down puts you back at the last step. Finish it once for
+**+250 credits**, then Enter goes straight into Chapter 1.
+
+| A step with its keys | Live fire | Done |
+|---|---|---|
+| ![Training step](docs/screenshots/v143-training-step.jpg) | ![Kill house](docs/screenshots/v143-training-killhouse.jpg) | ![Training complete](docs/screenshots/v143-training-complete.jpg) |
+
+## Earlier: v1.42
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.42.0-beta)
 
 ### New first-person animation
 Both hands stay on the gun while running and sprinting, with the wrists in line with the forearms. Aiming no longer
@@ -362,6 +377,7 @@ uses a phosphor-green / amber palette, and an optional CRT scanline overlay
 sits on top of everything.
 
 ## Game modes
+- **Training**: a guided course on THE RANGE that teaches the controls step by step, ending in a live-fire kill house.
 - **Operation**: clear the compound of 10 hostiles. Enemies use cover, peek, flank and alert each other.
 - **Zombie Survival**: endless waves of infected soldiers (walkers, runners from wave 2, armored brutes from wave 4).
   Each wave has 6 + 4n zombies with about 18% more health per wave. Spawns slow down when your HP is low.

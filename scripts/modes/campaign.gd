@@ -23,7 +23,7 @@ const Profile = preload("res://scripts/core/profile.gd")
 const HOLD_TIME := 3.0
 const CHARGE_FUSE := 6.0
 
-static var completed := {}   # "ch1": best grade
+static var completed := {}   # "ch1": best grade; "training": "DONE" once the course is finished
 
 var main
 var level
@@ -50,7 +50,7 @@ var _sent_interact := false
 static func load_progress() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(Profile.path("campaign.cfg")) == OK:
-		for k in ["ch1", "ch2"]:
+		for k in ["ch1", "ch2", "training"]:
 			if cfg.has_section_key("campaign", k):
 				completed[k] = cfg.get_value("campaign", k)
 

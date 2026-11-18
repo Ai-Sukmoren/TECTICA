@@ -48,24 +48,30 @@ func run() -> void:
 		start[e] = e.global_position
 	for i in Engine.physics_ticks_per_second * 8: await physics_frame
 	var moved := 0
-	for e in m.enemies:
-		# active: left its spawn, or already fighting (in cover / peeking) near it
-		if is_instance_valid(e) and not e.is_dead and (e.global_position.distance_to(start[e]) > 4.0 or e.is_in_combat()):
+	for e in start:
+		# active: left its spawn, or already fighting (in cover / peeking) or searching near it - or it fought and
+		# died already (its respawn is a new bot, not counted)
+		if not is_instance_valid(e) or e.is_dead or e.global_position.distance_to(start[e]) > 4.0 or e.state != 0:
 			moved += 1
 	print("  bots hunting or fighting after 8 s: %d / 6" % moved)
 	check(moved >= 5, "bots go hunting instead of waiting at spawn")
 	# the old bug: every bot and the operator piled onto one point, climbing on each other
 	var alive: Array = m.enemies.filter(func(e): return is_instance_valid(e) and not e.is_dead)
 	var stacked := 0
-	var top := -INF
+	var on_top := 0
 	for a in alive:
-		top = maxf(top, a.global_position.y - (start[a] as Vector3).y)
 		for b in alive:
-			if a != b and Vector2(a.global_position.x - b.global_position.x, a.global_position.z - b.global_position.z).length() < 0.5:
+			if a == b:
+				continue
+			var flat := Vector2(a.global_position.x - b.global_position.x, a.global_position.z - b.global_position.z).length()
+			if flat < 0.5:
 				stacked += 1
-	print("  bot pairs closer than 0.5 m: %d, highest climb %.2f m" % [stacked / 2, top])
+			# standing on another bot's head (not up a stair: that is somewhere else on the map)
+			if flat < 0.7 and a.global_position.y - b.global_position.y > 1.0 and a.global_position.y - b.global_position.y < 2.4:
+				on_top += 1
+	print("  bot pairs closer than 0.5 m: %d, bots standing on another: %d" % [stacked / 2, on_top])
 	check(stacked == 0, "bots do not pile onto one point")
-	check(top < 2.0, "bots do not climb onto each other")
+	check(on_top == 0, "bots do not climb onto each other")
 	var t_end := Time.get_ticks_msec() + 60000
 	var total := 0
 	while Time.get_ticks_msec() < t_end:

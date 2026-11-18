@@ -277,6 +277,10 @@ func _hitstop(sec: float) -> void:
 
 
 var _slowmo_tw: Tween
+## The speed the game settles at: 1, or the operator's bullet time. Kill freezes and slow-mos ease back to it.
+var time_base := 1.0
+var _bt_amt := 0.0
+var _real_us := 0
 
 
 ## Slows the game to `scale` for `sec` real seconds, then eases back
@@ -290,8 +294,24 @@ func slowmo(scale: float, sec: float, ease_back: bool = true) -> void:
 	_slowmo_tw = create_tween().set_ignore_time_scale(true)
 	_slowmo_tw.tween_interval(sec)
 	if ease_back:
-		_slowmo_tw.tween_method(func(v: float): Engine.time_scale = v, scale, 1.0, 0.15)
-	_slowmo_tw.tween_callback(func(): Engine.time_scale = 1.0)
+		_slowmo_tw.tween_method(func(v: float): Engine.time_scale = v, scale, time_base, 0.15)
+	_slowmo_tw.tween_callback(func(): Engine.time_scale = time_base)
+
+
+## Bullet time: eases the game to the operator's FOCUS speed and back (in real time), pitches all sound down with it.
+## A running kill freeze / slow-mo owns the speed until it ends.
+func _update_time_scale() -> void:
+	var now := Time.get_ticks_usec()
+	var real := clampf((now - _real_us) / 1000000.0, 0.0, 0.1) if _real_us > 0 else 0.0
+	_real_us = now
+	var bt: bool = player != null and is_instance_valid(player) and bool(player.get("bullet_time")) and Net.alone()
+	time_base = float(player.FOCUS_SCALE) if bt else 1.0
+	_bt_amt = move_toward(_bt_amt, 1.0 if bt else 0.0, real * 6.0)
+	if not Net.alone() or (_slowmo_tw and _slowmo_tw.is_valid() and _slowmo_tw.is_running()):
+		return
+	if not is_equal_approx(Engine.time_scale, time_base):
+		Engine.time_scale = move_toward(Engine.time_scale, time_base, real * 5.0)
+	AudioServer.playback_speed_scale = lerpf(1.0, 0.72, _bt_amt)
 
 
 func on_player_damaged(amount: float, attacker: Node = null) -> void:
@@ -613,6 +633,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	_update_time_scale()
 	PlayerScript.input_blocked = (Net.active and (mp_pause or settings_open)) or shop_open
 	_shop_msg_t = maxf(_shop_msg_t - delta, 0.0)
 	if shop_open and not _shop_available():
@@ -739,6 +760,10 @@ func _draw_overlay(c: Control) -> void:
 	var v := maxf(damage_flash, low if not player.is_dead else 0.0)
 	if v > 0.01:
 		c.draw_texture_rect(_vignette, Rect2(Vector2.ZERO, vp), false, Color(0.6, 0.0, 0.0, v * 0.85))
+	if _bt_amt > 0.01 and not title:
+		# bullet time: a warm tint closing in from the edges
+		c.draw_texture_rect(_vignette, Rect2(Vector2.ZERO, vp), false, Color(1.0, 0.62, 0.2, 0.6 * _bt_amt))
+		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(1.0, 0.75, 0.4, 0.06 * _bt_amt))
 	if main.killcam_active():
 		_draw_killcam(c, vp)   # the kill cam replaces the whole HUD while it runs
 		return
@@ -752,7 +777,8 @@ func _draw_overlay(c: Control) -> void:
 		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(1, 1, 0.97, clampf(k * 1.6, 0.0, 1.0)))
 
 	# Quiet backing plates keep telemetry readable over bright surfaces.
-	for panel in [Rect2(vp.x - 344, 24, 328, 126), Rect2(16, vp.y - 100, 224, 82)]:
+	var focus_bar := Net.alone()   # bullet time only with no other player connected
+	for panel in [Rect2(vp.x - 344, 24, 328, 126), Rect2(16, vp.y - (124 if focus_bar else 100), 224, 106 if focus_bar else 82)]:
 		c.draw_rect(panel, Color(0.025, 0.045, 0.055, 0.78))
 		c.draw_rect(panel, Color(0.42, 0.66, 0.69, 0.24), false, 1.0)
 		c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
@@ -848,6 +874,21 @@ func _draw_overlay(c: Control) -> void:
 	if _banner_t > 0.0:
 		var ba := clampf(_banner_t, 0.0, 1.0) * clampf((3.0 - _banner_t) * 4.0, 0.0, 1.0)
 		_text(c, Vector2(0, vp.y * 0.3), _banner, 48, Color(RED, ba), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+
+	# ---- FOCUS (bottom-left, over health): filled by kills, spent on bullet time
+	if focus_bar:
+		var fk: float = clampf(float(player.focus), 0.0, 1.0)
+		var ready: bool = fk >= float(player.FOCUS_MIN)
+		var fcol := Color(1.0, 0.68, 0.25) if ready else Color(DIM, 0.8)
+		var tag := "BULLET TIME" if player.bullet_time else ("READY  ·  JUMP + AIM" if ready else "KILLS FILL IT")
+		_text(c, Vector2(26, vp.y - 96), "FOCUS", 13, fcol, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		_text(c, Vector2(80, vp.y - 96), tag, 9, Color(fcol, 0.85) if player.bullet_time else DIM, HORIZONTAL_ALIGNMENT_LEFT, 130)
+		var fb := Rect2(26, vp.y - 88, 184, 5)
+		c.draw_rect(fb, Color(0, 0, 0, 0.5))
+		var pulse := 0.75 + 0.25 * sin(_time * 10.0) if player.bullet_time else 1.0
+		c.draw_rect(Rect2(fb.position, Vector2(fb.size.x * fk, fb.size.y)), Color(fcol, pulse))
+		var mark := fb.position.x + fb.size.x * float(player.FOCUS_MIN)
+		c.draw_line(Vector2(mark, fb.position.y - 1), Vector2(mark, fb.end.y + 1), Color(TEXT, 0.5), 1.0)
 
 	# ---- health + stance (bottom-left, under radar)
 	var hp: float = clampf(player.health / player.max_health, 0.0, 1.0)

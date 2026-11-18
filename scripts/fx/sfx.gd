@@ -1,10 +1,18 @@
 extends RefCounted
-## Procedurally synthesised sound effects (no audio files needed).
-## Streams are generated once and cached.
+## Sound effects. Gunshots and reload foley are real recordings (assets/audio/sfx/, see CREDITS.md there), a
+## random take each time; everything else is synthesised here. Synthesised streams are generated once and cached.
 
 static var _streams: Dictionary = {}
 
 const RATE := 22050
+## Recorded takes: <name>_0.ogg ... <name>_<count-1>.ogg. Played instead of the synthesised sound of that name.
+const SAMPLE_DIR := "res://assets/audio/sfx/"
+const SAMPLES := {"shot_pistol": 4, "shot_smg": 5, "shot_rifle": 4, "shot_loud": 4, "shot_ak": 4, "shot_sniper": 4,
+		"shot_lever": 3, "shot_shotgun": 4, "shot_suppressed": 4, "mag_out": 2, "mag_in": 2, "bolt": 2}
+## Extra level (dB) for recorded takes: a real shot peaks as high as a synthesised one but carries less energy
+## (shots default to +4).
+const SAMPLE_GAIN := {"shot_suppressed": 8.0, "mag_out": 3.0, "mag_in": 1.0, "bolt": 0.0}
+static var _takes: Dictionary = {}
 
 
 static func play(ctx: Node, sound: String, pos: Vector3, volume_db: float = 0.0, pitch_var: float = 0.07) -> void:
@@ -18,7 +26,7 @@ static func play(ctx: Node, sound: String, pos: Vector3, volume_db: float = 0.0,
 		return
 	var p := AudioStreamPlayer3D.new()
 	p.stream = stream
-	p.volume_db = volume_db
+	p.volume_db = volume_db + _level(sound)
 	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
 	p.unit_size = 14.0
 	p.max_distance = 90.0
@@ -39,7 +47,7 @@ static func play_foley(ctx: Node, sound: String, pos: Vector3, volume_db: float 
 		return
 	var p := AudioStreamPlayer3D.new()
 	p.stream = stream
-	p.volume_db = volume_db
+	p.volume_db = volume_db + _level(sound)
 	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
 	p.unit_size = 5.0
 	p.max_distance = 30.0
@@ -59,7 +67,7 @@ static func play_ui(ctx: Node, sound: String, volume_db: float = 0.0, pitch_var:
 		return
 	var p := AudioStreamPlayer.new()
 	p.stream = stream
-	p.volume_db = volume_db
+	p.volume_db = volume_db + _level(sound)
 	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
 	p.bus = &"SFX"
 	p.process_mode = Node.PROCESS_MODE_ALWAYS   # menus run while the game is paused
@@ -68,7 +76,28 @@ static func play_ui(ctx: Node, sound: String, volume_db: float = 0.0, pitch_var:
 	p.finished.connect(p.queue_free)
 
 
-static func _stream_for(sound: String) -> AudioStreamWAV:
+## The recorded takes of `sound` (empty when it has none or the files are missing), loaded once.
+static func _takes_of(sound: String) -> Array:
+	if not _takes.has(sound):
+		var list: Array = []
+		for i in int(SAMPLES.get(sound, 0)):
+			var path := SAMPLE_DIR + "%s_%d.ogg" % [sound, i]
+			if ResourceLoader.exists(path):
+				list.append(load(path))
+		_takes[sound] = list
+	return _takes[sound]
+
+
+static func _level(sound: String) -> float:
+	if _takes_of(sound).is_empty():
+		return 0.0
+	return float(SAMPLE_GAIN.get(sound, 4.0 if sound.begins_with("shot_") else 0.0))
+
+
+static func _stream_for(sound: String) -> AudioStream:
+	var takes := _takes_of(sound)
+	if not takes.is_empty():
+		return takes[randi() % takes.size()]
 	if sound == "footstep":
 		return _footstep_variant()
 	if sound == "splash_step":
@@ -77,7 +106,7 @@ static func _stream_for(sound: String) -> AudioStreamWAV:
 		return _streams[sound]
 	var s: AudioStreamWAV = null
 	match sound:
-		"shot_loud":
+		"shot_loud", "shot_ak":
 			s = _shot(0.6, 14.0, 0.32, 62.0, 1.0)
 		"shot_pistol":
 			s = _shot(0.4, 22.0, 0.42, 85.0, 0.85)
@@ -85,7 +114,7 @@ static func _stream_for(sound: String) -> AudioStreamWAV:
 			s = _shot(0.5, 18.0, 0.38, 70.0, 0.9)
 		"shot_smg":
 			s = _shot(0.32, 26.0, 0.45, 95.0, 0.75)
-		"shot_sniper":
+		"shot_sniper", "shot_lever":
 			s = _shot(1.1, 9.0, 0.25, 48.0, 1.15)
 		"shot_shotgun":
 			s = _shot(0.75, 11.0, 0.22, 52.0, 1.1)
@@ -155,6 +184,10 @@ static func _stream_for(sound: String) -> AudioStreamWAV:
 			s = _knock(0.08, 0.5, 520.0)
 		"helmet_ping":
 			s = _knock(0.22, 0.95, 1350.0)
+		"focus_in":
+			s = _focus_whoosh(true)
+		"focus_out":
+			s = _focus_whoosh(false)
 	_streams[sound] = s
 	return s
 
@@ -207,6 +240,28 @@ static func _suppressed() -> AudioStreamWAV:
 			clack = (randf() * 2.0 - 1.0) * exp(-(t - 0.028) * 160.0) * 0.45
 		var thump := sin(TAU * 110.0 * t) * exp(-t * 40.0) * 0.35
 		out[i] = hiss + puff + clack + thump
+	return _to_stream(out)
+
+
+## Bullet time: going in, a deep falling swell with a heartbeat-like thump; coming out, a short rising rush.
+static func _focus_whoosh(into: bool) -> AudioStreamWAV:
+	var dur := 0.9 if into else 0.45
+	var n := int(dur * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var u := t / dur
+		var white := randf() * 2.0 - 1.0
+		var cut := lerpf(0.25, 0.02, u) if into else lerpf(0.03, 0.3, u)
+		lp += (white - lp) * cut
+		var env := sin(PI * minf(u * (1.6 if into else 1.0), 1.0)) * (1.0 - u * 0.4)
+		var f := lerpf(140.0, 45.0, u) if into else lerpf(50.0, 120.0, u)
+		phase += TAU * f / RATE
+		var sub := sin(phase) * (exp(-t * 6.0) if into else env) * 0.8
+		out[i] = (lp * 1.6 * env + sub) * 0.8
 	return _to_stream(out)
 
 

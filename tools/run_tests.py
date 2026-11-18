@@ -32,6 +32,9 @@ WINDOWED = {
 # headless tests that need engine options (simulation tests run physics as fast as it computes) and their time limit
 ENGINE_ARGS = {
     "collision_audit_test": (["--fixed-fps", "120"], 900),
+    "bot_cover_test": (["--fixed-fps", "120"], 600),
+    "vault_audit_test": (["--fixed-fps", "120"], 900),
+    "fp_hand_pose_test": ([], 900),
 }
 # host + client pairs: [host args, client args]
 PAIRS = {

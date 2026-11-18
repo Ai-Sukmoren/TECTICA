@@ -106,7 +106,7 @@ const WEAPONS := {
 		"spread_hip": 3.5, "spread_aim": 0.25, "spread_move": 2.5,
 		"bloom_add": 0.0, "bloom_max": 0.0, "bloom_recover": 10.0,
 		"recoil": 2.4, "reload": 2.8, "reload_empty": 3.2,
-		"suppressed": false, "noise_radius": 42.0, "shake": 0.3, "sound": "shot_sniper", "volume": -1.0,
+		"suppressed": false, "noise_radius": 42.0, "shake": 0.3, "sound": "shot_lever", "volume": -1.0,
 		"mobility": 0.96, "ads_speed": 1.05, "cycle": "lever",
 		"options": {"handguard": ["standard"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none", "laser"], "magazine": ["standard", "hollow"], "stock": ["standard"]},
 		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
@@ -321,7 +321,7 @@ const WEAPONS := {
 		"spread_hip": 4.5, "spread_aim": 1.8, "spread_move": 3.0,
 		"bloom_add": 0.5, "bloom_max": 4.0, "bloom_recover": 5.0,
 		"recoil": 1.1, "reload": 2.6, "reload_empty": 3.1,
-		"suppressed": false, "noise_radius": 38.0, "shake": 0.05, "sound": "shot_loud", "volume": -3.0,
+		"suppressed": false, "noise_radius": 38.0, "shake": 0.05, "sound": "shot_ak", "volume": -3.0,
 		"mobility": 1.0, "ads_speed": 1.0,
 		"options": {"handguard": ["standard", "hex"], "rail": ["none", "rail"], "optic": ["iron"], "muzzle": ["none"], "underbarrel": ["none", "laser", "gp25"], "magazine": ["standard"], "stock": ["standard"]},
 		"defaults": {"handguard": "standard", "rail": "none", "optic": "iron", "muzzle": "none", "underbarrel": "none", "magazine": "standard", "stock": "standard"},
@@ -407,7 +407,7 @@ static func compute(id: String, att: Dictionary) -> Dictionary:
 				s[key] = float(s[key]) * v
 			else:
 				s[key] = v
-	if s.suppressed:
-		s.sound = "shot_suppressed"
+	if s.suppressed and s.kind != "melee":
+		s.sound = "shot_suppressed"   # (knives are silent to the AI too, but swing with their own sound)
 	s["attachments"] = a
 	return s

@@ -97,6 +97,18 @@ static func cycle_class(dir: int) -> void:
 	class_index = posmod(class_index + dir, classes.size())
 
 
+## The attachments the operator has on gun `id`: from the current class when it carries the gun, else any class that
+## does, else the gun's defaults (what the Armory previews skins and stickers on).
+static func attachments_of(id: String) -> Dictionary:
+	ensure()
+	for cls in [current()] + classes:
+		for slot in (cls as Dictionary):
+			var e = cls[slot]
+			if e is Dictionary and String(e.get("id", "")) == id:
+				return Data.sanitize(id, e.get("att", {}))
+	return Data.sanitize(id, {})
+
+
 static func entry(slot: String) -> Dictionary:
 	if slot == "knife":
 		ensure()

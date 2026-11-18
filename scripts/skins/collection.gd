@@ -5,6 +5,7 @@ extends RefCounted
 
 const Skins = preload("res://scripts/skins/skins.gd")
 const Outfits = preload("res://scripts/skins/outfits.gd")
+const Sticker = preload("res://scripts/skins/sticker.gd")
 
 const PATH := "user://armory.cfg"   # per account: Profile.path()
 const Profile = preload("res://scripts/core/profile.gd")
@@ -45,11 +46,10 @@ static func ensure() -> void:
 		equipped_parts = cfg.get_value("armory", "equipped_parts", {})
 		packs_opened = int(cfg.get_value("armory", "packs_opened", 0))
 		stickers = cfg.get_value("armory", "stickers", {})
-		if int(cfg.get_value("armory", "stickers_v", 1)) < 2:
-			# v2: stickers default to both sides; move old right-only placements over once
-			for w in stickers:
-				if int(stickers[w].get("side", 0)) == 0:
-					stickers[w]["side"] = 2
+		if int(cfg.get_value("armory", "stickers_v", 1)) < 3:
+			# v3: stickers are printed through the finish and sized against the whole gun;
+			# placements made for the old flat decal start again from the full wrap
+			stickers = {}
 			save()
 
 
@@ -61,7 +61,7 @@ static func save() -> void:
 	cfg.set_value("armory", "equipped_parts", equipped_parts)
 	cfg.set_value("armory", "packs_opened", packs_opened)
 	cfg.set_value("armory", "stickers", stickers)
-	cfg.set_value("armory", "stickers_v", 2)
+	cfg.set_value("armory", "stickers_v", 3)
 	cfg.set_value("armory", "outfits_owned", outfits_owned)
 	cfg.set_value("armory", "outfit", outfit)
 	cfg.save(Profile.path("armory.cfg"))
@@ -274,11 +274,18 @@ static func open_pack(pack_index: int) -> Array:
 	return cards
 
 
-## Sticker placement for a gun (defaults when never edited).
-static func sticker_for(weapon: String) -> Dictionary:
+## Sticker placement for a gun under `finish` (default: the gun's equipped finish;
+## defaults when never edited: a full wrap on both sides). A finish with its own
+## sticker (Ruby) shows it until hidden. Admins can put the sticker on any skin: the
+## placement then names it ("id"), and it starts hidden there until they place it.
+static func sticker_for(weapon: String, finish = null) -> Dictionary:
 	ensure()
-	var d: Dictionary = {"on": true, "u": 0.5, "v": -1.0, "s": 1.0, "r": 0.0, "side": 2}   # both sides
+	var f := skin_for(weapon) if finish == null else String(finish)
+	var d: Dictionary = Sticker.DEFAULT.duplicate()
+	d.on = Skins.sticker_of(f) != ""
 	d.merge(stickers.get(weapon, {}), true)
+	if f != "" and Skins.sticker_of(f) == "" and Profile.is_admin():
+		d.id = Skins.DEFAULT_STICKER
 	return d
 
 

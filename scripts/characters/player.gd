@@ -23,6 +23,18 @@ var shots_fired := 0
 var shots_hit := 0
 var using_pad := false
 var vaulting := false
+## FOCUS (single player): kills fill the meter; aiming or firing while vaulting, sliding or in the air spends it on
+## bullet time - the game slows to FOCUS_SCALE (the HUD sets the speed) while the mouse keeps its full speed.
+## Only with no other player connected (offline, or a local match against bots).
+const FOCUS_SCALE := 0.35
+const FOCUS_DRAIN := 0.4          # meter per real second of bullet time (a full meter lasts 2.5 s)
+const FOCUS_MIN := 0.2            # needed to start it
+const FOCUS_KILL := 0.25
+const FOCUS_HEADSHOT := 0.35
+const FOCUS_GRACE := 0.2          # real seconds it outlasts the stunt (a landing does not cut a shot short)
+var focus := 0.5
+var bullet_time := false
+var _focus_grace := 0.0
 var first_person := false
 var regen_cap := 100.0
 var sliding := false
@@ -41,6 +53,14 @@ var _vault_dur := 0.6
 var _vault_from := Vector3.ZERO
 var _vault_to := Vector3.ZERO
 var _vault_exit_speed := 4.3
+var _vault_entry_speed := 4.3
+## the obstacle along the vault path: where it starts and ends (horizontal metres from the take-off), and how far the
+## drawn body rises over it (above the take-off floor)
+var _vault_span := Vector2.ZERO
+## how high the drawn body rides over the take-off floor along the path, every VAULT_STEP metres (from the obstacle's
+## real shape: a lip, a rail or an overhanging top is cleared where it is)
+var _vault_clear := PackedFloat32Array()
+const VAULT_STEP := 0.05
 var _saved_mask := 0
 var _vault_cooldown := 0.0
 var _vault_buffer := 0.0
@@ -496,7 +516,58 @@ func set_first_person(on: bool) -> void:
 ## cone a little from the hip and barely at all aiming down sights; a full
 ## sprint-speed hip shot still scatters.
 func _move_spread(hv: float) -> float:
-	return clampf(hv / 6.0, 0.0, 1.2) * lerpf(0.6, 0.15, rig.aim_amt)
+	# bullet time steadies the hands: a vault or slide shot lands where the crosshair is
+	return clampf(hv / 6.0, 0.0, 1.2) * lerpf(0.6, 0.15, rig.aim_amt) * (0.25 if bullet_time else 1.0)
+
+
+## Aiming and shooting in the middle of a vault: the gun comes up (no hand on the obstacle) and fires as usual.
+func _vault_fire() -> void:
+	var w := current_weapon()
+	if w.is_melee():
+		return
+	aiming = Input.is_action_pressed("aim")
+	var firing := Input.is_action_pressed("fire")
+	if not (aiming or firing):
+		return
+	sprinting = false
+	rig.vault_aim = true
+	rig.cancel_inspect()
+	if bool(w.stats.auto):
+		if firing:
+			_fire()
+	elif Input.is_action_just_pressed("fire"):
+		_fire()
+
+
+## A kill fills the FOCUS meter (more for a headshot).
+func add_focus(headshot: bool) -> void:
+	focus = minf(focus + (FOCUS_HEADSHOT if headshot else FOCUS_KILL), 1.0)
+
+
+## Bullet time starts when the operator aims or fires during a stunt (vault, slide, a jump) with enough FOCUS, and
+## runs while the stunt lasts and the meter holds. Never with other players: their game must keep its speed.
+func _update_focus(delta: float) -> void:
+	var real := delta / maxf(Engine.time_scale, 0.01)
+	var stunt := vaulting or sliding or kicking or (not is_on_floor() and air_time > 0.1)
+	var engaged := Input.is_action_pressed("aim") or Input.is_action_pressed("fire")
+	if not Net.alone() or is_dead or current_weapon().is_melee():
+		_end_bullet_time()
+		return
+	if bullet_time:
+		focus = maxf(focus - FOCUS_DRAIN * real, 0.0)
+		_focus_grace = FOCUS_GRACE if stunt else _focus_grace - real
+		if focus <= 0.0 or _focus_grace <= 0.0:
+			_end_bullet_time()
+	elif stunt and engaged and focus >= FOCUS_MIN:
+		bullet_time = true
+		_focus_grace = FOCUS_GRACE
+		Sfx.play_ui(self, "focus_in", -4.0)
+
+
+func _end_bullet_time() -> void:
+	if bullet_time:
+		bullet_time = false
+		Sfx.play_ui(self, "focus_out", -8.0)
 
 
 func get_fire_origin() -> Vector3:
@@ -508,8 +579,8 @@ func get_fire_origin() -> Vector3:
 ## Aim is updated every rendered frame (not once per physics tick), so the
 ## operator turns with the mouse / stick with no added latency.
 func _process(delta: float) -> void:
-	if rig == null or puppet or is_dead or vaulting or kicking or input_blocked:
-		return
+	if rig == null or puppet or is_dead or kicking or input_blocked:
+		return   # (aim keeps updating during a vault: the operator can shoot in it)
 	_update_aim(delta)
 	rig.aim_yaw = aim_yaw
 
@@ -523,6 +594,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_vault_cooldown = maxf(_vault_cooldown - delta, 0.0)
 	if input_blocked and not is_dead and not vaulting and not kicking:
+		_end_bullet_time()
 		rig.cancel_inspect()
 		aiming = false
 		sprinting = false
@@ -547,6 +619,7 @@ func _physics_process(delta: float) -> void:
 		Sfx.play(self, "dry", global_position + Vector3.UP * 1.4, -12.0, 0.1)
 	if is_dead:
 		sliding = false
+		_end_bullet_time()
 		if first_person:
 			set_first_person(false)
 		move_with(Vector3.ZERO, delta)
@@ -558,11 +631,14 @@ func _physics_process(delta: float) -> void:
 		health = minf(health + 7.0 * delta, regen_cap)
 	if vaulting:
 		_update_vault(delta)
+		_vault_fire()
+		_update_focus(delta)
 		_sync_rig()
 		return
 	_kick_cd = maxf(_kick_cd - delta, 0.0)
 	if kicking:
 		_update_kick(delta)
+		_update_focus(delta)
 		_sync_rig()
 		rig.slide_target = 0.0
 		return
@@ -700,6 +776,7 @@ func _physics_process(delta: float) -> void:
 			_fire()
 	elif Input.is_action_just_pressed("fire"):
 		_fire()
+	_update_focus(delta)
 	_sync_rig()
 	_update_scope_visibility()
 	rig.lean_target = lean_in
@@ -874,7 +951,6 @@ func _find_vault(dir: Vector3):
 			break
 	if edge < 0.0:
 		return null
-	var land := front + dir * (edge + 0.5)
 	# The body itself must be able to make the jump: swept up clear of the top, across to the landing spot and down
 	# onto walkable floor no more than VAULT_MAX_DROP below the take-off. These are real collision sweeps, so no
 	# wall, boundary, railing or building can be passed through, and the landing is never inside geometry or off a
@@ -884,14 +960,84 @@ func _find_vault(dir: Vector3):
 	if test_move(xf, lift):
 		return null
 	var over := xf.translated(lift)
-	var across := Vector3(land.x - base.x, 0.0, land.z - base.z)
-	if test_move(over, across):
-		return null
-	var down := KinematicCollision3D.new()
-	if not test_move(over.translated(across), -lift - Vector3.UP * VAULT_MAX_DROP, down) or down.get_normal().y < 0.7:
-		return null
-	land.y = over.origin.y + down.get_travel().y
-	return {"top": top, "plant": Vector3(front.x, top, front.z) + dir * 0.18 + Vector3(-dir.z, 0, dir.x) * -0.15, "to": land}
+	for past in [0.85, 0.5]:   # land well clear of the far edge when there is room: a longer, softer way down
+		var land: Vector3 = front + dir * (edge + float(past))
+		var across := Vector3(land.x - base.x, 0.0, land.z - base.z)
+		if test_move(over, across):
+			continue
+		var down := KinematicCollision3D.new()
+		if not test_move(over.translated(across), -lift - Vector3.UP * VAULT_MAX_DROP, down) or down.get_normal().y < 0.7:
+			continue
+		land.y = over.origin.y + down.get_travel().y
+		if not _landing_ok(Transform3D(xf.basis, land), dir):
+			continue
+		return {"top": top, "plant": Vector3(front.x, top, front.z) + dir * 0.18 + Vector3(-dir.z, 0, dir.x) * -0.15, "to": land,
+				"front": front_dist, "depth": edge}
+	return null
+
+
+## The height the drawn body must ride at along the vault path (every VAULT_STEP m), from the obstacle as it is:
+## rays down across the body's width find what is under it; the body (legs tucked, feet ~0.3 m above the hips'
+## drop, a quarter metre deep either side) stays 5 cm over it, and rises / comes down smoothly before and after
+## (0.7 m ahead, 0.5 m behind).
+func _vault_clearance(dir: Vector3, dist: float) -> PackedFloat32Array:
+	var space := get_world_3d().direct_space_state
+	var base := global_position
+	var side := Vector3(-dir.z, 0.0, dir.x)
+	var n := int(dist / VAULT_STEP) + 1
+	var need := PackedFloat32Array()
+	need.resize(n)
+	for i in n:
+		var c := base + dir * (i * VAULT_STEP)
+		var h := 0.0
+		for o in [0.0, 0.18, -0.18]:
+			var at: Vector3 = c + side * o
+			var q := PhysicsRayQueryParameters3D.create(Vector3(at.x, base.y + 1.6, at.z), Vector3(at.x, base.y + 0.05, at.z), Layers.WORLD, [get_rid()])
+			var hit := space.intersect_ray(q)
+			if not hit.is_empty():
+				h = maxf(h, (hit.position as Vector3).y - base.y)
+		need[i] = maxf(h - 0.3 + 0.05, 0.0) if h > 0.3 else 0.0
+	# the body is a quarter metre deep either side of its middle: clear the obstacle for all of it
+	var wide := PackedFloat32Array()
+	wide.resize(n)
+	var r := int(0.25 / VAULT_STEP)
+	for i in n:
+		for j in range(maxi(0, i - r), mini(n, i + r + 1)):
+			wide[i] = maxf(wide[i], need[j])
+	need = wide
+	# a smooth envelope: rise ahead of each high point, come down after it
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ahead := int(0.7 / VAULT_STEP)
+	var behind := int(0.5 / VAULT_STEP)
+	for i in n:
+		if need[i] <= 0.0:
+			continue
+		for j in range(maxi(0, i - ahead), mini(n, i + behind + 1)):
+			var x := float(i - j) / (ahead if j < i else behind) if j != i else 0.0
+			out[j] = maxf(out[j], need[i] * (1.0 - smoothstep(0.0, 1.0, absf(x))))
+	return out
+
+
+## A landing the body can stand on: solid floor right under its middle and around it (not a rail or a kerb's edge it
+## would tip off), room to stand up, and not pinned between walls.
+func _landing_ok(at: Transform3D, dir: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	var o := at.origin
+	var side := Vector3(-dir.z, 0.0, dir.x)
+	for d in [Vector3.ZERO, dir * 0.3, side * 0.3, -side * 0.3]:
+		var q := PhysicsRayQueryParameters3D.create(o + Vector3.UP * 0.3 + d, o + Vector3.DOWN * 0.15 + d, Layers.WORLD, [get_rid()])
+		var hit := space.intersect_ray(q)
+		if hit.is_empty() or (d == Vector3.ZERO and (hit.normal as Vector3).y < 0.8):
+			return false
+	var up := at.translated(Vector3.UP * 0.04)
+	if test_move(up, Vector3.UP * 0.3):
+		return false
+	var blocked := 0
+	for d in [dir, -dir, side, -side]:
+		if test_move(up, d * 0.08):
+			blocked += 1
+	return blocked < 2
 
 
 func _start_vault(v: Dictionary, dir: Vector3) -> void:
@@ -903,6 +1049,16 @@ func _start_vault(v: Dictionary, dir: Vector3) -> void:
 	_vault_exit_speed = clampf(hv, SPEED_JOG * 0.8, SPEED_SPRINT)
 	var dist := Vector2(_vault_to.x - _vault_from.x, _vault_to.z - _vault_from.z).length()
 	_vault_dur = clampf(dist / maxf(hv, 4.5) * 1.2, 0.5, 0.85)
+	_vault_entry_speed = clampf(hv, 0.0, dist / _vault_dur * 1.5)
+	_vault_clear = _vault_clearance(dir, dist)
+	_vault_span = Vector2(-1.0, -1.0)
+	for i in _vault_clear.size():
+		if _vault_clear[i] > 0.0:
+			if _vault_span.x < 0.0:
+				_vault_span.x = i * VAULT_STEP
+			_vault_span.y = i * VAULT_STEP
+	if _vault_span.x < 0.0:
+		_vault_span = Vector2(dist * 0.4, dist * 0.6)
 	_saved_mask = collision_mask
 	collision_mask = 0
 	set_crouch(false)
@@ -917,23 +1073,54 @@ func _start_vault(v: Dictionary, dir: Vector3) -> void:
 		_pad_dir = dir
 	_peek_off = Vector3.ZERO
 	rig.lean_target = 0.0
-	rig.play_vault(_vault_dur, float(v.top), v.plant)
+	var height := float(v.top) - global_position.y
+	rig.play_vault(_vault_dur, height, v.plant)
+	rig.drive_vault(0.0, 0.0)
 	Sfx.play(self, "switch", global_position + Vector3.UP, -6.0)
 	if Net.active and Net.sync:
-		Net.sync.send_event(self, "vault", [_vault_dur, float(v.top), v.plant])
+		Net.sync.send_event(self, "vault", [_vault_dur, height, v.plant])
 
 
+## The vault, by where the body is over the ground rather than by the clock: it carries on at the speed it came in
+## with (no hitch on take-off) to the speed it leaves with; it rises as it reaches the obstacle, stays clear of it
+## while over it and comes down past it; the hand plant, the tuck and the landing dip follow the same path.
 func _update_vault(delta: float) -> void:
 	_vault_t += delta / _vault_dur
 	var t := minf(_vault_t, 1.0)
-	var e := t * 0.55 + t * t * (3.0 - 2.0 * t) * 0.45
+	var dist := Vector2(_vault_to.x - _vault_from.x, _vault_to.z - _vault_from.z).length()
+	# Hermite ease: leaves at the entry speed, arrives at the exit speed
+	var v1 := minf(_vault_exit_speed, dist / _vault_dur * 1.5)
+	var d := clampf((t * t * t - 2.0 * t * t + t) * _vault_dur * _vault_entry_speed + (-2.0 * t * t * t + 3.0 * t * t) * dist
+			+ (t * t * t - t * t) * _vault_dur * v1, 0.0, dist)
+	var e := d / maxf(dist, 0.001)
 	var p := _vault_from.lerp(_vault_to, e)
 	var prev := global_position
 	global_position = p   # along the path the sweeps cleared, ending on the landing floor
 	velocity = (global_position - prev) / maxf(delta, 0.0001)
 	velocity.y = 0.0
+	# the rise over the obstacle, above the straight line from the take-off floor to the landing floor
+	var s0 := clampf(_vault_span.x, 0.0, dist)
+	var s1 := clampf(_vault_span.y, s0, dist)
+	var k := d / VAULT_STEP
+	var i0 := clampi(int(k), 0, _vault_clear.size() - 1)
+	var i1 := mini(i0 + 1, _vault_clear.size() - 1)
+	var clear := lerpf(_vault_clear[i0], _vault_clear[i1], clampf(k - i0, 0.0, 1.0))
+	if s0 <= 0.05:
+		clear *= smoothstep(0.0, 0.04, t)   # pressed up against it: up in the first moments rather than at once
+	var lift := maxf(clear - (_vault_to.y - _vault_from.y) * e, 0.0)
+	# the animation's timeline along the same path: 0.2 reaching the obstacle, 0.7 leaving it
+	var phase := 1.0
+	if t < 1.0:
+		if d < s0:
+			phase = 0.2 * d / maxf(s0, 0.001)
+		elif d < s1:
+			phase = lerpf(0.2, 0.7, (d - s0) / maxf(s1 - s0, 0.001))
+		else:
+			phase = lerpf(0.7, 0.99, (d - s1) / maxf(dist - s1, 0.001))
+	rig.drive_vault(phase, lift)
 	if _vault_t >= 1.0:
 		vaulting = false
+		rig.drive_vault(-1.0, -1.0)
 		_vault_cooldown = 0.35
 		collision_mask = _saved_mask
 		var dir := Vector3(_vault_to.x - _vault_from.x, 0, _vault_to.z - _vault_from.z).normalized()

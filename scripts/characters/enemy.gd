@@ -6,7 +6,8 @@ extends "res://scripts/characters/soldier.gd"
 ## target, hearing of gunshots, and squad call-outs to nearby allies.
 ##
 ## States: PATROL -> SUSPICIOUS (investigate) -> COMBAT (take cover, hide,
-## peek and fire bursts, reload behind cover, or strafe in the open) ->
+## peek and fire bursts - standing up over low cover, stepping out past a
+## wall's corner - reload behind cover, or strafe in the open) ->
 ## SEARCH (sweep last known position) -> back to PATROL.
 
 const Palettes = preload("res://scripts/core/palettes.gd")
@@ -544,12 +545,17 @@ func _do_combat(delta: float) -> void:
 	_cover_timer -= delta
 	if _cover_timer <= 0.0:
 		_cover_timer = 0.8
-		if cover == null or not level.is_cover_good(cover, threat):
+		if cover != null and not _wants_cover():
+			_release_cover()
+			phase = Phase.OPEN   # back on the attack
+		elif _wants_cover() and (cover == null or not level.is_cover_good(cover, threat)):
 			_release_cover()
 			cover = level.find_cover(self, threat)
 			phase = Phase.MOVING if cover != null else Phase.OPEN
-		elif phase == Phase.OPEN:
+		elif cover != null and phase == Phase.OPEN:
 			phase = Phase.MOVING
+	if cover == null and phase in [Phase.MOVING, Phase.HIDDEN, Phase.PEEKING]:
+		phase = Phase.OPEN   # no cover to go to (a deathmatch bot not under fire, or it was let go): fight in the open
 
 	_turn_to(_yaw_to(threat), delta, 7.0)
 
@@ -564,7 +570,7 @@ func _do_combat(delta: float) -> void:
 			elif sees_player and randf() < 0.5:
 				_shoot(delta)
 		Phase.HIDDEN:
-			move_with(Vector3.ZERO, delta)
+			_hold(_cover_spot(false), delta)
 			set_crouch(true)
 			aiming = false
 			var w := current_weapon()
@@ -578,7 +584,7 @@ func _do_combat(delta: float) -> void:
 				_phase_timer = randf_range(1.5, 3.0)
 				_burst_timer = 0.0
 		Phase.PEEKING:
-			move_with(Vector3.ZERO, delta)
+			_hold(_cover_spot(true), delta)
 			set_crouch(false)
 			aiming = true
 			if sees_player:
@@ -756,6 +762,32 @@ func _nav_to(target: Vector3, spd: float, delta: float) -> bool:
 		d = d.normalized()
 	move_with((d + _separation() * 0.6).limit_length(1.0) * spd, delta)
 	return false
+
+
+## Whether to fight from cover now. Mission guards always do. Deathmatch bots duck into cover when they are hit or
+## low on ammo and come back out to fight once it has gone quiet (a match of bots that only hide never ends).
+func _wants_cover() -> bool:
+	if not has_meta("tdm_bot"):
+		return true
+	var w := current_weapon()
+	return since_damage < 3.0 or reload_timer > 0.0 or w.ammo < int(w.stats.mag) * 0.3
+
+
+## Where to stand in cover: its spot, or peeking, the sidestep past a wall's corner (low cover: the same spot, standing).
+## Where the bot is when its cover was let go (flashed, falling back) before the phase moved on.
+func _cover_spot(peeking: bool) -> Vector3:
+	if cover == null:
+		return global_position
+	return cover.pos + (cover.get("peek", Vector3.ZERO) as Vector3 if peeking else Vector3.ZERO)
+
+
+## Stands on `spot` (a cover spot, or the sidestep out of it), stepping there when off it.
+func _hold(spot: Vector3, delta: float) -> void:
+	var d := Vector3(spot.x - global_position.x, 0.0, spot.z - global_position.z)
+	if d.length() > 0.12:
+		move_with(d.normalized() * minf(RUN_SPEED * 0.6, d.length() * 8.0), delta)
+	else:
+		move_with(Vector3.ZERO, delta)
 
 
 func _separation() -> Vector3:

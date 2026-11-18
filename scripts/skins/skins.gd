@@ -76,6 +76,8 @@ const FINISHES := {
 
 ## Sticker textures that finishes can carry (placement is per gun, see collection.gd).
 const STICKERS := {"patch_02": "res://assets/stickers/patch_02.png"}
+## The sticker admins can put on any skin.
+const DEFAULT_STICKER := "patch_02"
 
 ## Supply packs: 5 skins each, odds per rarity (percent), guaranteed minimum
 ## rarity on the last card, price in credits, foil colours.
@@ -138,6 +140,11 @@ static func finishes_of(rarity: int) -> Array:
 	return out
 
 
+## The sticker a finish carries on its own ("" when none).
+static func sticker_of(finish: String) -> String:
+	return String(FINISHES[finish].get("sticker", "")) if FINISHES.has(finish) else ""
+
+
 static func rarity_of(finish: String) -> int:
 	return int(FINISHES[finish].r) if FINISHES.has(finish) else 0
 
@@ -171,8 +178,18 @@ uniform float emit = 0.0;
 uniform float anim = 0.0;
 uniform float tint = 1.0;      // furniture parts are drawn a bit darker
 uniform sampler2D finish_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+// sticker art printed through the finish (sticker.gd): projected across the gun from the side
+uniform bool use_sticker = false;
+uniform sampler2D sticker_tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+instance uniform vec4 stk_r0 = vec4(1.0, 0.0, 0.0, 0.0);   // this part's transform into gun space (rows)
+instance uniform vec4 stk_r1 = vec4(0.0, 1.0, 0.0, 0.0);
+instance uniform vec4 stk_r2 = vec4(0.0, 0.0, 1.0, 0.0);
+instance uniform vec4 stk_a = vec4(0.0);                   // centre z, centre y, half width, half height (0 = none)
+instance uniform vec4 stk_b = vec4(1.0, 0.0, 2.0, 0.0);    // cos roll, sin roll, side (0 right, 1 left, 2 both)
 varying vec3 lp;
 varying vec3 ln;
+varying vec3 gp;
+varying vec3 gn;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -187,7 +204,13 @@ float fbm(vec2 p) {
 }
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
 
-void vertex() { lp = VERTEX; ln = NORMAL; }
+void vertex() {
+	lp = VERTEX;
+	ln = NORMAL;
+	vec4 v = vec4(VERTEX, 1.0);
+	gp = vec3(dot(stk_r0, v), dot(stk_r1, v), dot(stk_r2, v));
+	gn = vec3(dot(stk_r0.xyz, NORMAL), dot(stk_r1.xyz, NORMAL), dot(stk_r2.xyz, NORMAL));
+}
 
 void fragment() {
 	vec3 an = abs(ln);
@@ -410,7 +433,27 @@ void fragment() {
 			break;
 		}
 	}
-	ALBEDO = col * tint;
+	col *= tint;
+	if (use_sticker && stk_a.z > 0.0) {
+		vec3 n = normalize(gn);
+		float sx = n.x >= 0.0 ? 1.0 : -1.0;
+		bool side_on = stk_b.z > 1.5 || (stk_b.z < 0.5 ? sx > 0.0 : sx < 0.0);
+		// along the gun (toward the muzzle on the right, toward the stock on the left, so
+		// each side reads left to right) and up, then turned by the roll
+		vec2 d = vec2((stk_a.x - gp.z) * sx, gp.y - stk_a.y);
+		vec2 q = vec2(d.x * stk_b.x + d.y * stk_b.y, -d.x * stk_b.y + d.y * stk_b.x);
+		vec2 suv = vec2(q.x / stk_a.z, -q.y / stk_a.w) * 0.5 + 0.5;
+		if (side_on && suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
+			vec4 art = texture(sticker_tex, suv);
+			// wraps round curved surfaces; fades out where a face turns edge-on to the side
+			float k = art.a * smoothstep(0.1, 0.38, abs(n.x));
+			col = mix(col, art.rgb, k);
+			m = mix(m, 0.05, k);
+			r = mix(r, 0.42, k);
+			e *= 1.0 - 0.85 * k;
+		}
+	}
+	ALBEDO = col;
 	METALLIC = m;
 	ROUGHNESS = r;
 	EMISSION = e;
@@ -423,17 +466,22 @@ static var _shader: Shader
 static var _mats: Dictionary = {}
 
 
+## The shared finish shader (sticker.gd recognises finish materials by it).
+static func finish_shader() -> Shader:
+	if _shader == null:
+		_shader = Shader.new()
+		_shader.code = FINISH_SHADER
+	return _shader
+
+
 ## Shared material for a finish; `furniture` = darker variant for polymer / wood.
 static func material(finish: String, furniture: bool) -> ShaderMaterial:
 	var k := finish + ("_f" if furniture else "_m")
 	if _mats.has(k):
 		return _mats[k]
-	if _shader == null:
-		_shader = Shader.new()
-		_shader.code = FINISH_SHADER
 	var f: Dictionary = FINISHES[finish]
 	var m := ShaderMaterial.new()
-	m.shader = _shader
+	m.shader = finish_shader()
 	var c: Array = f.c
 	m.set_shader_parameter("pattern", int(f.p))
 	m.set_shader_parameter("c0", c[0])
@@ -448,6 +496,12 @@ static func material(finish: String, furniture: bool) -> ShaderMaterial:
 	m.set_shader_parameter("tint", 0.68 if furniture else 1.0)
 	if f.has("texture"):
 		m.set_shader_parameter("finish_texture", f.texture)
+	# every finish can carry sticker art: its own, else the default one (admins put it on
+	# any skin); the gun's sticker placement switches it on, part by part (sticker.gd)
+	var stk := sticker_of(finish) if sticker_of(finish) != "" else DEFAULT_STICKER
+	if STICKERS.has(stk) and ResourceLoader.exists(String(STICKERS[stk])):
+		m.set_shader_parameter("use_sticker", true)
+		m.set_shader_parameter("sticker_tex", load(String(STICKERS[stk])))
 	_mats[k] = m
 	return m
 

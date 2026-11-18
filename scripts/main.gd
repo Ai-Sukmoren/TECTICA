@@ -115,7 +115,8 @@ var _ammo_taken: Array = []
 
 func _ready() -> void:
 	randomize()
-	Engine.time_scale = 1.0   # never carry a slow-mo / kill freeze into a new map
+	Engine.time_scale = 1.0   # never carry a slow-mo / kill freeze / bullet time into a new map
+	AudioServer.playback_speed_scale = 1.0
 	preload("res://scripts/core/platform.gd").first_launch_defaults(get_script())   # phones start on the light map
 	mode = saved_mode if saved_mode in ["ch1", "ch2", "zombie", "pvp"] else "ch1"
 	if mode == "pvp" and not Net.is_pvp():
@@ -148,6 +149,7 @@ func _ready() -> void:
 	level.mode = mode
 	add_child(level)
 	level.build()
+	_apply_acoustics(bool(ModelLevel.CONFIGS.get(map_id, {}).get("indoor", false)))
 
 	tod = TimeOfDay.new()
 	tod.name = "TimeOfDay"
@@ -420,6 +422,22 @@ func _setup_audio_bus() -> void:
 	var fi := AudioServer.bus_count - 1
 	AudioServer.set_bus_name(fi, "Foley")
 	AudioServer.set_bus_send(fi, "Master")
+
+
+## The room the shots ring in: indoor maps (WAREHOUSE, BACKROOMS) get a bigger, wetter room with an early echo; outdoors
+## stays short and damped (the recorded shots carry their own outdoor tail). The bus outlives the scene: set every map.
+func _apply_acoustics(indoor: bool) -> void:
+	var bus := AudioServer.get_bus_index("SFX")
+	if bus < 0 or AudioServer.get_bus_effect_count(bus) == 0:
+		return
+	var rev := AudioServer.get_bus_effect(bus, 0) as AudioEffectReverb
+	if rev == null:
+		return
+	rev.room_size = 0.62 if indoor else 0.3
+	rev.damping = 0.55 if indoor else 0.85
+	rev.predelay_msec = 28.0 if indoor else 150.0
+	rev.predelay_feedback = 0.25 if indoor else 0.4
+	rev.wet = 0.17 if indoor else 0.07
 
 
 # ================================================================ graphics
@@ -702,6 +720,7 @@ func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 			if director != null and result.hit.is_in_group("zombies"):
 				director.shop.on_hit(bool(result.killed), bool(result.headshot))
 			if result.killed:
+				player.add_focus(bool(result.headshot))
 				if result.headshot:
 					headshot_kills += 1
 				var wname := String(weapon.stats.name)

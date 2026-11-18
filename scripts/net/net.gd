@@ -34,6 +34,12 @@ static func is_server() -> bool:
 	return not active or _mp().is_server()
 
 
+## No other player in the session: offline, or hosting a match nobody has joined (a local match against bots).
+## Only then may the game change its own speed (bullet time).
+static func alone() -> bool:
+	return not active or (_mp().is_server() and _mp().get_peers().is_empty())
+
+
 static func is_pvp() -> bool:
 	return active and kind == "pvp"
 

@@ -747,8 +747,15 @@ func _physics_process(_delta: float) -> void:
 
 # ================================================================ cover queries
 
+## Maps whose cover is not laid out by hand (built from a model) find theirs here, on first use, when the physics
+## world can be queried.
+func _generate_cover() -> void:
+	pass
+
+
 func _validate_cover() -> void:
 	_cover_validated = true
+	_generate_cover()
 	var map := get_world_3d().navigation_map
 	for c in cover_points:
 		var p: Vector3 = c.pos

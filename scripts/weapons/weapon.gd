@@ -142,13 +142,29 @@ func apply_skin(finish: String, parts: Dictionary = {}) -> void:
 	Skins.apply(_model_root, finish, [Model._black, Model._worn], parts)
 
 
-## Places the current finish's sticker (if it has one) per `cfg` (see sticker.gd).
+## Places a sticker per `cfg` (see sticker.gd): the one cfg.id names (admins put the
+## sticker on any skin), else the current finish's own sticker, if it has one. The
+## factory look has no finish to print it into.
 func apply_sticker(cfg: Dictionary) -> void:
-	var id := String(Skins.FINISHES[skin].get("sticker", "")) if Skins.FINISHES.has(skin) else ""
+	var id := String(cfg.get("id", "")) if cfg is Dictionary else ""
+	if not Skins.STICKERS.has(id) or not Skins.FINISHES.has(skin):
+		id = Skins.sticker_of(skin)
 	if id == "":
 		Sticker.remove(_model_root)
 		return
 	Sticker.attach(_model_root, id, cfg if cfg is Dictionary else {})
+
+
+## Sticker placement (u, v) under a world-space ray crossing the gun's side
+## (the Armory's drag-to-place), or (-1, -1) when the ray runs along the side.
+func sticker_uv_on_ray(origin: Vector3, dir: Vector3) -> Vector2:
+	var inv := _model_root.global_transform.affine_inverse()
+	var o := inv * origin
+	var d := inv.basis * dir
+	if absf(d.x) < 0.0001:
+		return Vector2(-1, -1)
+	var at := o + d * ((Sticker.bounds(_model_root).get_center().x - o.x) / d.x)
+	return Sticker.uv_at(_model_root, at)
 
 
 func is_pistol() -> bool:

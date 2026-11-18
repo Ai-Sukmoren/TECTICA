@@ -13,6 +13,7 @@ const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const Profile = preload("res://scripts/core/profile.gd")
 const Sticker = preload("res://scripts/skins/sticker.gd")
+const Loadout = preload("res://scripts/core/loadout.gd")
 const Outfits = preload("res://scripts/skins/outfits.gd")
 const SoldierRig = preload("res://scripts/characters/soldier_rig.gd")
 const TAB_NAMES := ["SUPPLY PACKS", "COLLECTION", "OUTFITS"]
@@ -43,6 +44,14 @@ var coll_tile := 0
 ## sticker placement editor (finishes that carry a sticker, e.g. Ruby)
 var sticker_edit := false
 var _stk: Dictionary = {}
+## the gun in the 3D preview, its sticker placement, and the screen rect it is drawn in
+var _preview_gun: Weapon
+var _preview_stk := ""
+var _coll_rect := Rect2()
+## sticker editing by mouse: 1 = moving (left button), 2 = turning (right button)
+var _stk_drag := 0
+## clickable buttons drawn this frame: [rect, action]
+var _stk_buttons: Array = []
 
 var _sv: SubViewport
 var _pivot: Node3D
@@ -114,9 +123,10 @@ func _tiles() -> Array:
 	return [""] + Skins.finish_ids(Profile.is_admin())
 
 
+## The selected skin can wear a sticker: its own (Ruby), or any skin for an admin.
 func _tile_has_sticker() -> bool:
 	var f: String = _tiles()[coll_tile]
-	return f != "" and String(Skins.FINISHES[f].get("sticker", "")) != ""
+	return f != "" and (Skins.sticker_of(f) != "" or Profile.is_admin())
 
 
 func _coll_weapon_id() -> String:
@@ -243,13 +253,13 @@ func handle(event: InputEvent) -> bool:
 	if back:
 		return true
 	if tab == 1 and event is InputEventKey and event.pressed and event.keycode == KEY_T and _tile_has_sticker():
-		if not Collection.has_skin(_coll_weapon_id(), _tiles()[coll_tile]):
-			_say("LOCKED", true)
-		else:
-			sticker_edit = true
-			_stk = Collection.sticker_for(_coll_weapon_id())
-			_preview_key = ""
+		_start_sticker_edit()
 		return false
+	if tab == 1 and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		for b in _stk_buttons:
+			if (b[0] as Rect2).has_point(event.position) and b[1] == "edit":
+				_start_sticker_edit()
+				return false
 	if event.is_action_pressed("peek_left") or event.is_action_pressed("peek_right") or event.is_action_pressed("ui_focus_next") \
 			or (event is InputEventKey and event.pressed and event.keycode == KEY_TAB):
 		tab = (tab + (-1 if event.is_action_pressed("peek_left") else 1) + TAB_NAMES.size()) % TAB_NAMES.size()
@@ -333,7 +343,78 @@ func handle(event: InputEvent) -> bool:
 	return false
 
 
+func _start_sticker_edit() -> void:
+	if not Collection.has_skin(_coll_weapon_id(), _tiles()[coll_tile]):
+		_say("LOCKED", true)
+		return
+	sticker_edit = true
+	_stk_drag = 0
+	_stk = Sticker.clamp_cfg(Collection.sticker_for(_coll_weapon_id(), _tiles()[coll_tile]))
+	_stk.on = true   # editing puts it on (a skin without its own sticker starts without one)
+
+
+## Sticker (u, v) under a screen point on the collection preview, or (-1, -1).
+func _sticker_uv_at(screen: Vector2) -> Vector2:
+	if _preview_gun == null or not _coll_rect.has_point(screen):
+		return Vector2(-1, -1)
+	var px := (screen - _coll_rect.position) / _coll_rect.size * Vector2(_sv.size)
+	return _preview_gun.sticker_uv_on_ray(_cam.project_ray_origin(px), _cam.project_ray_normal(px))
+
+
+func _sticker_save() -> void:
+	Collection.set_sticker(_coll_weapon_id(), Sticker.clamp_cfg(_stk))
+	sticker_edit = false
+	_stk_drag = 0
+	Sfx.play_ui(hud, "mag_in", -4.0)
+	_say("STICKER SAVED  ·  " + Skins.weapon_name(_coll_weapon_id()))
+
+
 func _sticker_input(event: InputEvent) -> void:
+	# mouse: drag to move it, right-drag to turn it, wheel to size it, buttons on the preview
+	if event is InputEventMouseButton and not event.pressed:
+		_stk_drag = 0
+		return
+	if event is InputEventMouseMotion:
+		if _stk_drag == 1:
+			var uv := _sticker_uv_at(event.position)
+			if uv.x >= 0.0:
+				_stk.u = uv.x
+				_stk.v = uv.y
+		elif _stk_drag == 2:
+			_stk.r = float(_stk.r) - event.relative.x * 0.012
+		else:
+			return
+		_stk = Sticker.clamp_cfg(_stk)
+		return
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			for b in _stk_buttons:
+				if not (b[0] as Rect2).has_point(event.position):
+					continue
+				match String(b[1]):
+					"save":
+						_sticker_save()
+						return
+					"cancel":
+						sticker_edit = false
+						_stk_drag = 0
+						_say("STICKER EDIT CANCELLED")
+						return
+					"side":
+						_stk.side = (int(_stk.side) + 1) % 3
+					"fit":
+						_stk = Sticker.DEFAULT.duplicate()
+				_stk = Sticker.clamp_cfg(_stk)
+				return
+		if _coll_rect.has_point(event.position):
+			_stk_drag = 1 if event.button_index == MOUSE_BUTTON_LEFT else 2
+			if _stk_drag == 1:
+				var uv := _sticker_uv_at(event.position)
+				if uv.x >= 0.0:
+					_stk.u = uv.x
+					_stk.v = uv.y
+					_stk = Sticker.clamp_cfg(_stk)
+		return
 	if not (event is InputEventKey and event.pressed) and not (event is InputEventMouseButton and event.pressed):
 		return
 	var right_view := int(_stk.side) != 1
@@ -344,10 +425,7 @@ func _sticker_input(event: InputEvent) -> void:
 		sticker_edit = false
 		_say("STICKER EDIT CANCELLED")
 	elif k == KEY_ENTER or k == KEY_KP_ENTER or k == KEY_T:
-		Collection.set_sticker(_coll_weapon_id(), Sticker.clamp_cfg(_stk))
-		sticker_edit = false
-		Sfx.play_ui(hud, "mag_in", -4.0)
-		_say("STICKER SAVED  ·  " + Skins.weapon_name(_coll_weapon_id()))
+		_sticker_save()
 	elif k in [KEY_A, KEY_LEFT]:
 		_stk.u = float(_stk.u) + (-step if right_view else step)
 	elif k in [KEY_D, KEY_RIGHT]:
@@ -368,12 +446,11 @@ func _sticker_input(event: InputEvent) -> void:
 		_stk.side = (int(_stk.side) + 1) % 3
 	elif k == KEY_H:
 		_stk.on = not bool(_stk.on)
-	elif k == KEY_R:
-		_stk = {"on": true, "u": 0.5, "v": -1.0, "s": 1.0, "r": 0.0, "side": 0}
+	elif k == KEY_R or k == KEY_F:
+		_stk = Sticker.DEFAULT.duplicate()   # back to the full wrap
 	else:
 		return
 	_stk = Sticker.clamp_cfg(_stk)
-	_preview_key = ""
 
 
 # ================================================================ update
@@ -435,11 +512,21 @@ func _set_outfit_preview(id: String) -> void:
 
 
 func _set_preview(weapon: String, finish: String) -> void:
-	var stk: Dictionary = _stk if sticker_edit else (Collection.sticker_for(weapon) if weapon != "" else {})
-	var k := weapon + ":" + finish + ":" + str(stk)
+	var stk: Dictionary = Collection.sticker_for(weapon, finish) if weapon != "" else {}
+	if sticker_edit:
+		var placing := _stk.duplicate()
+		if stk.has("id"):
+			placing.id = stk.id   # the sticker an admin is putting on this skin
+		stk = placing
+	var k := weapon + ":" + finish
 	if k == _preview_key:
+		# same gun: only the sticker moved (no rebuild while it is dragged)
+		if _preview_gun != null and str(stk) != _preview_stk:
+			_preview_stk = str(stk)
+			_preview_gun.apply_sticker(stk)
 		return
 	_preview_key = k
+	_preview_gun = null
 	_sv.size = Vector2i(960, 420)
 	_cam.fov = 28.0
 	for ch in _pivot.get_children():
@@ -447,9 +534,11 @@ func _set_preview(weapon: String, finish: String) -> void:
 	if weapon == "":
 		return
 	var gun := Weapon.new()
-	gun.setup(weapon, {})
+	gun.setup(weapon, Loadout.attachments_of(weapon))   # with its attachments: the optic stays on while a sticker goes on
 	gun.apply_skin(finish)
 	gun.apply_sticker(stk)
+	_preview_gun = gun
+	_preview_stk = str(stk)
 	_pivot.add_child(gun)
 	var pistol := gun.is_pistol()
 	gun.position = Vector3(0, -0.02, 0.1 if pistol else 0.26)
@@ -771,6 +860,8 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 	var tw := minf((vp.x * 0.58 - gx * 0.0) / cols - 10.0, 170.0)
 	var th := 78.0
 	var pr := Rect2(gx, 150, tw * cols + 10 * (cols - 1), vp.y * 0.24)
+	_coll_rect = pr
+	_stk_buttons.clear()
 	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.7))
 	c.draw_texture_rect(_sv.get_texture(), pr, false)
 	var cur: String = tiles[coll_tile]
@@ -818,10 +909,26 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		hud._text(c, sr.position + Vector2(12, 46), "POSITION  %d%% / %s" % [int(float(_stk.u) * 100.0), "AUTO" if float(_stk.v) < 0.0 else "%d%%" % int(float(_stk.v) * 100.0)], 12, hud.TEXT)
 		hud._text(c, sr.position + Vector2(12, 66), "SIZE  %d%%    ROTATION  %d°" % [int(float(_stk.s) * 100.0), int(rad_to_deg(float(_stk.r)))], 12, hud.TEXT)
 		hud._text(c, sr.position + Vector2(12, 86), "SIDE  %s    %s" % [side_name, "SHOWN" if bool(_stk.on) else "HIDDEN"], 12, hud.TEXT)
-		hud._text(c, sr.position + Vector2(12, 110), "Shift = bigger steps", 10, hud.DIM)
-		hud._text(c, Vector2(0, vp.y - 30), "WASD / arrows move   ·   Z/X rotate   ·   +/- or wheel size   ·   Space side   ·   H hide   ·   R reset   ·   Enter save   ·   Esc cancel", 12, hud.WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+		hud._text(c, sr.position + Vector2(12, 110), "Drag it on the gun  ·  right-drag turns it", 10, hud.DIM)
+		# mouse buttons along the preview's bottom edge
+		var bx := pr.end.x - 10.0
+		for b in [["save", "SAVE"], ["cancel", "CANCEL"], ["side", "SIDE"], ["fit", "FULL WRAP"]]:
+			var bw := 24.0 + String(b[1]).length() * 9.0
+			var br := Rect2(bx - bw, pr.end.y - 38, bw, 28)
+			bx -= bw + 8.0
+			_stk_buttons.append([br, b[0]])
+			c.draw_rect(br, Color(hud.RED, 0.35) if b[0] == "save" else Color(0.03, 0.04, 0.05, 0.92))
+			c.draw_rect(br, hud.WARN if b[0] == "save" else hud.DIM, false, 1.5)
+			hud._text(c, Vector2(br.position.x, br.position.y + 19), String(b[1]), 12, hud.TEXT, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, true)
+		hud._text(c, Vector2(0, vp.y - 30), "Drag move   ·   right-drag or Z/X turn   ·   wheel or +/- size   ·   WASD nudge   ·   Space side   ·   H hide   ·   F full wrap   ·   Enter save   ·   Esc cancel", 12, hud.WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	else:
 		var hint := "   ·   T  edit sticker" if _tile_has_sticker() and Collection.has_skin(wid, cur) else ""
+		if hint != "":
+			var br := Rect2(pr.end.x - 170, pr.end.y - 38, 160, 28)
+			_stk_buttons.append([br, "edit"])
+			c.draw_rect(br, Color(hud.RED, 0.35))
+			c.draw_rect(br, hud.WARN, false, 1.5)
+			hud._text(c, Vector2(br.position.x, br.position.y + 19), "EDIT STICKER  (T)", 12, hud.TEXT, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, true)
 		hud._text(c, Vector2(0, vp.y - 30), "Wheel or W/S weapon   ·   A/D skin   ·   Enter / click equip" + hint + "   ·   Q/E or Tab  packs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
 

@@ -24,6 +24,7 @@ const Weapon = preload("res://scripts/weapons/weapon.gd")
 const ModelSkin = preload("res://scripts/characters/model_skin.gd")
 const Body = preload("res://scripts/characters/body_mesh.gd")
 const FPSArmRig = preload("res://scripts/characters/fps_arm_rig.gd")
+const Settings = preload("res://scripts/core/settings.gd")
 
 signal footstep(pos: Vector3, intensity: float)
 signal throw_release
@@ -77,16 +78,54 @@ const POSES := {
 ## tucked down by the chest (pistol).
 const FP_POSES := {
 	"rifle": {"hip": [Vector3(0.16, -0.2, -0.34), Vector3(0.04, 0.06, 0.04)], "aim": [Vector3(0.0, -0.15, -0.19), Vector3.ZERO],
-			"sprint": [Vector3(0.1, -0.245, -0.31), Vector3(-0.38, 0.74, 0.55)]},
+			"sprint": [Vector3(0.1, -0.235, -0.31), Vector3(-0.42, 0.72, 0.62)]},
 	"knife": {"hip": [Vector3(0.16, -0.21, -0.3), Vector3(-0.05, 0.3, -0.2)], "aim": [Vector3(0.16, -0.21, -0.3), Vector3(-0.05, 0.3, -0.2)],
 			"sprint": [Vector3(0.19, -0.27, -0.28), Vector3(-0.45, 0.25, 0.1)]},
 	"pistol": {"hip": [Vector3(0.13, -0.15, -0.36), Vector3(0.03, 0.05, 0.0)], "aim": [Vector3(0.0, -0.077, -0.4), Vector3.ZERO],
-			"sprint": [Vector3(0.14, -0.22, -0.31), Vector3(-0.62, 0.32, 0.28)]},
+			"sprint": [Vector3(0.065, -0.225, -0.3), Vector3(-0.2, 0.24, 0.16)]},
 }
+## First-person wrist comfort range the arm solve keeps each gripping hand in
+## (degrees, glove space): [flexion min, max, deviation min, max] for [left, right].
+## Flexion (+) bends toward the palm, extension (-) back; ulnar deviation (+) bends
+## toward the little finger, radial (-) toward the thumb. A shooting hand on a pistol
+## grip sits about 20 degrees extended and 20 ulnar; the support hand under a
+## handguard has more room. The forearm swings into range; the hand never moves.
+const FP_WRIST := [[-45.0, 30.0, -12.0, 32.0], [-40.0, 12.0, -8.0, 28.0]]
+## How far (m) a first-person shoulder (off-screen) may slide off its eye anchor so a
+## forearm can run into its hand in line.
+const FP_SHOULDER_SLIDE := 0.16
+## Upper arms and elbows stay this many degrees outside the edge of the view.
+const FP_VIEW_MARGIN := 3.0
+## How quickly (1/s) those arm corrections ease to a new setting, and the elbow's
+## bend direction follows.
+const FP_ARM_SETTLE := 18.0
+const FP_POLE_SETTLE := 30.0
+## ...but never faster than this (rad/s) round the shoulder-hand line.
+const FP_POLE_SPEED := 12.0
+## How quickly (1/s) a first-person forearm's roll catches up with its hand's.
+const FP_ROLL_FOLLOW := 14.0
+## ...turning no faster than the hand itself does, plus this (rad/s).
+const FP_ROLL_SLACK := deg_to_rad(60.0)
+## Share of the shooting wrist's correction let go while aiming (see _update_arms).
+const FP_ADS_WRIST_EASE := 0.6
+## How far (rad) the elbow's bend may turn from its natural down-and-out direction.
+const FP_POLE_RANGE := deg_to_rad(65.0)
+## Radius (m) of the upper arm with its elbow pad, for that test.
+const FP_ARM_RADIUS := 0.06
 ## First-person gait motion on the gun: [side sway, footfall dip, roll, pitch]
 ## at a walk and at a full sprint.
 const FP_GAIT_WALK := [0.006, 0.007, 0.018, 0.012]
-const FP_GAIT_SPRINT := [0.028, 0.03, 0.075, 0.05]
+const FP_GAIT_SPRINT := [0.022, 0.026, 0.06, 0.045]
+## First-person handling by weapon class. gait: how much the stride moves the gun;
+## mass: how far it lags behind turns, starts, stops and landings and how slowly it
+## settles; sprint: [position, euler] offset on the class's sprint carry.
+const FP_HANDLING := {
+	"pistol": {"gait": 0.75, "mass": 0.7, "sprint": [Vector3.ZERO, Vector3.ZERO]},
+	"smg": {"gait": 0.9, "mass": 0.85, "sprint": [Vector3(-0.005, 0.012, 0.015), Vector3(0.06, 0.0, -0.04)]},
+	"rifle": {"gait": 1.0, "mass": 1.0, "sprint": [Vector3.ZERO, Vector3.ZERO]},
+	"heavy": {"gait": 1.1, "mass": 1.35, "sprint": [Vector3(0.0, -0.012, 0.0), Vector3(-0.07, 0.03, 0.05)]},
+	"knife": {"gait": 0.85, "mass": 0.6, "sprint": [Vector3.ZERO, Vector3.ZERO]},
+}
 
 # ---- inputs, written by the owning character every frame ----
 var move_velocity := Vector3.ZERO
@@ -134,6 +173,13 @@ var _eye_smooth := Vector3(0, 1.66, -0.09)
 # ---- smoothed animation state ----
 var lean_amt := 0.0
 var vault_t := -1.0
+## Shooting during a vault: the gun stays up in both hands instead of the hand planting on the obstacle.
+var vault_aim := false
+var _vault_aim_amt := 0.0
+## The operator's vault sets its own timeline and rise from where the body is over the obstacle (drive_vault());
+## other soldiers' vaults (network copies) run on the clock. -1 = not driven.
+var _vault_drive_phase := -1.0
+var _vault_drive_lift := -1.0
 var _vault_dur := 0.6
 var _vault_peak := 0.5
 var _vault_plant := Vector3.ZERO
@@ -327,7 +373,9 @@ func build(p: Dictionary) -> void:
 			_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
 		_mesh(el, Body.glove_cuff(-FOREARM), p.gloves, Vector3.ZERO)
 		_mesh(el, Body.glove_strap(-FOREARM), detail, Vector3.ZERO)
-		_mesh(el, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -0.01, -0.05))
+		# elbow plate on the point of the elbow: carried by the upper arm, which stays in
+		# the bend plane (the forearm itself turns with the hand, see _roll_forearm)
+		_mesh(sh, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -UPPER_ARM - 0.01, -0.05))
 		var hand := _node(el, "Hand", Vector3(0, -FOREARM, 0))
 		# glove: rounded palm, jointed fingers wrapping the grip, thumb over the top
 		_mesh(hand, Body.glove(side), p.gloves, Vector3.ZERO)
@@ -369,9 +417,9 @@ func _build_details(p: Dictionary) -> void:
 	var wrap: Material = p.get("wrap", M.fabric("neck_wrap", Color(0.34, 0.33, 0.25), 7.0))
 	_mesh(chest, ML.cylinder(0.07, 0.092, 0.075, 14), wrap, Vector3(0, 0.305, 0.0))
 	_mesh(chest, ML.sphere(0.06, false, 10), wrap, Vector3(0.0, 0.285, -0.075), Vector3.ZERO, Vector3(1.5, 0.75, 0.7))
-	# arms: rounded elbow pads
+	# arms: rounded elbow pads, on the point of the elbow (upper arm: the bend plane)
 	for i in 2:
-		_mesh(elbows[i], ML.sphere(0.052, false, 10), pads, Vector3(0, -0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
+		_mesh(shoulders[i], ML.sphere(0.052, false, 10), pads, Vector3(0, -UPPER_ARM - 0.012, -0.05), Vector3.ZERO, Vector3(1.0, 1.25, 0.55))
 	# legs: knee caps, pocket flaps, boot collars and toe caps
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0
@@ -1018,14 +1066,31 @@ func play_switch(duration: float) -> void:
 	_switch_dur = duration
 
 
-## Side vault: left hand plants on `plant` (world), legs tuck to the right.
-func play_vault(duration: float, obstacle_top: float, plant: Vector3) -> void:
+## Side vault: left hand plants on `plant` (world), legs tuck to the right. `height`: the obstacle's top above the
+## feet (it used to be the top's world height, which threw the body metres into the air on any raised floor).
+func play_vault(duration: float, height: float, plant: Vector3) -> void:
 	cancel_inspect()
 	vault_t = 0.0
+	_vault_drive_phase = -1.0
+	_vault_drive_lift = -1.0
 	_vault_dur = maxf(duration, 0.2)
-	_vault_peak = maxf(obstacle_top - 0.42, 0.18)
+	_vault_peak = clampf(height - 0.3, 0.15, 1.1)
 	_vault_plant = plant
 	cancel_reload()
+
+
+## The vault's timeline (0..1) and rise (m), set from outside each frame; phase -1 ends a driven vault (it lands).
+func drive_vault(phase: float, lift: float) -> void:
+	if phase < 0.0:
+		if _vault_drive_phase >= 0.0 and vault_t >= 0.0:
+			_vault_drive_phase = 1.0
+			_vault_drive_lift = -1.0
+			return
+		_vault_drive_phase = -1.0
+		_vault_drive_lift = -1.0
+		return
+	_vault_drive_phase = phase
+	_vault_drive_lift = lift
 
 
 func play_kick(duration: float) -> void:
@@ -1188,10 +1253,14 @@ func _animate(delta: float) -> void:
 		_update_death(delta)
 		return
 	if vault_t >= 0.0:
-		vault_t += delta / _vault_dur
+		vault_t = _vault_drive_phase if _vault_drive_phase >= 0.0 else vault_t + delta / _vault_dur
 		if vault_t >= 1.0:
 			vault_t = -1.0
+			vault_aim = false
+			_vault_drive_phase = -1.0
+			_vault_drive_lift = -1.0
 			_hit_vel.x -= 1.6  # landing lurch
+	_vault_aim_amt = move_toward(_vault_aim_amt, 1.0 if vault_aim and vault_t >= 0.0 else 0.0, delta * 9.0)
 	if kick_t >= 0.0:
 		kick_t += delta / _kick_dur
 		if kick_t >= 1.0:
@@ -1329,7 +1398,9 @@ func _update_body(delta: float) -> void:
 	var v_tuck := _vw(0.12, 0.38, 0.62, 0.88)
 	var v_land := _vw(0.8, 0.9, 0.9, 1.0)
 	var lift := 0.0
-	if vault_t >= 0.0:
+	if _vault_drive_lift >= 0.0:
+		lift = _vault_drive_lift
+	elif vault_t >= 0.0:
 		lift = _vault_peak * pow(sin(PI * clampf((vault_t - 0.04) / 0.86, 0.0, 1.0)), 0.85)
 	# dropkick: the whole body tips back until it lies flat in the air (like
 	# sleeping on its back), rotating around the hips and riding a little higher
@@ -1618,8 +1689,14 @@ func _update_weapon_pose(delta: float) -> void:
 			xf = xf.interpolate_with(_inspect_last, smoothstep(0.0, 1.0, _inspect_fade))
 	if fp_mode:
 		var fs: Array = FP_POSES[kind].sprint
-		xf = xf.interpolate_with(Transform3D(Basis.from_euler(fs[1]), fs[0]), sprint_amt * (1.0 - aim_amt))
+		var tweak: Array = FP_HANDLING[_fp_class()].sprint
+		var carry := Transform3D(Basis.from_euler(fs[1] + tweak[1]), fs[0] + tweak[0])
+		# eased in and out, and carried down and in along an arc rather than a straight line
+		var sw := smoothstep(0.0, 1.0, sprint_amt) * (1.0 - aim_amt)
+		xf = xf.interpolate_with(carry, sw)
+		xf.origin += Vector3(-0.012, -0.03, 0.015) * sin(PI * sw)
 		xf = _fp_gait(xf)
+		xf = _fp_inertia(xf, delta)
 	else:
 		xf = xf.interpolate_with(_weapon_pose(kind, "sprint_1h" if _one_hand_run() else "sprint"), sprint_amt * (1.0 - aim_amt))
 	# third person only: first person keeps the gun gait-independent of the eye
@@ -1659,7 +1736,7 @@ func _update_weapon_pose(delta: float) -> void:
 		xf = xf.interpolate_with(_weapon_pose(kind, "lower"), w2)
 		if switch_t >= 1.0:
 			switch_t = -1.0
-	xf = xf.interpolate_with(_weapon_pose(kind, "vault"), _vw(0.0, 0.18, 0.75, 0.95))
+	xf = xf.interpolate_with(_weapon_pose(kind, "vault"), _vw(0.0, 0.18, 0.75, 0.95) * (1.0 - _vault_aim_amt))
 	xf = xf.interpolate_with(_weapon_pose(kind, "sprint"), slide_amt * (1.0 - aim_amt) * 0.6)
 	if throw_t >= 0.0:
 		xf = xf.interpolate_with(_weapon_pose(kind, "lower"), smoothstep(0.0, 0.18, throw_t) * (1.0 - smoothstep(0.75, 1.0, throw_t)) * 0.85)
@@ -1743,15 +1820,79 @@ func _fp_gait(xf: Transform3D) -> Transform3D:
 	var m := move_blend * (1.0 - slide_amt) * (1.0 - air_amt)
 	if m < 0.01:
 		return xf
-	var w := m * lerpf(1.0, 0.12, aim_amt)
+	var w := m * lerpf(1.0, 0.12, aim_amt) * float(FP_HANDLING[_fp_class()].gait)
 	var g: Array = []
 	for i in 4:
 		g.append(lerpf(float(FP_GAIT_WALK[i]), float(FP_GAIT_SPRINT[i]), sprint_amt) * w)
 	var side := sin(phase)                    # one sway per stride
 	var dip := absf(sin(phase))               # down on each footfall
 	var lag := sin(phase * 2.0 - 0.6)         # the gun trails the body a little
-	xf.origin += Vector3(side * g[0], -dip * g[1] + lag * g[1] * 0.25, 0.0)
-	return xf * Transform3D(Basis.from_euler(Vector3(-lag * g[3], side * g[3] * 0.6, side * g[2])), Vector3.ZERO)
+	var rock := sin(phase - 0.35)             # the carried gun rocks with the shoulders, a beat behind
+	xf.origin += Vector3(side * g[0], -dip * g[1] + lag * g[1] * 0.25, cos(phase * 2.0) * g[1] * 0.3 * sprint_amt)
+	return xf * Transform3D(Basis.from_euler(Vector3(-lag * g[3], rock * g[3] * (0.6 + 0.6 * sprint_amt), rock * g[2])), Vector3.ZERO)
+
+
+## Weapon class for first-person handling (FP_HANDLING).
+func _fp_class() -> String:
+	if weapon.is_melee():
+		return "knife"
+	if weapon.is_pistol():
+		return "pistol"
+	match String(weapon.stats.get("category", "")):
+		"SMG":
+			return "smg"
+		"SNIPER", "BOLT-ACTION", "MARKSMAN", "LEVER-ACTION", "BATTLE RIFLE":
+			return "heavy"
+	return "rifle"
+
+
+## First-person weapon inertia: the gun is a mass held out by the arms. Turning the
+## view, speeding up, stopping and landing push it off its pose; damped springs bring
+## it back with a slight overshoot (a heavier gun lags further and settles slower).
+## Standing still it breathes. Aiming holds it almost still so the sights stay on target.
+var _fp_lag := Vector3.ZERO       # yaw, pitch, roll lag (radians)
+var _fp_lag_v := Vector3.ZERO
+var _fp_mom := Vector3.ZERO       # positional lag in eye space (m)
+var _fp_mom_v := Vector3.ZERO
+var _fp_look := Vector2.ZERO      # last view yaw / pitch
+var _fp_airborne := false
+
+
+func _fp_inertia(xf: Transform3D, delta: float) -> Transform3D:
+	var mass := float(FP_HANDLING[_fp_class()].mass)
+	var hold := lerpf(1.0, 0.1, aim_amt)
+	var dt := maxf(delta, 0.0001)
+	var look_v := Vector2(wrapf(aim_yaw - _fp_look.x, -PI, PI), fp_pitch - _fp_look.y) / dt
+	_fp_look = Vector2(aim_yaw, fp_pitch)
+	if look_v.length() > 60.0:
+		look_v = Vector2.ZERO   # a teleport or snap, not a turn
+	# speeding up pushes the gun back and down; stopping throws it forward
+	var la := Basis(Vector3.UP, aim_yaw).inverse() * _acc_smooth
+	var push := Vector3(-la.x * 0.0011, -absf(la.z) * 0.0004, -la.z * 0.0011) * mass
+	var turn := Vector3(-look_v.x * 0.016, -look_v.y * 0.014, -look_v.x * 0.01 - la.x * 0.0025) * mass
+	turn = turn.clamp(Vector3(-0.09, -0.07, -0.08), Vector3(0.09, 0.07, 0.08))
+	# landing: the arms absorb the drop, the gun dips and springs back
+	var airborne := air_target > 0.5
+	if _fp_airborne and not airborne:
+		_fp_mom_v.y -= 0.45 * mass
+		_fp_lag_v.y -= 0.9 * mass
+	_fp_airborne = airborne
+	var k := 150.0 / mass
+	var c := 2.0 * sqrt(k) * 0.72   # a little under-damped: one soft overshoot
+	_fp_lag_v += (k * (turn - _fp_lag) - c * _fp_lag_v) * delta
+	_fp_lag += _fp_lag_v * delta
+	_fp_mom_v += (k * (push - _fp_mom) - c * _fp_mom_v) * delta
+	_fp_mom += _fp_mom_v * delta
+	_fp_lag = _fp_lag.clamp(Vector3(-0.12, -0.1, -0.1), Vector3(0.12, 0.1, 0.1))
+	_fp_mom = _fp_mom.limit_length(0.05)
+	# breathing and a slow idle drift while standing
+	var still := (1.0 - move_blend) * (1.0 - aim_amt * 0.85)
+	var breath := sin(_time * 1.45)
+	var drift := Vector3(sin(_time * 0.53) * 0.0012, breath * 0.0016, 0.0) * still
+	var lag := _fp_lag * hold
+	var off := Transform3D(Basis.from_euler(Vector3(lag.y + breath * 0.004 * still, lag.x, lag.z)), _fp_mom * hold + drift)
+	# the lag turns the gun about the hand, not the eye: the view never moves
+	return Transform3D(off.basis, xf.origin + off.origin) * Transform3D(xf.basis, Vector3.ZERO)
 
 
 func _update_legs(delta: float) -> void:
@@ -1889,7 +2030,7 @@ func _update_arms(delta: float) -> void:
 			if fp_mode and fp_arm_rig != null:
 				l_basis = fp_arm_rig.reload_basis(weapon, reload_t, l_basis)
 	# vault: left hand reaches for and plants on the obstacle top
-	var plant_w := _vw(0.02, 0.2, 0.5, 0.68)
+	var plant_w := _vw(0.02, 0.2, 0.5, 0.68) * (1.0 - _vault_aim_amt)
 	if plant_w > 0.0:
 		var palm := Basis(Vector3.UP, lower_yaw)
 		l_pos = l_pos.lerp(_vault_plant + Vector3(0, 0.05, 0), plant_w)
@@ -1932,11 +2073,21 @@ func _update_arms(delta: float) -> void:
 		var up := fp_eye.basis.y.normalized()
 		r_xf.origin -= up * _ads_hand_drop(hands[1], r_xf.basis, r_xf.origin, weapon.grip.global_position, shoulders[1].global_position) * aim_amt
 		l_pos -= up * _ads_hand_drop(hands[0], l_basis, l_pos, weapon.support.global_position, shoulders[0].global_position) * aim_amt
-	_reach_shoulder(0, l_pos, 0.13)
-	_reach_shoulder(1, r_xf.origin, 0.06)
-	_solve_ik(shoulders[1], elbows[1], UPPER_ARM, FOREARM, r_xf.origin, (cb * r_pole).normalized())
+	if fp_mode:
+		# wrist-led: the forearms swing into line with the hands that grip the gun
+		# aiming, the shooting hand sits behind the gun under the eye: its elbow stays down
+		# and out (tucking it in line would push it into the face and swing the arm round)
+		_fp_arm(1, r_xf.origin, r_xf.basis, (cb * r_pole).normalized(), 1.0 - FP_ADS_WRIST_EASE * aim_amt, delta)
+		_fp_arm(0, l_pos, l_basis, (cb * l_pole).normalized(), 1.0 - _free_arm, delta)
+	else:
+		_reach_shoulder(0, l_pos, 0.13)
+		_reach_shoulder(1, r_xf.origin, 0.06)
+		_solve_ik(shoulders[1], elbows[1], UPPER_ARM, FOREARM, r_xf.origin, (cb * r_pole).normalized())
+		_solve_ik(shoulders[0], elbows[0], UPPER_ARM, FOREARM, l_pos, (cb * l_pole).normalized())
+	# the forearms carry the hands' roll (a free, pumping hand follows its arm instead)
+	_roll_forearm(1, r_xf.basis, 1.0, delta)
+	_roll_forearm(0, l_basis, 1.0 - _free_arm, delta)
 	_set_basis(hands[1], r_xf.basis)
-	_solve_ik(shoulders[0], elbows[0], UPPER_ARM, FOREARM, l_pos, (cb * l_pole).normalized())
 	if _free_arm > 0.001:
 		var free_basis: Basis = elbows[0].global_transform.basis.orthonormalized()
 		if fp_mode and fp_arm_rig != null:
@@ -1950,14 +2101,14 @@ func _update_arms(delta: float) -> void:
 		hand_mag.global_transform = Transform3D(wb, l_pos + wb * Vector3(0.025, 0.075, -0.025))
 
 
-## Sprinting with the gun in the right hand only and the left arm pumping:
-## pistols and knives always; long guns only in first person (where the left
-## hand swings up into view). A third-person rifle stays in both hands,
-## carried across the chest like a real operator runs with it.
+## Sprinting with the weapon in the right hand only and the left arm pumping:
+## knives always, pistols in third person. In first person every gun stays in
+## both hands (rifle carried low across the chest, pistol tucked in close), so
+## both grips hold through the whole stride.
 func _one_hand_run() -> bool:
 	if not one_hand_sprint or weapon == null:
 		return false
-	return fp_mode or weapon.is_pistol() or weapon.is_melee()
+	return weapon.is_melee() or (weapon.is_pistol() and not fp_mode)
 
 
 ## Glove extents in hand space (corners of all its meshes), measured once.
@@ -1966,6 +2117,9 @@ var _hand_box: Array = []
 const CUFF_R := 0.052
 ## How far (0..1) a glove may rise from its hold point toward the sight line while aiming.
 const ADS_HAND_RISE := 0.33
+## The most a hand may drop for that (m): about the glove's own thickness, so it
+## stays on the grip / handguard instead of floating under the gun.
+const ADS_HAND_DROP_MAX := 0.018
 
 
 ## How far (m, along the view's up) a hand placed at `hb`/`at` must drop
@@ -2004,7 +2158,194 @@ func _ads_hand_drop(hand: Node3D, hb: Basis, at: Vector3, hold: Vector3, shoulde
 		var v: Vector3 = inv * (pt as Vector3)
 		if v.z < -0.01:
 			drop = maxf(drop, v.y - slope * -v.z)
-	return minf(drop, 0.12)
+	return minf(drop, ADS_HAND_DROP_MAX)
+
+
+## Turns forearm `i` about its own length to carry the roll of the hand it holds
+## (`hand_basis`), by `weight`. Pronation and supination happen along the forearm, so
+## the sleeve and the glove cuff turn with the glove, its strap tab on the back of the
+## hand; otherwise the sleeve would spin with every change of the elbow's bend. The
+## hand's position is on the forearm's axis, so it does not move.
+## In first person the forearm is carried over from the last frame, laid along the arm
+## without turning, and eased toward the hand's roll (FP_ROLL_FOLLOW): the sleeve turns
+## no more than the hand does, however the elbow moves.
+var _forearm_carry := [null, null]
+var _hand_carry := [null, null]
+
+
+func _roll_forearm(i: int, hand_basis: Basis, weight: float, delta: float) -> void:
+	if weight <= 0.001:
+		_forearm_carry[i] = null
+		_hand_carry[i] = null
+		return
+	var el: Node3D = elbows[i]
+	var cur := el.global_transform.basis.orthonormalized()
+	var h := hand_basis.orthonormalized()
+	# the back of the hand (glove +X, mirrored on the left) faces the forearm's -Z (the
+	# strap tab). Projected across the forearm as it lies: bending the wrist (flexion or
+	# deviation) leaves it in place, only turning the hand turns the forearm.
+	var y := cur.y
+	var z := -h.x * (-1.0 if i == 0 else 1.0)
+	z -= y * z.dot(y)
+	if z.length_squared() < 0.0001:
+		return   # wrist bent square to the arm: keep the bend's own roll
+	z = z.normalized()
+	var led := Basis(y.cross(z), y, z)
+	var b := cur.slerp(led, weight).orthonormalized() if weight < 0.999 else led
+	if fp_mode:
+		var eye_b := fp_eye.basis.orthonormalized()
+		var want := eye_b.transposed() * b
+		var hand_e := eye_b.transposed() * h
+		if _forearm_carry[i] != null:
+			var prev: Basis = _forearm_carry[i]
+			var carried := (Basis(Quaternion(prev.y.normalized(), want.y.normalized())) * prev).orthonormalized()
+			var ang := carried.z.signed_angle_to(want.z, want.y)
+			# never faster than the glove itself turns (plus a little to settle): with the
+			# wrist well bent, the elbow swinging round would otherwise wring the sleeve
+			var hand_turn := (_hand_carry[i] as Basis).get_rotation_quaternion().angle_to(hand_e.get_rotation_quaternion()) if _hand_carry[i] != null else 0.0
+			var limit := hand_turn + FP_ROLL_SLACK * delta
+			var step := clampf(ang * (1.0 - exp(-FP_ROLL_FOLLOW * delta)), -limit, limit)
+			want = (Basis(want.y.normalized(), step) * carried).orthonormalized()
+		_forearm_carry[i] = want
+		_hand_carry[i] = hand_e
+		b = eye_b * want
+	el.global_transform = Transform3D(b, el.global_position)
+
+
+## Wrist angles of a hand with basis `hb` whose forearm runs toward `to_elbow`
+## (glove space, see FP_WRIST): Vector2(flexion, ulnar deviation) in degrees.
+## `side` is -1 for the left hand, 1 for the right.
+static func wrist_angles(hb: Basis, to_elbow: Vector3, side: float) -> Vector2:
+	var f := hb.orthonormalized().transposed() * to_elbow.normalized()
+	return Vector2(rad_to_deg(atan2(-f.x * side, f.z)), rad_to_deg(atan2(-f.y, f.z)))
+
+
+## First person: a two-bone arm whose forearm stays inside the wrist's comfort
+## range (FP_WRIST) of the hand it ends in. The hand keeps its grip; the elbow
+## swings round and the off-screen shoulder slides (up to FP_SHOULDER_SLIDE) so the
+## forearm runs into the glove the way a real wrist allows, instead of kinking at
+## it. `weight` fades the correction (a free, pumping arm needs none).
+## Upper arms and elbows (with their pads) stay out of the view: a visible elbow
+## swings down round the shoulder-hand line, the way a shooter tucks it; when that
+## cannot hide it (a long reach, the arm nearly straight) the shoulder slides less,
+## and failing that the arm bends the default way, elbow point turned down and out.
+## Those corrections ease in and out (no pops in the visible forearm).
+var _fp_arm_fix := [Vector3(0, 0, 1), Vector3(0, 0, 1)]   # per arm: shoulder slide share, signed elbow swing (rad), default-bend share
+var _fp_slide := [null, null]   # per arm: eased shoulder slide (world)
+var _fp_pole := [null, null]    # per arm: eased elbow bend direction (world)
+
+
+func _fp_arm(i: int, target: Vector3, hand_basis: Basis, pole: Vector3, weight: float, delta: float) -> void:
+	var sh: Node3D = shoulders[i]
+	var s0 := sh.global_position
+	var elbow := _ik_joint(s0, target, UPPER_ARM, FOREARM, pole)
+	var want := elbow
+	if weight > 0.001:
+		var side := -1.0 if i == 0 else 1.0
+		var hb := hand_basis.orthonormalized()
+		var w := wrist_angles(hb, elbow - target, side)
+		var lim: Array = FP_WRIST[i]
+		var flex := clampf(w.x, lim[0], lim[1])
+		var dev := clampf(w.y, lim[2], lim[3])
+		if flex != w.x or dev != w.y:
+			var dir := (hb * Vector3(-tan(deg_to_rad(flex)) * side, -tan(deg_to_rad(dev)), 1.0)).normalized()
+			# an elbow out past the fingers has no meaningful wrist angle (it wraps
+			# round 180 degrees): ease toward the middle of the range instead
+			var ahead := (hb.transposed() * (elbow - target).normalized()).z
+			if ahead < 0.35:
+				var mid := (hb * Vector3(-tan(deg_to_rad((lim[0] + lim[1]) * 0.5)) * side, -tan(deg_to_rad((lim[2] + lim[3]) * 0.5)), 1.0)).normalized()
+				dir = mid.slerp(dir, smoothstep(0.0, 0.35, ahead))
+			want = elbow.lerp(target + dir * FOREARM, weight)
+	# the shoulder slides so the upper arm reaches that elbow
+	# (further while aiming: the gun is pulled in to the face, the shoulders well off-screen)
+	var slide := (want + (s0 - want).normalized() * UPPER_ARM - s0).limit_length(FP_SHOULDER_SLIDE * (1.0 + 0.75 * aim_amt))
+	var ease := 1.0 - exp(-FP_ARM_SETTLE * delta)
+	if _fp_slide[i] != null:
+		slide = (_fp_slide[i] as Vector3).lerp(slide, ease)
+	_fp_slide[i] = slide
+	var goal := Vector3(0.0, 0.0, 1.0)
+	for frac in [1.0, 0.5, 0.0]:
+		var at := _reached(s0 + slide * frac, target)
+		var swing := _hiding_swing(at, target, want)
+		if swing >= 0.0:
+			var axis0 := (target - at).normalized()
+			goal = Vector3(frac, swing * _swing_sign(axis0, _pole_dir(axis0, want - at)), 0.0)
+			break
+	var fix: Vector3 = _fp_arm_fix[i]
+	fix = fix.lerp(goal, ease)
+	_fp_arm_fix[i] = fix
+	sh.global_position = _reached(s0 + slide * fix.x, target)
+	var a := sh.global_position
+	var axis := (target - a).normalized()
+	var pv := _pole_dir(axis, want - a).rotated(axis, fix.y)
+	pv = _pole_dir(axis, pv.lerp(_pole_dir(axis, pole), fix.z))
+	# the elbow keeps to its natural bend (down and out) within FP_POLE_RANGE: past that
+	# the shoulder slide does the work, and the arm never sweeps round the hand
+	var base := _pole_dir(axis, pole)
+	pv = base.rotated(axis, clampf(base.signed_angle_to(pv, axis), -FP_POLE_RANGE, FP_POLE_RANGE))
+	# the bend direction turns smoothly too (it is undefined for a straight arm and
+	# could otherwise flip from one frame to the next)
+	if _fp_pole[i] != null:
+		var prev := _pole_dir(axis, _fp_pole[i])
+		var ang := prev.signed_angle_to(pv, axis)
+		var turn_by := minf(absf(ang) * (1.0 - exp(-FP_POLE_SETTLE * delta)), FP_POLE_SPEED * delta)
+		pv = prev.rotated(axis, signf(ang) * turn_by)
+	_fp_pole[i] = pv
+	_solve_ik(sh, elbows[i], UPPER_ARM, FOREARM, target, pv)
+
+
+## The shoulder at `s`, moved toward `target` just enough for the arm to reach it.
+static func _reached(s: Vector3, target: Vector3) -> Vector3:
+	var to := target - s
+	var excess := to.length() - (UPPER_ARM + FOREARM - 0.004)
+	return s + to.normalized() * excess if excess > 0.0 else s
+
+
+## Which way round the shoulder-hand line swings an elbow downward.
+func _swing_sign(axis: Vector3, pole_dir: Vector3) -> float:
+	return 1.0 if axis.cross(pole_dir).dot(-fp_eye.basis.y) >= 0.0 else -1.0
+
+
+## Smallest swing (radians) of the elbow from toward `want`, downward round the
+## shoulder-hand line, that keeps the upper arm out of view; -1 when none does.
+func _hiding_swing(a: Vector3, target: Vector3, want: Vector3) -> float:
+	var axis := (target - a).normalized()
+	var p := _pole_dir(axis, want - a)
+	var sgn := _swing_sign(axis, p)
+	if not _upper_arm_in_view(a, _ik_joint(a, target, UPPER_ARM, FOREARM, p)):
+		return 0.0
+	var lo := 0.0
+	var step := deg_to_rad(7.5)
+	for k in 16:
+		var hi := step * (k + 1)
+		if not _upper_arm_in_view(a, _ik_joint(a, target, UPPER_ARM, FOREARM, p.rotated(axis, sgn * hi))):
+			for r in 3:   # refine, so the swing changes smoothly as the arm moves
+				var mid := (lo + hi) * 0.5
+				if _upper_arm_in_view(a, _ik_joint(a, target, UPPER_ARM, FOREARM, p.rotated(axis, sgn * mid))):
+					lo = mid
+				else:
+					hi = mid
+			return hi
+		lo = hi
+	return -1.0
+
+
+## True when the upper arm from shoulder `a` to elbow `e`, with the elbow pad round
+## it, would show in the first-person view (at the player's field of view, 16:9 or
+## narrower). Forearms belong in view; upper arms and elbows don't.
+func _upper_arm_in_view(a: Vector3, e: Vector3) -> bool:
+	# the view narrows as the sights come up (camera_rig.gd zooms by the same amount)
+	var zoom := lerpf(1.0, float(weapon.stats.get("zoom", 1.0)) * 1.35, aim_amt) if weapon != null else 1.0
+	var half := deg_to_rad(float(Settings.v.get("fov", 86.0)) / maxf(zoom, 1.0) * 0.5 + FP_VIEW_MARGIN)
+	var below := tan(minf(half, 1.5))
+	var side := tan(minf(atan(tan(half) * 16.0 / 9.0), 1.5))
+	var inv := fp_eye.affine_inverse()
+	for t in [0.45, 0.75, 1.0]:
+		var v := inv * a.lerp(e, t)
+		var depth := -v.z + FP_ARM_RADIUS
+		if depth > 0.0 and v.y + FP_ARM_RADIUS > -below * depth and absf(v.x) - FP_ARM_RADIUS < side * depth:
+			return true
+	return false
 
 
 func _reach_shoulder(i: int, target: Vector3, tp_limit: float) -> void:
@@ -2316,18 +2657,30 @@ func _drop_weapon() -> void:
 
 ## Analytic two-bone IK in world space. Bones extend along their local -Y,
 ## and the joint bends toward `pole` (the bone's local -Z faces the pole).
-func _solve_ik(upper: Node3D, lower: Node3D, l1: float, l2: float, target: Vector3, pole: Vector3) -> void:
-	var a := upper.global_position
+## Middle joint of a two-bone chain from `a` toward `target`, bent toward `pole`.
+static func _ik_joint(a: Vector3, target: Vector3, l1: float, l2: float, pole: Vector3) -> Vector3:
 	var to := target - a
 	var dist := to.length()
 	var dir := to / dist if dist > 0.0001 else Vector3.DOWN
 	var d := clampf(dist, 0.02, l1 + l2 - 0.001)
 	var cos_a := clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0)
+	return a + dir * (l1 * cos_a) + _pole_dir(dir, pole) * (l1 * sqrt(maxf(0.0, 1.0 - cos_a * cos_a)))
+
+
+static func _pole_dir(dir: Vector3, pole: Vector3) -> Vector3:
 	var pole_dir := pole - dir * pole.dot(dir)
 	if pole_dir.length_squared() < 1e-6:
 		pole_dir = dir.cross(Vector3.UP if absf(dir.y) < 0.9 else Vector3.RIGHT)
-	pole_dir = pole_dir.normalized()
-	var joint := a + dir * (l1 * cos_a) + pole_dir * (l1 * sqrt(maxf(0.0, 1.0 - cos_a * cos_a)))
+	return pole_dir.normalized()
+
+
+func _solve_ik(upper: Node3D, lower: Node3D, l1: float, l2: float, target: Vector3, pole: Vector3) -> void:
+	var a := upper.global_position
+	var to := target - a
+	var dir := to.normalized() if to.length() > 0.0001 else Vector3.DOWN
+	var d := clampf(to.length(), 0.02, l1 + l2 - 0.001)
+	var pole_dir := _pole_dir(dir, pole)
+	var joint := _ik_joint(a, target, l1, l2, pole)
 	var end := a + dir * d
 	upper.global_transform = Transform3D(_basis_from_down(joint - a, pole_dir), a)
 	lower.global_transform = Transform3D(_basis_from_down(end - joint, pole_dir), joint)

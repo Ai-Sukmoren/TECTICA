@@ -46,12 +46,17 @@ const RAMP_WIDTH := 1.8
 
 var map_key := "warehouse"
 var _walkable: Array = []
+## navigation polygons of the play area (the island _walkable comes from)
+var _walk_polys: Array = []
+var _cover_made := false
 var _lo := Vector3.ZERO
 var _hi := Vector3.ZERO
 ## where the ground ends (the boundary stands here): may be inside _lo/_hi, which also take in overhangs
 var _ground_lo := Vector3.ZERO
 var _ground_hi := Vector3.ZERO
 static var _navs := {}
+## map -> cover spots found on it (positions only; each match gets fresh copies)
+static var _covers := {}
 
 
 func _init(id: String = "warehouse") -> void:
@@ -97,6 +102,24 @@ func build() -> void:
 	_collect_walkable()
 	_define_mode()
 	seed(Time.get_ticks_usec())
+	_warm_cover.call_deferred()
+
+
+## Finds the AI's cover while the map loads (a few ms, once per map) instead of in the first fire fight.
+func _warm_cover() -> void:
+	# the spots are checked against the navigation map: wait until it holds this map's mesh (its first syncs can be
+	# empty, and every query then answers the origin)
+	for i in 120:
+		await get_tree().physics_frame
+		if not is_inside_tree() or _cover_validated:
+			return
+		var map := get_world_3d().navigation_map
+		if NavigationServer3D.map_get_iteration_id(map) == 0:
+			continue   # (a query before the first sync is an error)
+		var probe: Vector3 = _walkable[0] if not _walkable.is_empty() else player_spawn
+		if NavigationServer3D.map_get_closest_point(map, probe).distance_to(probe) < 1.0:
+			_validate_cover()
+			return
 
 
 ## The model, solid wherever it has geometry, with lamps on its light fittings.
@@ -341,6 +364,96 @@ func _collect_walkable() -> void:
 		if score > best:
 			best = score
 			_walkable = isl.centres
+			_walk_polys = isl.polys
+
+
+## Cover for the AI along the edge of the play area's navigation mesh, where it stops short of an obstacle: a spot
+## every metre or so with something solid in front at crouch height (0.85 m, as level.is_covered() checks). Low cover
+## (clear at standing eye height) is fired over standing up; a wall is used only at its corner, where a sidestep
+## ("peek") clears it to fire past. Drops and kerbs (nothing in front) and flat wall faces are left out.
+func _generate_cover() -> void:
+	if _cover_made:
+		return
+	_cover_made = true
+	if _covers.has(map_key):
+		for c in _covers[map_key]:
+			var d: Dictionary = (c as Dictionary).duplicate()
+			d.taken = null
+			cover_points.append(d)
+		return
+	var found: Array = []
+	_covers[map_key] = found
+	var nm := nav_region.navigation_mesh
+	if nm == null or _walk_polys.is_empty():
+		return
+	var verts := nm.get_vertices()
+	var key := func(v: Vector3) -> Vector3i: return Vector3i((v * 20.0).round())
+	# edges used by one polygon only are the mesh's boundary
+	var uses := {}
+	var edges: Array = []   # [a, b, polygon centre]
+	for i in _walk_polys:
+		var poly := nm.get_polygon(i)
+		var c := Vector3.ZERO
+		for k in poly:
+			c += verts[k]
+		c /= poly.size()
+		for j in poly.size():
+			var a: Vector3 = verts[poly[j]]
+			var b: Vector3 = verts[poly[(j + 1) % poly.size()]]
+			var ka: Vector3i = key.call(a)
+			var kb: Vector3i = key.call(b)
+			var ek := str(ka) + str(kb) if str(ka) < str(kb) else str(kb) + str(ka)
+			uses[ek] = int(uses.get(ek, 0)) + 1
+			edges.append([a, b, c, ek])
+	var space := get_world_3d().direct_space_state
+	var map := get_world_3d().navigation_map
+	var taken := {}
+	var ray := func(from: Vector3, to: Vector3) -> Dictionary:
+		return space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, Layers.WORLD))
+	for e in edges:
+		if int(uses[e[3]]) != 1:
+			continue
+		var a: Vector3 = e[0]
+		var b: Vector3 = e[1]
+		var along := Vector3(b.x - a.x, 0.0, b.z - a.z)
+		var length := along.length()
+		if length < 0.05:
+			continue
+		var t := along / length
+		var n := Vector3(t.z, 0.0, -t.x)
+		if n.dot((a + b) * 0.5 - (e[2] as Vector3)) < 0.0:
+			n = -n   # out of the polygon, toward what stops the mesh
+		var steps := maxi(1, int(length / 1.2))
+		for s_i in steps:
+			var p := a.lerp(b, (s_i + 0.5) / steps)
+			var cell := Vector3i(floori(p.x), floori(p.y / 1.5), floori(p.z))
+			if taken.has(cell):
+				continue
+			var low: Dictionary = ray.call(p + Vector3.UP * 0.85, p + Vector3.UP * 0.85 + n * 1.3)
+			if low.is_empty() or (low.normal as Vector3).dot(n) > -0.5:
+				continue   # a drop or a kerb, or a sloping face: nothing to hide behind
+			var peek := Vector3.ZERO
+			if not ray.call(p + Vector3.UP * 1.5, p + Vector3.UP * 1.5 + n * 1.3).is_empty():
+				# a wall: only worth it at a corner a sidestep clears
+				var ok := false
+				for side in [1.0, -1.0]:
+					var off: Vector3 = t * side * 0.9
+					var q := p + off
+					var on_mesh := NavigationServer3D.map_get_closest_point(map, q)
+					if Vector2(on_mesh.x - q.x, on_mesh.z - q.z).length() > 0.3 or absf(on_mesh.y - q.y) > 0.5:
+						continue
+					if not ray.call(p + Vector3.UP * 1.45, q + Vector3.UP * 1.45).is_empty():
+						continue
+					if ray.call(q + Vector3.UP * 1.45, q + Vector3.UP * 1.45 + n * 1.3).is_empty():
+						peek = off
+						ok = true
+						break
+				if not ok:
+					continue
+			taken[cell] = true
+			found.append({"pos": p, "normal": -n, "taken": null, "valid": true, "destroyed": false, "peek": peek})
+	for c in found:
+		cover_points.append((c as Dictionary).duplicate())
 
 
 ## A concrete ramp slab from foot to top (its upper face runs between them);

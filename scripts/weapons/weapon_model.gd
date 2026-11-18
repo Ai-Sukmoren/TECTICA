@@ -1031,6 +1031,10 @@ static func _holder_box(holder: Node3D) -> AABB:
 ## trigger guard or grip hangs lower within its length it would run through
 ## them: the rail is cut to the clear, flat stretch round its mount instead.
 ## Returns how far it had to be lowered (m) to clear a curved underside.
+## the least share of its length a rail keeps when the underside has no flat stretch that long
+const RAIL_MIN_SHARE := 0.6
+
+
 static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> float:
 	var box := _holder_box(rail)
 	var face_y := at.position.y
@@ -1051,7 +1055,8 @@ static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> float:
 	var span: float = ends[1] - ends[0]
 	if span >= box.size.z - 0.002:
 		return 0.0
-	var k := maxf(span, 0.03) / box.size.z
+	# never a stub: a rail shorter than this read as no rail at all (AS VAL, P90 came out 3 cm long)
+	var k := maxf(span, box.size.z * RAIL_MIN_SHARE) / box.size.z
 	rail.scale.z *= k
 	# centre the shortened rail on the clear stretch
 	var mid := (float(ends[0]) + float(ends[1])) * 0.5

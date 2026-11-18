@@ -13,9 +13,50 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.41
+## 🆕 What's new in v1.42
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.41.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.42.0-beta)
+
+### New first-person animation
+Both hands stay on the gun while running and sprinting, with the wrists in line with the forearms. Aiming no longer
+swings the right arm up into view or twists the forearm. Every gun class has its own weight: pistols are quick,
+rifles and heavy guns lag behind fast turns, and the gun breathes at rest and dips on landing. Checked on every
+weapon at 30, 60 and 144 fps.
+
+| Rifle sprint, before (left) and now (right) |
+|---|
+| ![Sprint before and after](docs/screenshots/v142-sprint-before-after.jpg) |
+
+### Bullet time
+A **FOCUS** meter (above health) for solo and vs-AI play: aim or fire while vaulting, sliding, jumping or kicking
+to slow time. Kills fill it, headshots more. You can now shoot in the middle of a vault.
+
+### Smoother vaults, smarter bots
+The vault lifts the body over the obstacle itself, so no more floating in mid-air or clipping through the edge, and
+it always lands on solid floor (93 vaults checked across every map). Under fire, bots run to cover, crouch and peek
+around corners; in deathmatch they leave cover when things go quiet.
+
+| Bullet time | Vault |
+|---|---|
+| ![Bullet time](docs/screenshots/v142-bullet-time.jpg) | ![Vault](docs/screenshots/v142-vault.jpg) |
+
+### Real gun sounds
+Recorded gunshots, magazine and bolt sounds for every gun (CC0 libraries, see Credits), with an echo indoors.
+
+### Also new
+- **Mythic Ruby** (admin skin): its sticker now wraps the whole gun, printed into the surface. **EDIT STICKER** in
+  the ARMORY moves it (drag), sizes it (wheel) and turns it (right-drag); **FULL WRAP** resets it. Admins can put it
+  on any skin.
+- Fixed: rail attachments on the AS VAL and P90 showed as a short stub; the ARMORY dropped your attachments (the optic
+  disappeared) while placing a sticker.
+
+| Editing the sticker | On another skin (admin) |
+|---|---|
+| ![Sticker editor](docs/screenshots/v142-sticker-edit.jpg) | ![Sticker on Gilded Royale](docs/screenshots/v142-sticker-any-skin.jpg) |
+
+## Earlier: v1.41
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.41.0-beta)
 
 ### Solid maps, smooth stairs
 Stairs and kerbs walk without jumping (for bots and zombies too), map collision no longer lets you fall through
@@ -217,6 +258,7 @@ godot --path TECTICA
 | Fire / aim down sights | LMB / RMB | RT / LT |
 | Sprint | Shift (hold) | L3 (toggle) |
 | Vault low obstacle | Space (or sprint into it) | A (or sprint into it) |
+| Bullet time (solo / vs AI, needs FOCUS) | Aim or fire while vaulting, sliding, jumping or kicking | LT / RT, same moves |
 | Peek left / right | Q / E | LB / RB |
 | Crouch (slide while sprinting) | C / Ctrl | B |
 | Reload | R | X |
@@ -395,6 +437,7 @@ Tests save into a separate sandbox (`user://test_sandbox/`), never into real acc
 - **Planted-foot gait**: stance/swing phases with stride sized to ground speed (no foot sliding), heel-off and toe-lift, walk vs run hip bob.
 - **Peek**: hips shift, spine/chest roll around the aim axis, head tilt and weapon cant; shots and enemy line-of-sight use the leaned position, clamped against walls.
 - **Vault**: side vault with a left-hand plant on the obstacle (IK), tucked legs, rifle swung clear, landing dip and forward lurch.
+- **First-person arms**: two-bone IK to the gun's grips, wrist limits, elbows kept out of view, forearm roll led by the hand; per-class weapon weight with spring inertia, breathing and landing.
 - Weapon inertia (lags and cants when turning fast), acceleration/stop lean, hip bob and sway, spring recoil, hit-reaction springs, keyframed reload hand paths (mag drop on empty reload, retention on tactical), weapon lower/raise switching, a directional death fall and a dropped physics weapon.
 
 To use mocap/Mixamo characters instead, replace the rig with an imported Skeleton3D + AnimationTree, and keep the same input properties (`move_velocity`, `aim_yaw`, `crouch_target`, `aim_target`, `sprint_target`).
@@ -471,6 +514,8 @@ multi-computer multiplayer session still needs manual playtesting.
 ## Credits
 
 - Characters: Quaternius — Ultimate Modular Characters / Universal Base Characters (CC0).
+- Gunshots: *The Free Firearm Sound Library*, Still North Media (CC0); reload foley: *Gun reload sounds*, Joaken (CC0).
+  Both via OpenGameArt; details in `assets/audio/sfx/CREDITS.md`.
 - MGP7 SMG, ZC57 pistol, M67 grenade, sandbags, fuel barrels, ammo cans, med kits, radios and other props:
   **Alstra Infinite** — PPS Shooter Essentials (alstrainfinite.itch.io/pps-shooter-essentials),
   used under the Alstra Infinite license (alstrainfinite.com/fal).

@@ -2,7 +2,8 @@ extends SceneTree
 ## Attachments you cannot see: every gun is rendered bare (its defaults) and with each attachment option, from the
 ## side, above and below; an option that changes almost no pixels in every view is reported (hidden inside the gun,
 ## or not drawn). A sheet of the flagged ones is saved for a look. Needs a window.
-##   godot --path . -s res://tests/previews/attachment_pixel_audit.gd -- <out_dir>
+## With a skin id the guns wear that finish with the sticker on (as an admin sees them).
+##   godot --path . -s res://tests/previews/attachment_pixel_audit.gd -- <out_dir> [skin]
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const Data = preload("res://scripts/weapons/weapon_data.gd")
 const NOTHING := ["none", "standard", "iron", "integral"]
@@ -12,6 +13,7 @@ const MIN_CHANGE := 0.005
 
 var cam: Camera3D
 var holder: Node3D
+var skin := ""
 
 
 func _initialize() -> void:
@@ -49,6 +51,9 @@ func views(id: String, att: Dictionary) -> Array:
 	var w := Weapon.new()
 	holder.add_child(w)
 	w.setup(id, att)
+	if skin != "":
+		w.apply_skin(skin, {})
+		w.apply_sticker({"on": true, "id": "patch_02"})
 	var out: Array = []
 	for v in [[Vector3(1, 0, 0), Vector3.UP], [Vector3(0, 1, 0), Vector3(0, 0, -1)], [Vector3(0, -1, 0), Vector3(0, 0, -1)], [Vector3(-1, 0, 0), Vector3.UP]]:
 		cam.position = (v[0] as Vector3) * 3.0
@@ -61,6 +66,7 @@ func views(id: String, att: Dictionary) -> Array:
 func run() -> void:
 	var a := OS.get_cmdline_user_args()
 	var out: String = a[0] if a.size() > 0 else "user://"
+	skin = a[1] if a.size() > 1 else ""
 	root.size = Vector2i(720, 360)
 	var world := Node3D.new()
 	root.add_child(world)

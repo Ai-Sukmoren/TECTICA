@@ -120,8 +120,8 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 		var rail := _att_model(ub_at, "rail")
 		if rail != null:
 			rail.scale = Vector3.ONE * small
-			var lowered := _fit_rail(root, ub_at, rail)
-			ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP * small - lowered, 0))
+			var moved := _fit_rail(root, ub_at, rail)
+			ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP * small, 0) + moved)
 	_tag_new(root, seen, "rail")
 	var ub := _underbarrel(ub_at, ub_kind, small)
 	_tag_new(root, seen, "underbarrel")
@@ -508,7 +508,6 @@ static func _marlin(r: Node3D) -> Dictionary:
 		"eject": _marker(r, "Eject", Vector3(0.022, 0.055, -0.157)),
 		"muzzle_at": _marker(r, "MuzzleAt", Vector3(0, 0.069, -0.68)),
 		"under_at": _marker(r, "UnderAt", Vector3(0, _bottom_at(r, -0.42, 0.03), -0.42)),
-		"rail_adapter": true,
 		"mag_at": _marker(r, "MagAt", Vector3(0.02, 0.038, -0.132)),
 		"mag_style": "shell",
 		"stock_at": r,
@@ -528,13 +527,13 @@ static func _marlin(r: Node3D) -> Dictionary:
 const LOW_POLY := "res://assets/thirdparty/low_poly_guns/"
 const LP_GUNS := {
 	"aug_a1": {"length": 0.79, "grip": Vector2(-0.767, -0.304), "support": Vector2(1.33, -0.41), "mag": Vector2(-1.81, -0.1),
-			"muzzle": Vector2(3.944, 0.214), "eject": Vector2(-1.5, 0.2), "charge": Vector2(0.95, 0.3), "under": Vector2(2.3, 0.0), "rail_adapter": true,
+			"muzzle": Vector2(3.944, 0.214), "eject": Vector2(-1.5, 0.2), "charge": Vector2(0.95, 0.3), "under": Vector2(2.3, 0.0),
 			"sight": Vector2(-1.43, 0.92), "relief": 0.06},
 	"hk33": {"hex": [-0.46, -0.15], "length": 0.93, "grip": Vector2(-1.834, -0.26), "support": Vector2(0.5, 0.12), "mag": Vector2(-0.08, 0.1),
 			"muzzle": Vector2(4.472, 0.378), "eject": Vector2(-0.6, 0.5), "charge": Vector2(1.9, 0.65), "under": Vector2(1.4, 0.07), "rail_adapter": true,
 			"sight": Vector2(-1.897, 0.95)},
 	"uar10": {"hex": [-0.58, -0.27], "length": 1.03, "grip": Vector2(-1.902, -0.5), "support": Vector2(1.5, -0.04), "mag": Vector2(-0.4, -0.1),
-			"muzzle": Vector2(5.356, 0.227), "eject": Vector2(-1.0, 0.25), "charge": Vector2(-2.1, 0.49), "under": Vector2(2.1, -0.05), "rail_adapter": true,
+			"muzzle": Vector2(5.356, 0.227), "eject": Vector2(-1.0, 0.25), "charge": Vector2(-2.1, 0.49), "under": Vector2(1.45, -0.05), "rail_adapter": true,
 			"sight": Vector2(-1.855, 0.964), "relief": 0.1},
 	"as_val": {"length": 0.9, "grip": Vector2(-1.422, -0.426), "support": Vector2(0.8, 0.02), "mag": Vector2(0.14, -0.1),
 			"muzzle": Vector2(4.375, 0.33), "eject": Vector2(-0.3, 0.3), "charge": Vector2(0.5, 0.35), "under": Vector2(0.9, 0.0), "snap_under": true,
@@ -543,7 +542,7 @@ const LP_GUNS := {
 			"muzzle": Vector2(3.718, 0.114), "eject": Vector2(0.62, 0.35), "charge": Vector2(0.4, 0.4), "under": Vector2(1.9, -0.17), "snap_under": true,
 			"sight": Vector2(0.253, 0.72), "rail": Vector2(-0.3, 0.53), "relief": 0.2},
 	"p90": {"length": 0.5, "grip": Vector2(0.75, -0.74), "support": Vector2(1.55, -0.7), "mag": Vector2(0.47, 0.08),
-			"muzzle": Vector2(2.6, -0.13), "eject": Vector2(0.4, -1.0), "charge": Vector2(1.2, -0.2), "under": Vector2(1.8, -0.75), "rail_adapter": true,
+			"muzzle": Vector2(2.6, -0.13), "eject": Vector2(0.4, -1.0), "charge": Vector2(1.2, -0.2), "under": Vector2(1.15, -0.75),
 			"sight": Vector2(0.6, 0.83), "rail": Vector2(1.1, 0.82), "relief": 0.2},
 	"scar_h": {"length": 0.91, "grip": Vector2(-1.75, -0.7), "support": Vector2(1.3, -0.05), "mag": Vector2(-0.34, -0.6),
 			"muzzle": Vector2(4.81, 0.226), "eject": Vector2(-0.3, 0.45), "charge": Vector2(1.6, 0.4), "under": Vector2(2.0, -0.05),
@@ -552,10 +551,10 @@ const LP_GUNS := {
 	# lifts a short 60 degrees and runs back a short stroke; the Mosin's two-lug
 	# bolt turns a full 90 degrees and runs back much further.
 	"l96a1": {"drop": ["blt"], "bolt_action": [1.05, 0.085], "length": 1.18, "grip": Vector2(-1.4, -0.65), "support": Vector2(2.0, -0.05), "mag": Vector2(0.0, -0.3),
-			"muzzle": Vector2(7.25, 0.469), "eject": Vector2(0.0, 0.5), "charge": Vector2(-1.0, 0.45), "under": Vector2(3.5, -0.15), "rail_adapter": true,
+			"muzzle": Vector2(7.25, 0.469), "eject": Vector2(0.0, 0.5), "charge": Vector2(-1.0, 0.45), "under": Vector2(3.5, -0.15),
 			"sight": Vector2(-1.39, 0.95), "rail": Vector2(0.0, 0.7), "relief": 0.1},
 	"mosin": {"bolt_action": [1.55, 0.105], "length": 1.24, "grip": Vector2(-3.2, -0.05), "support": Vector2(0.2, 0.1), "mag": Vector2(-1.7, -0.3),
-			"muzzle": Vector2(6.2, 0.513), "eject": Vector2(-1.5, 0.6), "charge": Vector2(-2.3, 0.45), "under": Vector2(2.5, 0.0), "rail_adapter": true,
+			"muzzle": Vector2(6.2, 0.513), "eject": Vector2(-1.5, 0.6), "charge": Vector2(-2.3, 0.45), "under": Vector2(2.5, 0.0),
 			"sight": Vector2(0.05, 0.8), "rail": Vector2(-1.5, 0.75), "relief": 0.45},
 	# Remington 700: two-lug push-feed bolt, a full 90 degree lift and a long-action throw;
 	# source scaled x1.3 at conversion (the model is drawn at 0.83 m)
@@ -1027,20 +1026,91 @@ static func _holder_box(holder: Node3D) -> AABB:
 	return box
 
 
-## The rail adapter clamps flat to the gun's underside at `at`. Where a magazine,
-## trigger guard or grip hangs lower within its length it would run through
-## them: the rail is cut to the clear, flat stretch round its mount instead.
-## Returns how far it had to be lowered (m) to clear a curved underside.
 ## the least share of its length a rail keeps when the underside has no flat stretch that long
-const RAIL_MIN_SHARE := 0.6
+const RAIL_MIN_SHARE := 0.45
+## How far the rail may slide along the gun to find a flat underside: forward, back (m), in steps.
+const RAIL_SLIDE_FORWARD := 0.25
+const RAIL_SLIDE_BACK := 0.08
+const RAIL_SLIDE_STEP := 0.005
 
 
-static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> float:
+## Fits the rail adapter flat to the gun's underside at `at`, cut to the clear stretch
+## if a magazine or grip hangs lower within its length, and returns how far it moved
+## (the underbarrel part then hangs from the rail's new face). Where the mount point has
+## no flat underside long enough (over a magazine, a trigger loop or under a
+## suppressor) the rail slides along the gun to the nearest stretch that has one,
+## forward first, instead of hanging in the air below the lowest point.
+static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
 	var box := _holder_box(rail)
-	var face_y := at.position.y
-	var z0 := at.position.z
+	# the bar itself sits flush on the gun: its clamp posts (the model's top) sink
+	# into the handguard instead of holding the bar off it with air showing
+	var bar_top := _top_in(_faces_of(rail), box.get_center().z, box.get_center().x)
+	var flush := (box.end.y - bar_top) * rail.scale.y if is_finite(bar_top) else 0.0
+	var all := _faces_of(r, rail)
 	var half := box.size.z * 0.5
-	var faces := _faces_near(_faces_of(r, rail), z0 - half - 0.01, z0 + half + 0.01)
+	var need := box.size.z * RAIL_MIN_SHARE
+	var z0 := at.position.z
+	var face_y := at.position.y
+	var ends := _flat_span(all, z0, face_y, half)
+	var moved := Vector3.ZERO
+	if float(ends[1]) - float(ends[0]) < need:
+		var d := RAIL_SLIDE_STEP
+		while d <= RAIL_SLIDE_FORWARD:
+			for zc: float in ([z0 - d, z0 + d] if d <= RAIL_SLIDE_BACK else [z0 - d]):
+				var fy := _bottom_in(_faces_near(all, zc - 0.002, zc + 0.002), zc)
+				if not is_finite(fy):
+					continue
+				var e := _flat_span(all, zc, fy, half)
+				if float(e[1]) - float(e[0]) >= need:
+					moved = Vector3(0, fy - face_y, zc - z0)
+					z0 = zc
+					face_y = fy
+					ends = e
+					break
+			if moved != Vector3.ZERO:
+				break
+			d += RAIL_SLIDE_STEP
+		rail.position += moved
+	var span: float = float(ends[1]) - float(ends[0])
+	var k := 1.0
+	var mid := z0
+	if span < box.size.z - 0.002:
+		# never a stub: a rail shorter than this read as no rail at all (AS VAL, P90 came out 3 cm long)
+		k = maxf(span, need) / box.size.z
+		rail.scale.z *= k
+		# centre the shortened rail on the clear stretch
+		mid = (float(ends[0]) + float(ends[1])) * 0.5
+		rail.position.z += mid - z0 - box.get_center().z * k
+	var half_k := box.size.z * k * 0.5
+	var faces := _faces_near(all, mid - half_k - 0.01, mid + half_k + 0.01)
+	# follow the underside's slope: handguards rise or fall toward the muzzle, and a
+	# level rail touched only at one end (the other clamp post hung in the air)
+	var zf := mid - half_k * 0.92
+	var zb := mid + half_k * 0.92
+	var yf := _bottom_in(faces, zf)
+	var yb := _bottom_in(faces, zb)
+	if is_finite(yf) and is_finite(yb) and absf(yf - yb) < 0.03:
+		var top := Vector3(box.get_center().x, box.end.y, box.get_center().z) * rail.scale
+		var tilt := Basis(Vector3.RIGHT, atan2(yf - yb, zb - zf))
+		rail.basis = tilt * Basis.from_scale(rail.scale)
+		rail.position += top - tilt * top   # turn about the rail's top centre
+		var dy := (yf + yb) * 0.5 - face_y + flush
+		rail.position.y += dy
+		return moved + Vector3(0, dy, 0)
+	# a curved underside has no flat stretch even as long as the shortest rail: it
+	# drops just clear of the lowest point over its length instead
+	var low := INF
+	for i in 7:
+		low = minf(low, _bottom_in(faces, lerpf(mid - half_k, mid + half_k, i / 6.0)))
+	var drop := maxf(face_y - low, 0.0) if is_finite(low) else 0.0
+	rail.position.y += flush - drop
+	return moved + Vector3(0, flush - drop, 0)
+
+
+## The stretch [z_front, z_back] around z0 where the gun's underside stays at
+## face_y (nothing hangs below it, it doesn't step up away), at most `half` each way.
+static func _flat_span(all: PackedVector3Array, z0: float, face_y: float, half: float) -> Array:
+	var faces := _faces_near(all, z0 - half - 0.01, z0 + half + 0.01)
 	var ends: Array = []
 	for dir: float in [-1.0, 1.0]:
 		var reach := 0.0
@@ -1052,24 +1122,7 @@ static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> float:
 				break
 			reach += 0.002
 		ends.append(z0 + dir * reach)
-	var span: float = ends[1] - ends[0]
-	if span >= box.size.z - 0.002:
-		return 0.0
-	# never a stub: a rail shorter than this read as no rail at all (AS VAL, P90 came out 3 cm long)
-	var k := maxf(span, box.size.z * RAIL_MIN_SHARE) / box.size.z
-	rail.scale.z *= k
-	# centre the shortened rail on the clear stretch
-	var mid := (float(ends[0]) + float(ends[1])) * 0.5
-	rail.position.z += mid - z0 - box.get_center().z * k
-	# a curved underside (P90) has no flat stretch even as long as the shortest
-	# rail: it drops just clear of the lowest point over its length instead
-	var low := INF
-	var half_k := box.size.z * k * 0.5
-	for i in 7:
-		low = minf(low, _bottom_in(faces, lerpf(mid - half_k, mid + half_k, i / 6.0)))
-	var drop := maxf(face_y - low, 0.0) if is_finite(low) else 0.0
-	rail.position.y -= drop
-	return drop
+	return ends
 
 
 ## Centre of an optic model's glowing reticle, in its holder's space (INF if none).

@@ -146,7 +146,8 @@ func run() -> void:
 	check(p.weapons[0].ammo == aug_ammo, "the gun keeps its ammo")
 	check(is_equal_approx(float(p.weapons[0].stats.reload), float(D.compute("aug_a1", p.weapons[0].attachments).reload) * 0.6), "perks still apply")
 	check(shop.buy("att_aug_a1:muzzle:suppressor", p) == "", "can't buy a fitted attachment again")
-	check(shop.buy("att_aug_a1:underbarrel:laser", p) != "" and String(p.weapons[0].attachments.rail) == "rail", "a laser brings its rail")
+	check(shop.buy("att_aug_a1:underbarrel:laser", p) != "" and String(p.weapons[0].attachments.underbarrel) == "laser", "a laser fits")
+	check(String(p.weapons[0].attachments.rail) == "none", "on the AUG without a rail (it clamps to the barrel)")
 	check(String(p.weapons[0].attachments.muzzle) == "suppressor", "earlier attachments stay")
 
 	# --- an SMG adds the third gun, in its own slot next to the rifle

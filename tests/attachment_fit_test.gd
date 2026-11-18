@@ -6,10 +6,12 @@ extends SceneTree
 ##   under    straight up into the handguard   -> mount top on the handguard
 ##   muzzle   back along the bore              -> device starts at the barrel tip
 ##   stock    forward into the receiver        -> stock meets the receiver
+##   rail     the adapter's top against the gun's underside above it (never hanging in the air)
 ## Offsets beyond TOL fail (a floating or buried part).
 ##   godot --headless --path . -s res://tests/attachment_fit_test.gd
 const Model = preload("res://scripts/weapons/weapon_model.gd")
 const Data = preload("res://scripts/weapons/weapon_data.gd")
+const Weapon = preload("res://scripts/weapons/weapon.gd")
 const M = preload("res://scripts/core/materials.gd")
 
 const TOL := 0.0035   # 3.5 mm
@@ -148,5 +150,43 @@ func run() -> void:
 				print("    stock   %+5.1f mm (receiver back %.4f, stock front %.4f)" % [gap * 1000.0, back, sa.z])
 				check(gap < TOL and gap > -0.03, "%s stock meets the receiver" % id)
 		root.queue_free()
+	# rail adapter: its top (with the clamp posts) against the gun's underside straight above it
+	for id in Data.WEAPONS:
+		if not (Data.WEAPONS[id].options.get("rail", []) as Array).has("rail"):
+			continue
+		var w := Weapon.new()
+		get_root().add_child(w)
+		w.setup(id, {"rail": "rail"})
+		var rail_faces := PackedVector3Array()
+		var gun_faces := PackedVector3Array()
+		for n in w.find_children("*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			if mi.mesh == null or not mi.is_visible_in_tree():
+				continue
+			var xf: Transform3D = w.global_transform.affine_inverse() * mi.global_transform
+			var part := String(mi.get_meta("skin_part", ""))
+			for v in mi.mesh.get_faces():
+				if part == "rail":
+					rail_faces.append(xf * v)
+				elif part == "" or part == "body":
+					gun_faces.append(xf * v)
+		var box := AABB(rail_faces[0], Vector3.ZERO) if not rail_faces.is_empty() else AABB()
+		for v in rail_faces:
+			box = box.expand(v)
+		# the gap between the rail's own top (it tilts with a sloped handguard) and the gun right above it,
+		# at the back, the middle and the front: the largest one (a hanging end) and the smallest (running in)
+		var gap := -INF
+		var least := INF
+		for f in [0.25, 0.5, 0.75]:   # along the bar, clear of the clamp posts at its ends
+			var z := lerpf(box.position.z, box.end.z, f)
+			var g: float = Model._bottom_in(gun_faces, z) - Model._top_in(rail_faces, z)
+			if is_finite(g):
+				gap = maxf(gap, g)
+				least = minf(least, g)
+		var above := gap
+		print("    rail    %s widest gap %+5.1f mm, tightest %+5.1f mm" % [id, gap * 1000.0, least * 1000.0])
+		check(not rail_faces.is_empty() and is_finite(above) and gap < 0.0015, "%s rail sits flush on the gun (no air under it)" % id)
+		check(least > -0.0015, "%s rail does not run into the gun" % id)
+		w.queue_free()
 	print("FIT: failures=%d" % failures)
 	quit(1 if failures > 0 else 0)

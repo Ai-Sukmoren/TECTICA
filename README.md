@@ -15,7 +15,13 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 
 ## 🆕 What's new in v1.43
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.43.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.43.1-beta)
+
+### v1.43.1: attachment fit
+Under-barrel rails now sit flush on every gun: no more floating bars, they follow sloped handguards and slide to
+the nearest flat spot. Guns where a rail never looked right (VP9, P90, AUG A1, L96A1, Mosin, Marlin, MGP7) no longer
+take one, and the P90 no longer takes a laser. Saved loadouts with those parts simply drop them.
+Skinned suppressors are solid again: under a skin the normal suppressor looked hollow and partly see-through.
 
 ### Training mode
 New to TECTICA? Pick **MODE → TRAINING** on the title screen. A guided course on its own map, THE RANGE, teaches every

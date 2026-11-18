@@ -58,10 +58,17 @@ func run() -> void:
 				var rb := Model._holder_box(rail)   # in the mount's space
 				var at := (rail.get_parent() as Node3D).position
 				var faces := Model._faces_of(r2, rail.get_parent())   # the gun alone, not the rail or the laser under it
+				# the rail's own top surface (it tilts to follow a sloped handguard), in the gun's space
+				var rail_faces := PackedVector3Array()
+				for v in Model._faces_of(rail.get_parent()):
+					rail_faces.append(Transform3D(Basis.IDENTITY, at) * v)
 				var worst := INF
 				for k in 9:
-					var z := at.z + lerpf(rb.position.z + 0.003, rb.end.z - 0.003, k / 8.0)
-					worst = minf(worst, Model._bottom_in(faces, z) - (at.y + rb.end.y))
+					# along the bar (its clamp posts at the ends sink into the gun on purpose)
+					var z := at.z + lerpf(rb.position.z + rb.size.z * 0.2, rb.end.z - rb.size.z * 0.2, k / 8.0)
+					var rail_top := Model._top_in(rail_faces, z)
+					if is_finite(rail_top):
+						worst = minf(worst, Model._bottom_in(faces, z) - rail_top)
 				check(worst > -0.0025, "%s rail does not run into the gun (%+.1f mm)" % [id, worst * 1000.0])
 			r2.free()
 		# no flat-white palette parts, no stray cartridge

@@ -165,7 +165,9 @@ static func key(weapon: String, finish: String) -> String:
 
 const FINISH_SHADER := """
 shader_type spatial;
-render_mode diffuse_burley, specular_schlick_ggx;
+// cull_disabled: the model parts are exported double-sided and some (the low-poly
+// suppressor) have faces wound inward, so culling back faces left them hollow.
+render_mode diffuse_burley, specular_schlick_ggx, cull_disabled;
 uniform int pattern = 0;
 uniform vec3 c0 : source_color = vec3(0.5);
 uniform vec3 c1 : source_color = vec3(0.3);

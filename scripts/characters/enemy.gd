@@ -11,8 +11,17 @@ extends "res://scripts/characters/soldier.gd"
 ## SEARCH (sweep last known position) -> back to PATROL.
 
 const Palettes = preload("res://scripts/core/palettes.gd")
+const Stealth = preload("res://scripts/stealth/stealth.gd")
 
-enum State { PATROL, SUSPICIOUS, COMBAT, SEARCH }
+## Awareness ladder (stealth.gd has the shared pieces):
+##   PATROL       unaware: walks its route (weapon raised once the area is on alert)
+##   SUSPICIOUS   noticed something: stops and stares at it while suspicion builds
+##   INVESTIGATE  goes to check a glimpse, a sound or a body
+##   ALERTED      knows something is wrong (gunfire, a body, a radio call): moves on it fast
+##   SEARCH       hunts around the last known position with the squad, then stands down
+##   COMBAT       has the operator: cover, flanks, suppression
+## (new states are appended: the numbers travel over the network)
+enum State { PATROL, SUSPICIOUS, COMBAT, SEARCH, INVESTIGATE, ALERTED }
 ## FLANK: circling to the player's side while the squad pins them down.
 enum Phase { MOVING, HIDDEN, PEEKING, OPEN, FLANK }
 
@@ -61,6 +70,23 @@ var _fell_back := false
 var _callout_cd := 0.0
 ## A training target (training.gd): stands where it is put, never perceives, moves or fires.
 var dummy := false
+
+# ---- stealth
+## what is being checked (a glimpse, a sound's guessed spot, a body, a radio call)
+var _stimulus := Vector3.ZERO
+var _stim_kind := ""
+## a body this guard is walking over to inspect
+var _body_target: Node3D = null
+var _inspect_t := -1.0
+var _body_check := 0.0
+## coordinated search: centre, current spot, wait there, seconds left, spots done
+var _search_center := Vector3.ZERO
+var _search_spot := Vector3.INF
+var _search_wait := 0.0
+var _search_left := 0.0
+var _visited: Array = []
+## held by the operator in a takedown: no thinking, no moving
+var grabbed := false
 
 
 func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
@@ -116,7 +142,7 @@ func _physics_process(delta: float) -> void:
 	if puppet:
 		_puppet_physics(delta)
 		return
-	if is_dead or dummy:
+	if is_dead or dummy or grabbed:
 		move_with(Vector3.ZERO, delta)
 		_sync_rig()
 		return
@@ -144,6 +170,10 @@ func _physics_process(delta: float) -> void:
 			_do_combat(delta)
 		State.SEARCH:
 			_do_search(delta)
+		State.INVESTIGATE:
+			_do_investigate(delta)
+		State.ALERTED:
+			_do_alerted(delta)
 	_sync_rig()
 
 
@@ -209,6 +239,56 @@ func _perceive(delta: float) -> void:
 		return
 	if player.is_dead:
 		sees_player = false
+	if not _stealthy():
+		_perceive_legacy(delta)
+		return
+	if sees_player:
+		time_since_seen = 0.0
+		last_known = player.global_position
+		if state == State.COMBAT:
+			Stealth.report_contact(last_known)
+			return
+		awareness = minf(awareness + _detect_gain() * delta, 1.0)
+		if awareness >= 1.0:
+			callout("THERE HE IS!", Color(1.0, 0.35, 0.3))
+			_enter_combat(true)
+		elif awareness >= 0.5 and state in [State.PATROL, State.SUSPICIOUS, State.INVESTIGATE]:
+			# a proper look: walk over to where he was
+			_enter_investigate(player.global_position, "sight")
+		elif awareness >= 0.12 and state == State.PATROL:
+			_enter_suspicious(player.global_position, "sight")
+	elif state != State.COMBAT:
+		# suspicion fades, slower once the area is on alert
+		awareness = maxf(awareness - (0.05 if Stealth.alert >= 1.0 else 0.09) * delta, 0.0)
+	_body_check -= delta
+	if _body_check <= 0.0:
+		_body_check = 0.5
+		_look_for_bodies()
+
+
+## How fast suspicion builds while this guard can see the operator: closer, in the
+## middle of the view, lit up, moving fast and an area on alert all speed it up.
+func _detect_gain() -> float:
+	var to: Vector3 = player.global_position - global_position
+	to.y = 0.0
+	var d := to.length()
+	var gain := 1.1 * clampf(1.5 - d / VIEW_DIST, 0.25, 1.5)
+	if d > 2.5:
+		var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+		gain *= lerpf(1.25, 0.5, clampf(fwd.angle_to(to) / FOV_HALF, 0.0, 1.0))   # corner of the eye is slow
+	gain *= Stealth.exposure(level, player)
+	if state in [State.SUSPICIOUS, State.INVESTIGATE]:
+		gain *= 1.8
+	elif state in [State.SEARCH, State.ALERTED]:
+		gain *= 2.6
+	gain *= 1.0 + 0.3 * Stealth.alert
+	if d < 3.0:
+		gain *= 4.0   # right in front of him
+	return gain
+
+
+## Team deathmatch bots and other non-stealth guards keep the original quick perception.
+func _perceive_legacy(delta: float) -> void:
 	if sees_player:
 		time_since_seen = 0.0
 		last_known = player.global_position
@@ -232,6 +312,73 @@ func _perceive(delta: float) -> void:
 		awareness = maxf(awareness - 0.1 * delta, 0.0)
 
 
+## Moving quietly enough to get right behind a guard unnoticed.
+func _sneaking(p) -> bool:
+	return p.get("crouching") == true or p.get("walking") == true 			or Vector2(p.velocity.x, p.velocity.z).length() < 2.6
+
+
+## Stealth rules apply to campaign / training guards, not to deathmatch bots.
+func _stealthy() -> bool:
+	return not has_meta("tdm_bot")
+
+
+## Aware of the operator: fighting, or has had a good look. Takedowns need a guard
+## who isn't (stealth.gd can_takedown).
+func is_aware_of(_p = null) -> bool:
+	return state == State.COMBAT or (sees_player and awareness >= 0.5) or grabbed
+
+
+## True when `pos` is in this guard's view: in range (darkness shortens it), inside
+## the view cone (or right next to him) and with nothing solid in between.
+func can_see_point(pos: Vector3, max_dist: float = VIEW_DIST) -> bool:
+	if is_dead or blind_t > 0.0:
+		return false
+	var to := pos - global_position
+	to.y = 0.0
+	var d := to.length()
+	var light := Stealth.light_at(level, pos)
+	if d > max_dist * lerpf(0.35, 1.0, light):
+		return false
+	if d > 2.5:
+		var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+		if fwd.angle_to(to) > FOV_HALF * (1.5 if state == State.COMBAT else 1.0):
+			return false
+	var eye := global_position + Vector3(0, head_height() - 0.05, 0)
+	var q := PhysicsRayQueryParameters3D.create(eye, pos, Layers.WORLD)
+	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
+## Something happened in plain view (stealth.gd notify_witnesses).
+func witness(pos: Vector3, what: String, actor: Node) -> void:
+	if is_dead or not _stealthy() or state == State.COMBAT:
+		return
+	if what == "takedown":
+		Stealth.raise_alert(2.0, 1.4)
+		if actor is Node3D and _can_see(actor):
+			player = actor
+			last_known = (actor as Node3D).global_position
+			callout("TAKEDOWN! OPEN FIRE!", Color(1.0, 0.35, 0.3))
+			_enter_combat(true)
+		else:
+			_enter_alerted(pos, "HEY! WHAT WAS THAT?", true)
+
+
+## Fallen guards in view that nobody has found yet: go and look.
+func _look_for_bodies() -> void:
+	if state == State.COMBAT or _body_target != null or level == null:
+		return
+	for b in Stealth.open_bodies(get_tree(), level):
+		if b == self:
+			continue
+		if can_see_point((b as Node3D).global_position + Vector3(0, 0.35, 0), 20.0):
+			_body_target = b
+			_inspect_t = -1.0
+			awareness = maxf(awareness, 0.4)
+			callout("WHAT THE...?", Color(1.0, 0.85, 0.4))
+			_enter_investigate((b as Node3D).global_position, "body")
+			return
+
+
 func _can_see(p) -> bool:
 	if p == null or p.is_dead:
 		return false
@@ -240,7 +387,9 @@ func _can_see(p) -> bool:
 	var d := to.length()
 	if d > VIEW_DIST * vision_scale(p):
 		return false
-	if d > 2.5:
+	# right next to him he senses anyone behind him, unless they sneak (crouched,
+	# slow-walking or barely moving): that is how takedowns get close
+	if d > 2.5 or (_stealthy() and state != State.COMBAT and _sneaking(p)):
 		var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
 		var fov := FOV_HALF * (1.5 if state == State.COMBAT else 1.0)
 		if fwd.angle_to(to) > fov:
@@ -277,7 +426,64 @@ func vision_scale(p = null) -> float:
 	return k
 
 
+## A sound reached this guard (stealth.gd emit_sound; walls already shortened `radius`).
+## He hears roughly where it came from, worse the further away, and reacts by how
+## alarming it is: a footstep makes him look, a suppressed shot sends him to check,
+## gunfire puts the squad on alert. Only gunfire right next to him starts a fight.
+func hear_sound(pos: Vector3, radius: float, kind: String, source: Node = null) -> void:
+	if is_dead or dummy or grabbed:
+		return
+	if not _stealthy():
+		if kind == "footstep":
+			_hear_footstep_legacy(pos, radius)
+		else:
+			_hear_noise_legacy(pos, radius)
+		return
+	var d := global_position.distance_to(pos)
+	if d > radius:
+		return
+	var far := clampf(d / maxf(radius, 0.1), 0.0, 1.0)
+	var err := lerpf(0.6, 4.5, far)
+	var guess := pos + Vector3(randf_range(-err, err), 0, randf_range(-err, err))
+	var alarm: int = Stealth.SOUND_ALARM.get(kind, 1)
+	if state == State.COMBAT:
+		if not sees_player:
+			last_known = guess
+		return
+	if alarm >= 2:
+		Stealth.raise_alert(1.5, 0.6)
+		if d < 7.0 and source is Node3D and source.is_in_group("player"):
+			player = source
+			last_known = guess
+			callout("CONTACT!", Color(1.0, 0.35, 0.3))
+			_enter_combat(true)
+		else:
+			_enter_alerted(guess, "GUNSHOTS!" if kind == "gunshot" else "WHAT WAS THAT?!", true)
+	elif alarm == 1:
+		Stealth.raise_alert(0.8)
+		if state in [State.SEARCH, State.ALERTED]:
+			_stimulus = guess
+			_search_center = guess
+		else:
+			awareness = maxf(awareness, 0.45)
+			_enter_investigate(guess, kind)
+	else:
+		if state == State.PATROL:
+			awareness = maxf(awareness, 0.3 if kind == "distraction" else 0.2)
+			_enter_suspicious(guess, kind)
+		elif state in [State.SUSPICIOUS, State.INVESTIGATE]:
+			_stimulus = guess
+			if state == State.INVESTIGATE:
+				_search_wait = 0.0
+		elif far < 0.6:
+			_search_center = guess   # searching: close noises pull the search over
+
+
 func hear_noise(pos: Vector3, radius: float) -> void:
+	hear_sound(pos, radius, "gunshot", null)
+
+
+func _hear_noise_legacy(pos: Vector3, radius: float) -> void:
 	if is_dead or dummy:
 		return
 	var d := global_position.distance_to(pos)
@@ -315,6 +521,10 @@ func _try_grenade() -> void:
 
 
 func hear_footstep(pos: Vector3, radius: float) -> void:
+	hear_sound(pos, radius, "footstep", null)
+
+
+func _hear_footstep_legacy(pos: Vector3, radius: float) -> void:
 	if is_dead or state == State.COMBAT:
 		return
 	if global_position.distance_to(pos) < radius:
@@ -330,7 +540,11 @@ func alert(pos: Vector3) -> void:
 
 
 func apply_damage(amount: float, hit_pos: Vector3, dir: Vector3, attacker: Node) -> bool:
+	if grabbed:
+		return false   # the operator's own body shields him mid-takedown
 	var headshot := super.apply_damage(amount, hit_pos, dir, attacker)
+	if is_dead and _stealthy():
+		Stealth.raise_alert(1.0)
 	if not is_dead and attacker is Node3D and attacker != self:
 		last_known = (attacker as Node3D).global_position
 		if state != State.COMBAT:
@@ -369,7 +583,28 @@ func apply_knockback(v: Vector3, stun: float = 0.5) -> void:
 	_burst_left = 0
 
 
+## Held from behind by the operator (takedown): frozen until knocked out or killed.
+func grab() -> void:
+	grabbed = true
+	aiming = false
+	sprinting = false
+	_burst_left = 0
+	_end_flank()
+	_release_cover()
+	Stealth.release_claim(self)
+
+
+## Non-lethal takedown: down for good, no blood. Guards who find him know he was
+## jumped (a lower alarm than a corpse).
+func knock_out(dir: Vector3) -> void:
+	set_meta("knocked_out", true)
+	grabbed = false
+	die(dir)
+
+
 func die(dir: Vector3) -> void:
+	grabbed = false
+	Stealth.release_claim(self)
 	_end_flank()
 	if torch:
 		torch.visible = false
@@ -382,6 +617,11 @@ func die(dir: Vector3) -> void:
 # ================================================================ state entry
 
 func _enter_combat(call_out: bool) -> void:
+	_body_target = null
+	Stealth.release_claim(self)
+	if _stealthy():
+		Stealth.raise_alert(2.0, 1.0)
+		Stealth.report_contact(last_known)
 	state = State.COMBAT
 	awareness = 1.0
 	alert_flash = 1.8
@@ -394,13 +634,65 @@ func _enter_combat(call_out: bool) -> void:
 				e.alert(last_known)
 
 
-func _enter_suspicious(pos: Vector3) -> void:
+func _enter_suspicious(pos: Vector3, kind: String = "sight") -> void:
 	if state == State.COMBAT:
 		return
 	state = State.SUSPICIOUS
 	last_known = pos
-	_investigate_delay = randf_range(0.6, 1.2)
+	_stimulus = pos
+	_stim_kind = kind
+	_investigate_delay = randf_range(0.9, 1.6) if _stealthy() else randf_range(0.6, 1.2)
 	_search_timer = 0.0
+	if _stealthy():
+		callout("HUH?", Color(1.0, 1.0, 1.0, 0.9))
+
+
+## Goes to check `pos` (a glimpse, a sound, a body): weapon up once the area is on alert.
+func _enter_investigate(pos: Vector3, kind: String) -> void:
+	if state == State.COMBAT:
+		return
+	if state != State.INVESTIGATE:
+		callout("I'LL CHECK IT OUT", Color(1.0, 0.85, 0.4))
+	state = State.INVESTIGATE
+	_stimulus = pos
+	_stim_kind = kind
+	last_known = pos
+	_search_wait = 0.0
+	_search_timer = 0.0
+
+
+## Knows something is wrong: moves on `pos` fast; tells the squad if `radio`.
+func _enter_alerted(pos: Vector3, shout: String, radio: bool) -> void:
+	if state == State.COMBAT:
+		return
+	var was := state
+	state = State.ALERTED
+	_stimulus = pos
+	last_known = pos
+	awareness = maxf(awareness, 0.55)
+	if was != State.ALERTED:
+		alert_flash = 1.0
+		callout(shout, Color(1.0, 0.6, 0.25))
+		if radio:
+			_radio(pos, 22.0)
+
+
+## Calls it in: guards within `reach` who aren't fighting move on `pos` too.
+func _radio(pos: Vector3, reach: float) -> void:
+	Stealth.report_contact(pos)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e == self or e.is_dead or not e.has_method("on_radio"):
+			continue
+		if (e as Node3D).global_position.distance_to(global_position) < reach:
+			e.on_radio(pos)
+
+
+## A squadmate called something in.
+func on_radio(pos: Vector3) -> void:
+	if is_dead or dummy or grabbed or not _stealthy() or state in [State.COMBAT, State.ALERTED]:
+		return
+	var err := 2.5
+	_enter_alerted(pos + Vector3(randf_range(-err, err), 0, randf_range(-err, err)), "COPY, MOVING!", false)
 
 
 func _enter_search() -> void:
@@ -408,12 +700,22 @@ func _enter_search() -> void:
 	_release_cover()
 	_search_timer = 0.0
 	set_crouch(false)
+	_body_target = null
+	if _stealthy():
+		# the whole squad works the last known position; elevated alert searches longer
+		var shared := Stealth.last_known
+		_search_center = shared if shared != Vector3.INF and Stealth.now() - Stealth.last_known_t < 30.0 \
+				and shared.distance_to(global_position) < 30.0 else last_known
+		_search_left = 16.0 + 6.0 * Stealth.alert + randf_range(0.0, 4.0)
+		_search_spot = Vector3.INF
+		_search_wait = 0.0
+		_visited.clear()
 
 
 # ================================================================ behaviours
 
 func _do_patrol(delta: float) -> void:
-	aiming = false
+	aiming = _stealthy() and Stealth.alert >= 1.0   # on alert: weapons up on the rounds
 	sprinting = false
 	set_crouch(false)
 	if has_meta("tdm_bot"):
@@ -497,6 +799,9 @@ func _pick_hunt_goal() -> Vector3:
 
 
 func _do_suspicious(delta: float) -> void:
+	if _stealthy():
+		_do_suspicious_stealth(delta)
+		return
 	aiming = true
 	sprinting = false
 	_turn_to(_yaw_to(last_known), delta, 4.0)
@@ -516,7 +821,124 @@ func _do_suspicious(delta: float) -> void:
 		_face_velocity(delta, true)
 
 
+## Stops and stares at what caught his eye or ear; then goes to check it, or,
+## if it was only a glimpse that faded, shrugs it off.
+func _do_suspicious_stealth(delta: float) -> void:
+	aiming = Stealth.alert >= 1.0
+	sprinting = false
+	move_with(Vector3.ZERO, delta)
+	_turn_to(_yaw_to(_stimulus), delta, 3.5)
+	_investigate_delay -= delta
+	if _investigate_delay > 0.0:
+		return
+	if _stim_kind == "sight" and awareness < 0.12:
+		state = State.PATROL
+		callout("...NOTHING.", Color(1.0, 1.0, 1.0, 0.8))
+		return
+	_enter_investigate(_stimulus, _stim_kind)
+
+
+## Walks to the spot and looks around it; a body found on the way is inspected
+## and called in. Nothing there: back to the rounds.
+func _do_investigate(delta: float) -> void:
+	sprinting = false
+	if is_instance_valid(_body_target):
+		_do_inspect_body(delta)
+		return
+	_body_target = null
+	aiming = Stealth.alert >= 1.0 or awareness > 0.4
+	if _search_wait <= 0.0:
+		if _nav_to(_stimulus, WALK_SPEED * 1.25, delta):
+			_search_wait = randf_range(3.0, 4.5)
+		else:
+			_face_velocity(delta, true)
+		return
+	_search_wait -= delta
+	move_with(Vector3.ZERO, delta)
+	_scan_t += delta
+	_turn_to(aim_yaw + 2.0 * delta * signf(sin(_scan_t * 0.8)), delta, 3.0)
+	if _search_wait <= 0.0:
+		state = State.PATROL
+		awareness = minf(awareness, 0.15)
+		callout("NOTHING HERE.", Color(1.0, 1.0, 1.0, 0.8))
+
+
+## Kneels at a body, then calls it in: the squad moves on the spot and searches.
+func _do_inspect_body(delta: float) -> void:
+	aiming = true
+	var bp := _body_target.global_position
+	if _inspect_t < 0.0:
+		if _flat_dist(bp) > 1.4:
+			_nav_to(bp, RUN_SPEED * 0.6, delta)
+			_face_velocity(delta, true)
+			return
+		_inspect_t = 1.8
+		set_crouch(true)
+	move_with(Vector3.ZERO, delta)
+	_turn_to(_yaw_to(bp), delta, 5.0)
+	_inspect_t -= delta
+	if _inspect_t > 0.0:
+		return
+	set_crouch(false)
+	var body := _body_target
+	_body_target = null
+	_inspect_t = -1.0
+	var ko := Stealth.is_knocked_out(body)
+	Stealth.report_body(body)
+	callout("HE'S OUT COLD! INTRUDER!" if ko else "MAN DOWN! WE HAVE AN INTRUDER!", Color(1.0, 0.5, 0.25))
+	last_known = bp
+	Stealth.report_contact(bp)
+	_radio(bp, 30.0)
+	_enter_search()
+	_search_center = bp
+
+
+## Moves on the reported spot fast, weapon up; once there, searches it.
+func _do_alerted(delta: float) -> void:
+	aiming = true
+	sprinting = false
+	if _nav_to(_stimulus, RUN_SPEED * 0.75, delta) or _flat_dist(_stimulus) < 3.0:
+		_enter_search()
+		_search_center = _stimulus
+	else:
+		_face_velocity(delta, true)
+
+
+## Coordinated search: each searcher claims a different hiding spot or corner
+## near the centre (stealth.gd search_point), checks it, then the next. When the
+## time runs out without contact he goes back to his rounds, still on alert.
+func _do_search_stealth(delta: float) -> void:
+	aiming = true
+	sprinting = false
+	_search_left -= delta
+	if _search_left <= 0.0:
+		Stealth.release_claim(self)
+		state = State.PATROL
+		awareness = 0.15
+		callout("ALL CLEAR... STAY SHARP.", Color(1.0, 1.0, 1.0, 0.8))
+		return
+	if _search_spot == Vector3.INF:
+		_search_spot = Stealth.search_point(level, _search_center, self, _visited)
+		_search_wait = 0.0
+	if _search_wait <= 0.0:
+		if _nav_to(_search_spot, 2.6, delta) or _flat_dist(_search_spot) < 1.2:
+			_search_wait = randf_range(1.8, 3.2)
+		else:
+			_face_velocity(delta, true)
+		return
+	_search_wait -= delta
+	move_with(Vector3.ZERO, delta)
+	_scan_t += delta
+	_turn_to(aim_yaw + 2.4 * delta * signf(sin(_scan_t * 0.7)), delta, 3.0)
+	if _search_wait <= 0.0:
+		_visited.append(_search_spot)
+		_search_spot = Vector3.INF
+
+
 func _do_search(delta: float) -> void:
+	if _stealthy():
+		_do_search_stealth(delta)
+		return
 	aiming = true
 	sprinting = false
 	if _nav_to(last_known, 2.6, delta):
@@ -537,6 +959,9 @@ func _do_combat(delta: float) -> void:
 		return
 	var threat: Vector3 = player.global_position if sees_player else last_known
 	if not sees_player and time_since_seen > 7.0:
+		if _stealthy():
+			callout("LOST HIM! SPREAD OUT!", Color(1.0, 0.7, 0.3))
+			Stealth.report_contact(last_known)
 		_enter_search()
 		return
 	_grenade_check -= delta
@@ -690,10 +1115,17 @@ func _try_flank(delta: float, threat: Vector3) -> void:
 	to.y = 0.0
 	if to.length() < 0.5:
 		return
+	# either side, random first: when water or a wall closes one side, go round the other
 	var side := to.normalized().cross(Vector3.UP) * (1.0 if randf() < 0.5 else -1.0)
-	var p := threat + side * randf_range(9.0, 12.0) + to.normalized() * 2.0
-	p = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, p)
-	if p.distance_to(threat) < 6.0:
+	var reach := randf_range(9.0, 12.0)
+	var p := Vector3.INF
+	for s: float in [1.0, -1.0]:
+		var q: Vector3 = threat + side * s * reach + to.normalized() * 2.0
+		q = NavigationServer3D.map_get_closest_point(get_world_3d().navigation_map, q)
+		if q.distance_to(threat) >= 6.0:
+			p = q
+			break
+	if p == Vector3.INF:
 		return
 	_flanker = self
 	_flank_pos = p
@@ -720,9 +1152,14 @@ func _do_flank(delta: float, threat: Vector3) -> void:
 		phase = Phase.OPEN   # push in from the new side
 
 
+## Ends this guard's flank everywhere: the squad slot and the FLANK phase together
+## (a flashbang used to free the slot but leave the guard flanking, so a second
+## squadmate could start one too).
 func _end_flank() -> void:
 	if _flanker == self:
 		_flanker = null
+	if phase == Phase.FLANK:
+		phase = Phase.MOVING
 	sprinting = false
 
 

@@ -36,6 +36,7 @@ const Loadout = preload("res://scripts/core/loadout.gd")
 const PostFX = preload("res://scripts/fx/post_fx.gd")
 const Net = preload("res://scripts/net/net.gd")
 const NetSync = preload("res://scripts/net/net_sync.gd")
+const Stealth = preload("res://scripts/stealth/stealth.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Progression = preload("res://scripts/core/progression.gd")
 
@@ -58,6 +59,9 @@ static var saved_tdm := false
 static var saved_bots := 0
 ## Skip the title screen once (used by restart).
 static var quick_restart := false
+## Set by continue_to(): the next chapter opens with its cutscene even though it
+## loads like a restart (hud.gd reads and clears it).
+static var play_intro_next := false
 ## The new-player check (_new_player_start) has run for a signed-in operator this launch.
 static var _new_player_checked := false
 ## The guest auto sign-in is only tried on the launch's first map (signing out stays signed out).
@@ -150,6 +154,7 @@ func _ready() -> void:
 	if mode == "pvp" and not Net.is_pvp():
 		mode = "ch1"   # deathmatch only exists in a multiplayer session
 	_new_player_start()
+	Stealth.reset()   # a new map: calm, no bodies known, no search claims
 	InputSetup.setup()
 	_setup_audio_bus()
 	Settings.ensure()
@@ -356,6 +361,7 @@ func continue_to(next_mode: String) -> void:
 		return
 	saved_mode = next_mode
 	quick_restart = true
+	play_intro_next = true
 	saved_first_person = player.first_person or start_first_person
 	saved_muted = music.muted
 	Transition.change_map(get_tree())
@@ -662,6 +668,7 @@ func _spawn_ammo_fallback(root: Node3D, green: Material) -> void:
 # ================================================================ rules
 
 func _physics_process(delta: float) -> void:
+	Stealth.tick(delta)
 	if not game_over and _deployed:
 		elapsed += delta
 		if mode == "pvp" and Net.is_server():
@@ -759,6 +766,18 @@ func enemies_alive() -> int:
 	return n
 
 
+## An operator's shot as the guards hear it: the report (a suppressed one carries
+## a fraction as far and only makes them check) and, for a shot that missed, the
+## round smacking into something: guards near the impact investigate it.
+func _shot_sounds(shooter: Node3D, weapon: Node, result: Dictionary) -> void:
+	var suppressed := bool(weapon.stats.suppressed)
+	if not weapon.is_melee():
+		Stealth.emit_sound(self, shooter.global_position, float(weapon.stats.noise_radius), "suppressed" if suppressed else "gunshot", shooter)
+	var at = result.get("position")
+	if result.hit == null and at is Vector3 and (at as Vector3).distance_to(shooter.global_position) > 6.0:
+		Stealth.emit_sound(self, at, 7.0, "impact", shooter)
+
+
 func time_string() -> String:
 	return "%d:%02d" % [int(elapsed) / 60, int(elapsed) % 60]
 
@@ -766,7 +785,7 @@ func time_string() -> String:
 func _on_fired(soldier: Node, weapon: Node, result: Dictionary) -> void:
 	if soldier == player:
 		camera_rig.add_shake(float(weapon.stats.shake) * (0.5 if player.first_person else 1.0))
-		get_tree().call_group("enemies", "hear_noise", player.global_position, float(weapon.stats.noise_radius))
+		_shot_sounds(player, weapon, result)
 		if result.hit != null and result.hit != player:
 			player.shots_hit += 1
 			hud.on_hit(result.killed, result.headshot, float(result.get("damage", 0.0)), result.get("hit_at", Vector3.ZERO), result.hit)
@@ -1342,7 +1361,8 @@ func on_remote_shot(shooter: Node, ends: Array) -> void:
 	var end: Vector3 = ends[0][0]
 	if shooter is Player:
 		if Net.is_server() and not shooter.weapons.is_empty():
-			get_tree().call_group("enemies", "hear_noise", shooter.global_position, float(shooter.current_weapon().stats.noise_radius))
+			Stealth.emit_sound(self, shooter.global_position, float(shooter.current_weapon().stats.noise_radius),
+					"suppressed" if bool(shooter.current_weapon().stats.suppressed) else "gunshot", shooter)
 		if mode == "pvp":
 			hud.ping_enemy(shooter)
 	else:

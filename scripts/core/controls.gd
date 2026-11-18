@@ -10,10 +10,10 @@ const PATH := "user://controls.cfg"
 ## [action, label] in the order shown on the CONTROLS tab.
 const BINDABLE := [
 	["move_forward", "MOVE FORWARD"], ["move_back", "MOVE BACK"], ["move_left", "MOVE LEFT"], ["move_right", "MOVE RIGHT"],
-	["fire", "FIRE"], ["aim", "AIM DOWN SIGHTS"], ["sprint", "SPRINT"], ["crouch", "CROUCH"], ["vault", "JUMP / VAULT"],
+	["fire", "FIRE"], ["aim", "AIM DOWN SIGHTS"], ["sprint", "SPRINT"], ["walk", "SLOW WALK (SILENT)"], ["crouch", "CROUCH"], ["vault", "JUMP / VAULT"],
 	["kick", "DROPKICK (WHILE SPRINTING)"], ["reload", "RELOAD"], ["switch_weapon", "SWITCH WEAPON"],
 	["weapon_1", "PRIMARY"], ["weapon_2", "SMG"], ["weapon_3", "PISTOL"], ["weapon_4", "KNIFE"], ["peek_left", "PEEK LEFT"], ["peek_right", "PEEK RIGHT"],
-	["grenade", "FRAG GRENADE"], ["flashbang", "FLASHBANG"], ["launcher", "GRENADE LAUNCHER (GP-25)"], ["flashlight", "FLASHLIGHT"], ["interact", "INTERACT"],
+	["grenade", "FRAG GRENADE"], ["flashbang", "FLASHBANG"], ["launcher", "GRENADE LAUNCHER (GP-25)"], ["flashlight", "FLASHLIGHT"], ["decoy", "THROW DECOY"], ["interact", "INTERACT / TAKEDOWN / DRAG BODY"],
 	["toggle_view", "FIRST PERSON / TOP-DOWN"], ["inspect", "INSPECT WEAPON"], ["cam_rot_left", "ROTATE CAMERA LEFT"],
 	["cam_rot_right", "ROTATE CAMERA RIGHT"], ["music", "MUSIC ON / OFF"], ["shop", "ZOMBIE SHOP"], ["nvg", "NIGHT VISION"],
 ]

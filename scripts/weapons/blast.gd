@@ -48,5 +48,5 @@ static func detonate(ctx: Node, pos: Vector3, damage: float, radius: float, by: 
 			continue
 		var k := clampf(1.0 - maxf(d - p.extent(), 0.0) / radius, 0.0, 1.0)
 		p.apply_blast(damage * (0.4 + 0.6 * k) * k, origin)
-	tree.call_group("enemies", "hear_noise", pos, 40.0)
+	preload("res://scripts/stealth/stealth.gd").emit_sound(tree.current_scene, pos, 40.0, "explosion")
 	tree.call_group("camera_rig", "explosion_at", pos)

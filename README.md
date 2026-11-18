@@ -13,9 +13,28 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.44
+## 🆕 What's new in v1.45
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.44.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.45.0-beta) · [watch the update (2.5 min)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.45.0-beta/tectica_v145_update.mp4)
+
+### Story cutscenes
+Both chapters open with an in-engine cinematic that glides straight into play: **Chapter 1** flies KILO-1 into the
+valley at dawn and leaves him alone on the pad; **Chapter 2**, twelve hours later, reveals the radio outpost on the
+ridge while the camp still burns. Letterboxed, with subtitled radio dialogue and synthesised ambience. Hold SPACE to
+skip; SETTINGS > GAME > STORY CUTSCENES turns them off.
+
+### Stealth
+Guards notice you gradually (a ring over each one fills), investigate noises, find and radio in bodies, and search
+as a squad. Sneak up behind one: **V** is a knife takedown, **F** a silent choke-out. **F** drags a body by the collar into bushes or shadows,
+**J** throws a decoy, **Alt** slow-walks. Suppressors cut how far shots carry; walls muffle sound.
+
+| Chapter 1 cutscene | Chapter 2 cutscene | Takedown |
+|---|---|---|
+| ![Chapter 1](docs/screenshots/v145-ch1-cutscene.jpg) | ![Chapter 2](docs/screenshots/v145-ch2-cutscene.jpg) | ![Takedown](docs/screenshots/v145-stealth-takedown.jpg) |
+
+## Earlier: v1.44
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.44.0-beta)
 
 ### A better first five minutes
 - **Play as guest.** A PC with no accounts goes straight to the title menu as GUEST, with no username or password. The

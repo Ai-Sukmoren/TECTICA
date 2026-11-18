@@ -194,7 +194,7 @@ func destroy(origin: Vector3, dir: Vector3, from_blast: bool) -> void:
 		Fragment.spawn(self, p[0], p[1], p[2], p[3], origin, dir, power)
 	FX.chips(self, c, Vector3.UP, k[3], 22, 0.05, 14, 2.2)
 	Sfx.play(self, "break_" + String(k[4]), c, 2.0, 0.12)
-	get_tree().call_group("enemies", "hear_noise", c, 18.0)
+	preload("res://scripts/stealth/stealth.gd").emit_sound(self, c, 18.0, "break")
 	for d in dependents:
 		if is_instance_valid(d) and not d.destroyed:
 			d.call_deferred("destroy", c, Vector3.UP, false)

@@ -22,6 +22,16 @@ func frames(n: int) -> void:
 	for i in n:
 		await process_frame
 
+## Waits for the map transition to finish (a new one is ignored while it runs).
+func settle() -> void:
+	var T = load("res://scripts/ui/transition.gd")
+	for i in 600:
+		await process_frame
+		if T._inst == null or not T._inst._busy:
+			break
+	await frames(5)
+
+
 func run() -> void:
 	check(Profile.check_name("guest") != "" and Profile.check_name("GUEST") != "", "\"guest\" is reserved as a username")
 	check(Profile.check_name("rookie") == "", "an ordinary username is still fine")
@@ -32,12 +42,18 @@ func run() -> void:
 	change_scene_to_file("res://scenes/main.tscn")
 	await frames(30)
 	var hud = current_scene.hud
+	var before = current_scene
 	check(hud._needs_auth(), "signed out: the sign-in screen shows")
 	var gi: int = hud.AUTH_ROWS.find("PLAY AS GUEST")
 	check(gi >= 0 and gi < hud.AUTH_ROWS.find("QUIT"), "PLAY AS GUEST sits above QUIT")
 	Campaign.completed = {}
+	before = current_scene
 	hud._auth_activate(gi)
-	await frames(60)
+	for i in 600:
+		await process_frame
+		if current_scene != before and current_scene != null and current_scene.get("hud") != null:
+			break
+	await settle()
 	hud = current_scene.hud
 	check(Profile.is_guest() and Profile.signed_in(), "PLAY AS GUEST signs in as the guest")
 	check(not hud._needs_auth(), "the guest goes straight to the title menu")
@@ -49,8 +65,13 @@ func run() -> void:
 	var acc: Dictionary = hud._menu_entries()[ids.find("account")]
 	check(String(acc.label) == "CREATE ACCOUNT", "the guest's menu offers CREATE ACCOUNT instead of SIGN OUT")
 	# CREATE ACCOUNT: back to the sign-in screen with an empty name and the hand-over note
+	before = current_scene
 	hud._menu_activate(ids.find("account"))
-	await frames(60)
+	for i in 600:   # until the map has reloaded signed out (the transition takes a moment)
+		await process_frame
+		if current_scene != before and current_scene != null and current_scene.get("hud") != null:
+			break
+	await settle()
 	hud = current_scene.hud
 	check(hud._needs_auth() and Profile._from_guest, "CREATE ACCOUNT signs the guest out to the sign-in screen")
 	check(String(hud._auth_user) == "" and String(hud._auth_msg).contains("GUEST PROGRESS"), "the screen says the guest's progress comes along")

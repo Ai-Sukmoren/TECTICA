@@ -64,6 +64,13 @@ func _ready() -> void:
 			add_child(shell)
 		add_to_group("grenades")
 		return
+	if kind == "decoy":
+		fuse = 3.0
+		var pebble := MeshInstance3D.new()
+		pebble.mesh = ML.sphere(0.035, false, 8)
+		pebble.material_override = M.solid(Color(0.42, 0.4, 0.37), 0.9)
+		add_child(pebble)
+		return
 	if kind == "flash":
 		fuse = 1.6
 		if not PP.add(self, "m84", Vector3(0, -0.06, 0), 0.0, 0.12).is_empty():
@@ -92,6 +99,9 @@ func _on_body_entered(_b: Node) -> void:
 			explode()
 		return
 	# first impact: the grenade bites and rolls only a short way
+	if not _landed and kind == "decoy":
+		Sfx.play(self, "casing", global_position, 4.0, 0.2)
+		preload("res://scripts/stealth/stealth.gd").emit_sound(self, global_position, 16.0, "distraction", thrower if is_instance_valid(thrower) else null)
 	if not _landed:
 		_landed = true
 		linear_velocity = Vector3(linear_velocity.x * 0.3, linear_velocity.y * 0.4, linear_velocity.z * 0.3)
@@ -114,6 +124,9 @@ func _physics_process(delta: float) -> void:
 
 func explode() -> void:
 	_exploded = true
+	if kind == "decoy":
+		queue_free()   # just a pebble
+		return
 	if kind == "flash":
 		_flash_burst(global_position + Vector3.UP * 0.15)
 		queue_free()

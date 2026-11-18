@@ -1495,6 +1495,11 @@ func _weapon_pose(kind: String, pose_name: String) -> Transform3D:
 
 ## Knife slash, alternating forehand and backhand.
 var slash_t := -1.0
+## A point the free left hand reaches for and holds (a takedown grip on a guard, a
+## body's collar while dragging it). Vector3.INF = back on the gun.
+var left_reach := Vector3.INF
+var _reach_w := 0.0
+var _reach_at := Vector3.ZERO
 var _slash_dur := 0.45
 var _slash_side := 1.0
 ## Blade bites in: the swing holds at contact for a moment and jolts.
@@ -2042,8 +2047,8 @@ func _update_arms(delta: float) -> void:
 	if cycle_t >= 0.0 and weapon.twirl != null:
 		free_want = 1.0   # the support hand lets go while the gun spins
 	var kwa := _kick_w()
-	if kwa > 0.0 or weapon.is_melee():
-		free_want = 1.0   # kicking, or a knife in one hand: the left arm is free
+	if kwa > 0.0 or weapon.is_melee() or left_reach != Vector3.INF:
+		free_want = 1.0   # kicking, a knife in one hand, or the hand holding something: the left arm is free
 	_free_arm = lerpf(_free_arm, free_want, 1.0 - exp(-14.0 * delta))
 	var r_pole := Vector3(0.8, -1.0, 0.45).lerp(Vector3(0.35, -0.6, 1.0), _free_arm)
 	var l_pole := Vector3(-0.9, -1.0, 0.15 + plant_w * 0.6).lerp(Vector3(-0.3, -0.6, 1.0), _free_arm)
@@ -2059,6 +2064,13 @@ func _update_arms(delta: float) -> void:
 	if kwa > 0.0 and not fp_mode:
 		# free arm flung out wide for balance while lying flat in the air
 		l_pos = l_pos.lerp(chest.global_transform * Vector3(-0.52, 0.08, 0.05), kwa)
+	# the left hand takes hold of something (left_reach), palm down, and lets go smoothly
+	_reach_w = lerpf(_reach_w, 1.0 if left_reach != Vector3.INF else 0.0, 1.0 - exp(-10.0 * delta))
+	if left_reach != Vector3.INF:
+		_reach_at = left_reach
+	if _reach_w > 0.001:
+		l_pos = l_pos.lerp(_reach_at, _reach_w)
+		l_basis = l_basis.orthonormalized().slerp(Basis(Vector3.UP, lower_yaw), _reach_w)
 	if fp_mode and fp_arm_rig != null:
 		var settled := fp_arm_rig.settle_left(Transform3D(l_basis.orthonormalized(), l_pos), delta)
 		l_pos = settled.origin

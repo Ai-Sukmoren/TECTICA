@@ -526,6 +526,8 @@ func throw_grenade(target: Vector3, kind: String = "frag") -> bool:
 		if flashbangs <= 0:
 			return false
 		flashbangs -= 1
+	elif kind == "decoy":
+		pass   # a pebble: the player's cooldown limits it (player.gd throw_decoy)
 	else:
 		if grenades <= 0:
 			return false
@@ -782,9 +784,10 @@ func die(dir: Vector3) -> void:
 	velocity = Vector3.ZERO
 	rig.play_death(dir)
 	var fall := Vector3(dir.x, 0, dir.z).normalized()
-	get_tree().create_timer(0.9).timeout.connect(func():
-		if is_inside_tree():
-			FX.blood_pool(self, global_position + fall * 1.0))
+	if not has_meta("knocked_out"):   # choked out: no wound, no blood
+		get_tree().create_timer(0.9).timeout.connect(func():
+			if is_inside_tree():
+				FX.blood_pool(self, global_position + fall * 1.0))
 	if Net.active and Net.sync and not puppet:
 		Net.sync.send_event(self, "die", [dir, last_attacker_name, last_headshot])
 	died.emit(self)

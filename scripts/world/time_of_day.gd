@@ -19,6 +19,8 @@ var red_tint := 0.0      # zombie mode: blood-red dusk
 ## little ambient so unlit corners show; volumetric haze thinned so it doesn't glow.
 var nvg := 0.0
 var base_exposure := 1.0
+## extra volumetric mist a cutscene adds on top of the time of day (cutscene_director.gd)
+var cine_fog := 0.0
 
 var env: Environment
 var sun: DirectionalLight3D
@@ -138,6 +140,7 @@ func _apply(delta: float) -> void:
 	env.tonemap_exposure = base_exposure * bright * lerpf(1.0, 1.75, night) * lerpf(1.0, lerpf(1.6, 5.0, night), nvg)
 	env.ambient_light_energy += nvg * lerpf(0.3, 1.6, night)
 	env.volumetric_fog_density *= 1.0 - 0.7 * nvg
+	env.volumetric_fog_density += cine_fog
 	if level == null:
 		return
 

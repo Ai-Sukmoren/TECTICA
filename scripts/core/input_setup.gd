@@ -26,6 +26,8 @@ static func setup() -> void:
 	_act("look_right", [], [], [[JOY_AXIS_RIGHT_X, 1.0]])
 	_act("sprint", [KEY_SHIFT], [JOY_BUTTON_LEFT_STICK])
 	_act("crouch", [KEY_C, KEY_CTRL], [JOY_BUTTON_B])
+	_act("walk", [KEY_ALT])
+	_act("decoy", [KEY_J])
 	_act("vault", [KEY_SPACE], [JOY_BUTTON_A])
 	_act("kick", [KEY_V], [JOY_BUTTON_DPAD_RIGHT])
 	_act("reload", [KEY_R], [JOY_BUTTON_X])
@@ -55,6 +57,7 @@ static func setup() -> void:
 	_act("aim", [], [], [[JOY_AXIS_TRIGGER_LEFT, 1.0]])
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
+	_mouse("decoy", MOUSE_BUTTON_MIDDLE)
 	# the player's own key bindings (settings > CONTROLS)
 	preload("res://scripts/core/controls.gd").init_after_defaults()
 

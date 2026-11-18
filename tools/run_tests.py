@@ -24,7 +24,8 @@ TIMEOUT = 300
 WINDOWED = {
     "touch_test": ["--resolution", "1688x780", "--", "--touch"],
     "touch_signin_test": ["--resolution", "1688x780", "--", "--touch"],
-    "locomotion_stability_test": ["--resolution", "960x540"],
+    # fixed 60 fps: the limits are per-frame steps, so a busy PC (slow frames) must not fail it
+    "locomotion_stability_test": ["--resolution", "960x540", "--fixed-fps", "60"],
     "camera_motion_test": ["--resolution", "960x540"],
     "aim_stability_test": ["--resolution", "960x540", "--max-fps", "144"],
     "shop_ui_test": ["--resolution", "1280x720"],
@@ -36,6 +37,10 @@ ENGINE_ARGS = {
     "vault_audit_test": (["--fixed-fps", "120"], 900),
     "training_test": (["--fixed-fps", "60"], 600),
     "fp_hand_pose_test": ([], 900),
+}
+# headless tests run once per argument list; they pass only if every run passes
+VARIANTS = {
+    "mp_spawn_test": [[mode, m] for mode in ("zombie", "pvp") for m in ("forest", "warehouse", "backrooms", "tokyo")],
 }
 # host + client pairs: [host args, client args]
 PAIRS = {
@@ -80,6 +85,16 @@ def run_pair(name: str) -> tuple:
     return (ok, text)
 
 
+def run_variants(name: str) -> tuple:
+    texts = []
+    for args in VARIANTS[name]:
+        ok, text = run(name, args)
+        texts.append(f"[{' '.join(args)}] " + ("ok" if ok else "FAIL\n" + text))
+        if not ok:
+            return (False, "\n".join(texts))
+    return (True, "\n".join(texts))
+
+
 def main() -> int:
     words = sys.argv[1:]
     tests = sorted(p.stem for p in (ROOT / "tests").glob("*.gd"))
@@ -89,7 +104,7 @@ def main() -> int:
     t0 = time.time()
     for name in tests:
         start = time.time()
-        ok, text = run_pair(name) if name in PAIRS else run(name, [])
+        ok, text = run_pair(name) if name in PAIRS else (run_variants(name) if name in VARIANTS else run(name, []))
         print(f"  {'ok  ' if ok else 'FAIL'}  {name:32s} {time.time() - start:5.1f} s", flush=True)
         if not ok:
             failed.append(name)

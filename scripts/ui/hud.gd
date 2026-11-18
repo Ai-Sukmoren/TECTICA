@@ -204,7 +204,10 @@ func setup(p_main: Node) -> void:
 			mp_row = 3
 	if main.quick_restart:
 		main.quick_restart = false
-		call_deferred("_deploy")
+		# straight back in on a restart; "continue to the next chapter" still gets its cutscene
+		var intro: bool = main.get_script().play_intro_next
+		main.get_script().play_intro_next = false
+		call_deferred("_deploy", intro)
 		return
 	# title screen: the world is visible but frozen until DEPLOY
 	get_tree().paused = true
@@ -516,13 +519,33 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 var menu_cam: Camera3D
 
 
-func _deploy() -> void:
+const CutsceneDirector = preload("res://scripts/cinematics/cutscene_director.gd")
+const ChapterCutscenes = preload("res://scripts/cinematics/chapter_cutscenes.gd")
+## the chapter cutscene playing before the mission starts (null otherwise)
+var cutscene: Node
+
+
+## DEPLOY: a campaign chapter opens with its cutscene (cutscene_director.gd), the
+## mission starts when it hands back; restarts go straight in.
+func _deploy(allow_cutscene: bool = true) -> void:
 	title = false
 	if is_instance_valid(menu_cam):
 		menu_cam.release()
 		menu_cam.queue_free()
 		menu_cam = null
-	briefing_t = 0.0
+	if allow_cutscene and CutsceneDirector.wanted(main):
+		get_tree().paused = false
+		Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+		cutscene = CutsceneDirector.new()
+		cutscene.finished.connect(func(_skipped): _finish_deploy(true))
+		cutscene.play(main, ChapterCutscenes.build(String(main.mode), main))
+		return
+	_finish_deploy()
+
+
+func _finish_deploy(after_cutscene: bool = false) -> void:
+	cutscene = null
+	briefing_t = -1.0 if after_cutscene else 0.0   # the cutscene was the briefing
 	help_timer = 0.0 if main.training != null else 18.0
 	get_tree().paused = false
 	player.set_first_person(main.start_first_person)
@@ -532,6 +555,8 @@ func _deploy() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(cutscene):
+		return   # the cutscene owns the screen (hold to skip is handled there)
 	if main != null and main.killcam_active() and (event.is_action_pressed("ui_accept") or event.is_action_pressed("vault")
 			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT)):
 		main.killcam.finish()
@@ -642,7 +667,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	_update_time_scale()
-	PlayerScript.input_blocked = (Net.active and (mp_pause or settings_open)) or shop_open
+	PlayerScript.input_blocked = (Net.active and (mp_pause or settings_open)) or shop_open or is_instance_valid(cutscene)
 	_shop_msg_t = maxf(_shop_msg_t - delta, 0.0)
 	if shop_open and not _shop_available():
 		_close_shop()   # the next wave started (or the operator went down)
@@ -872,6 +897,7 @@ func _draw_overlay(c: Control) -> void:
 		_text(c, Vector2(0, 110), "KILLS %d   ·   %s   ·   T+ %s" % [dir_node.kills, main.tod.clock_string(), main.time_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	elif main.training != null:
 		_draw_training(c, vp)
+		_draw_stealth_prompt(c, vp)
 	else:
 		var cp = main.campaign
 		if cp != null:
@@ -879,6 +905,7 @@ func _draw_overlay(c: Control) -> void:
 			_text(c, Vector2(0, 92), "> " + cp.objective_text(), 14, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 			_text(c, Vector2(0, 110), "CH.%d %s   ·   %s   ·   T+ %s" % [int(ci.num), String(ci.name), main.tod.clock_string(), main.time_string()],
 					11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+			_draw_stealth_status(c, vp)
 			_draw_waypoint(c, vp)
 			_draw_interact(c, vp)
 	if dir_node != null and dir_node.boss_frac >= 0.0:
@@ -921,6 +948,17 @@ func _draw_overlay(c: Control) -> void:
 		stance = "VAULT"
 	if absf(player.rig.lean_amt) > 0.4:
 		stance += "  ·  PEEK " + ("R" if player.rig.lean_amt > 0.0 else "L")
+	if player.walking:
+		stance += "  ·  SLOW WALK"
+	if not main.is_zombie_mode() and main.mode != "pvp":
+		var lit := Stealth.light_at(main.level, player.global_position)
+		var conceal: float = main.level.concealment(player.global_position) if main.level.has_method("concealment") else 0.0
+		if conceal >= 0.5 and player.crouching:
+			stance += "  ·  CONCEALED"
+		elif lit < 0.45:
+			stance += "  ·  IN SHADOW"
+		if player.decoy_cd <= 0.0:
+			stance += "  ·  DECOY [%s]" % Settings.Controls.short("decoy")
 	stance += "  ·  " + ("FPV" if player.first_person else "TOP-DOWN")
 	if player.flashlight_on:
 		stance += "  ·  LIGHT"
@@ -1419,6 +1457,8 @@ func _draw_waypoint(c: Control, vp: Vector2) -> void:
 
 ## "HOLD [F] ..." prompt with a progress bar while the key is held.
 func _draw_interact(c: Control, vp: Vector2) -> void:
+	if _draw_stealth_prompt(c, vp):
+		return
 	var cp = main.campaign
 	if not cp.can_interact():
 		return
@@ -1747,6 +1787,9 @@ func _draw_scope(c: Control, m: Vector2, sniper: bool, ring: bool = false) -> vo
 
 
 func _draw_enemy_markers(c: Control) -> void:
+	if not main.is_zombie_mode() and main.mode != "pvp":
+		_draw_awareness_markers(c)
+		return
 	var cam: Camera3D = camera_rig.active_camera()
 	for e in main.enemies:
 		if e.is_dead:
@@ -1763,6 +1806,110 @@ func _draw_enemy_markers(c: Control) -> void:
 		elif e.awareness > 0.02:
 			c.draw_arc(p, 10.0, -PI * 0.5, -PI * 0.5 + TAU * e.awareness, 24, WARN, 3.0, true)
 			_text(c, p + Vector2(-4, 6), "?", 15, WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+
+
+# ---------------------------------------------------------------- stealth HUD
+
+const Stealth = preload("res://scripts/stealth/stealth.gd")
+const STEALTH_GLYPH := {1: "?", 4: "?", 3: "?", 5: "!"}   # SUSPICIOUS, INVESTIGATE, SEARCH, ALERTED
+
+
+## Colour of a guard's suspicion: white while it builds, amber, then red.
+func _awareness_color(aw: float) -> Color:
+	return Color(1, 1, 1).lerp(WARN, smoothstep(0.1, 0.5, aw)).lerp(DANGER, smoothstep(0.6, 1.0, aw))
+
+
+## Over each guard who is noticing you, or who is checking something / searching:
+## a ring that fills with his suspicion and a ? or !. Guards noticing you from
+## off screen get a small arrow on a ring round the crosshair. In first person only
+## guards you have spotted, or who are noticing you right now, are marked.
+func _draw_awareness_markers(c: Control) -> void:
+	var cam: Camera3D = camera_rig.active_camera()
+	var vp := c.size
+	var screen := Rect2(Vector2.ZERO, vp).grow(-24.0)
+	for e in main.enemies:
+		if e.is_dead or e.get("dummy") == true:
+			continue
+		var st := int(e.state)
+		var aw := float(e.awareness)
+		var noticing: bool = e.sees_player and aw > 0.03 and not e.is_in_combat()
+		if player.first_person and not _spotted.has(e) and not noticing:
+			continue
+		var head: Vector3 = e.global_position + Vector3(0, 2.25, 0)
+		var behind := cam.is_position_behind(head)
+		var p := Vector2.ZERO if behind else cam.unproject_position(head)
+		if behind or not screen.has_point(p):
+			if noticing:
+				var rel: Vector3 = cam.global_transform.affine_inverse() * e.global_position
+				var dir := Vector2(rel.x, rel.z).normalized()
+				var at := vp * 0.5 + dir * 110.0
+				var col := _awareness_color(aw)
+				var tip := at + dir * 10.0
+				var side := Vector2(-dir.y, dir.x) * 7.0
+				c.draw_colored_polygon(PackedVector2Array([tip, at - dir * 4.0 + side, at - dir * 4.0 - side]), Color(col, 0.35 + 0.65 * aw))
+			continue
+		if e.is_in_combat():
+			if e.alert_flash > 0.0:
+				_text(c, p + Vector2(-7, 0), "!", 28, Color(DANGER, minf(e.alert_flash, 1.0)), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			continue
+		if aw <= 0.02 and not STEALTH_GLYPH.has(st):
+			continue
+		var col := _awareness_color(aw)
+		if st == 5:
+			col = Color(1.0, 0.55, 0.2)
+		c.draw_arc(p, 11.0, 0.0, TAU, 28, Color(0, 0, 0, 0.45), 4.0, true)
+		if aw > 0.0:
+			c.draw_arc(p, 11.0, -PI * 0.5, -PI * 0.5 + TAU * clampf(aw, 0.0, 1.0), 28, col, 3.0, true)
+		_text(c, p + Vector2(-5, 6), String(STEALTH_GLYPH.get(st, "?")), 15, col, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+
+
+## One line under the objective: how aware the area is of you.
+func _draw_stealth_status(c: Control, vp: Vector2) -> void:
+	var worst := 0
+	var labels := ["UNDETECTED", "SUSPICIOUS", "INVESTIGATING", "SEARCHING", "ALERTED", "COMBAT"]
+	var rank := {0: 0, 1: 1, 4: 2, 3: 3, 5: 4, 2: 5}   # state -> severity
+	for e in main.enemies:
+		if e.is_dead or e.get("dummy") == true:
+			continue
+		worst = maxi(worst, int(rank.get(int(e.state), 0)))
+	var cols := [Color(0.55, 0.85, 0.6), Color(1, 1, 1), WARN, WARN, Color(1.0, 0.55, 0.2), DANGER]
+	var line := String(labels[worst])
+	if Stealth.bodies_found > 0:
+		line += "   ·   BODIES FOUND %d" % Stealth.bodies_found
+	_text(c, Vector2(0, 126), line, 11, Color(cols[worst], 0.9), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+
+
+## Takedown / body prompts near the middle of the screen. True when one is shown.
+func _draw_stealth_prompt(c: Control, vp: Vector2) -> bool:
+	var f := Settings.Controls.short("interact")
+	var v := Settings.Controls.short("kick")
+	var text := ""
+	var sub := ""
+	var frac := -1.0
+	if player.is_taking_down():
+		text = "TAKEDOWN" if player.takedown_lethal else "KNOCKING OUT..."
+		frac = player._td_t / (player.TD_TIME_KILL if player.takedown_lethal else player.TD_TIME_KO)
+	elif player.dragging != null:
+		var hidden := Stealth.body_hidden(main.level, player.dragging)
+		text = "[%s]  PUT DOWN BODY" % f
+		sub = "HIDDEN SPOT" if hidden else "IN THE OPEN  ·  BUSHES AND SHADOWS HIDE IT"
+	elif player.td_candidate != null:
+		text = "[%s]  KNOCK OUT     [%s]  KILL" % [f, v]
+		sub = "SILENT  ·  FROM BEHIND"
+	elif player.body_candidate != null:
+		text = "[%s]  DRAG BODY" % f
+	else:
+		return false
+	var r := Rect2(vp.x * 0.5 - 170, vp.y * 0.64, 340, 40 if sub == "" and frac < 0.0 else 52)
+	c.draw_rect(r, Color(0, 0, 0, 0.55))
+	_brackets(c, r, 8.0, ACCENT, 2.0)
+	_text(c, Vector2(r.position.x, r.position.y + 18), text, 15, TEXT, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
+	if sub != "":
+		_text(c, Vector2(r.position.x, r.position.y + 38), sub, 11, ACCENT if sub == "HIDDEN SPOT" else DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
+	if frac >= 0.0:
+		c.draw_rect(Rect2(r.position.x + 12, r.end.y - 11, r.size.x - 24, 4), Color(1, 1, 1, 0.12))
+		c.draw_rect(Rect2(r.position.x + 12, r.end.y - 11, (r.size.x - 24) * clampf(frac, 0.0, 1.0), 4), ACCENT)
+	return true
 
 
 func _draw_blend_space(c: Control, rect: Rect2, rig) -> void:
@@ -3039,7 +3186,7 @@ func _draw_auth(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(px - 30, top - 50, pw + 60, 408), Color(0.03, 0.045, 0.055, 0.85))
 	_brackets(c, Rect2(px - 30, top - 50, pw + 60, 408), 16.0, Color(TEXT, 0.35), 1.5)
 	_text(c, Vector2(0, top - 18), "SIGN IN", 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-	_text(c, Vector2(0, top - 42), "Successful sign-ins report your username, time and game version to the game owner.", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	_text(c, Vector2(0, top + 336), "Successful sign-ins report your username, time and game version to the game owner.", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	var cur := "_" if int(_time * 2.0) % 2 == 0 else " "
 	var pin_show := ""
 	for i in Profile.PIN_LEN:

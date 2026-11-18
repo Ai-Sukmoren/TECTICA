@@ -44,8 +44,9 @@ func run() -> void:
 	# hide the player from everyone for the test
 	var flankers := 0
 	var started_at := {}
+	var moved := 0.0   # furthest a flanker got from where its flank began (it may head back to cover after)
 	var fired_while_hidden := 0
-	for f in 900:   # ~7.5 s at 120 Hz
+	for f in 1440:   # ~12 s at 120 Hz: several flank attempts (each guard tries every 2-3.5 s, 55%)
 		for e in squad:
 			if e.is_dead:
 				continue
@@ -65,25 +66,27 @@ func run() -> void:
 				n += 1
 				if not started_at.has(e):
 					started_at[e] = e.global_position
+				moved = maxf(moved, e.global_position.distance_to(started_at[e]))
 		flankers = maxi(flankers, n)
 		if Enemy._flanker != null:
 			for e in squad:
 				if e != Enemy._flanker and e._burst_left > 0:
 					fired_while_hidden += 1
 	check(flankers == 1, "exactly one squad member flanks (max at once = %d)" % flankers)
-	var moved := 0.0
-	for e in started_at:
-		moved = maxf(moved, e.global_position.distance_to(started_at[e]))
 	print("  flanker ran %.1f m" % moved)
 	check(moved > 3.0, "the flanker actually moves around")
 	check(fired_while_hidden > 0, "squadmates lay down suppressive fire")
 	# fall back when badly hurt
-	var w = squad[squad.size() - 1]
-	if Enemy._flanker == w:
-		w = squad[0]
+	# a living guard that isn't flanking (the 7 s fight above can down one), hit in the
+	# chest: a fixed 1 m above the feet is the head of a crouching guard, and the helmet
+	# would take that round instead
+	var w = null
+	for e in squad:
+		if not e.is_dead and e != Enemy._flanker:
+			w = e
 	w.health = w.max_health * 0.4
 	var before = w.cover
-	w.apply_damage(w.max_health * 0.1, w.global_position + Vector3.UP, Vector3.LEFT, p)
+	w.apply_damage(w.max_health * 0.1, w.global_position + Vector3.UP * (w.head_height() * 0.6), Vector3.LEFT, p)
 	check(w._fell_back, "a badly hurt guard decides to fall back")
 	print("SQUAD: failures=%d" % failures)
 	quit(1 if failures > 0 else 0)

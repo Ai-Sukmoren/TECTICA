@@ -52,6 +52,12 @@ func sample(rig, label: String) -> void:
 	samples += 1
 
 func run() -> void:
+	if not Rig.USE_SUPPLIED_FP_ARMS:
+		# the supplied skinned arms are switched off (v1.39 went back to the code-built
+		# arms, covered by fp_hand_pose_test); nothing to check until they return
+		print("FPS_ARMS skipped: soldier_rig.gd USE_SUPPLIED_FP_ARMS is off")
+		quit(0)
+		return
 	var scene := Node3D.new()
 	root.add_child(scene)
 	current_scene = scene

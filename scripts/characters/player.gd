@@ -12,6 +12,18 @@ const ML = preload("res://scripts/core/mesh_lib.gd")
 const SPEED_CROUCH := 1.7
 const SPEED_AIM := 2.3
 const SPEED_JOG := 4.3
+## slow walk (Alt): silent and a little less eye-catching than a jog
+const SPEED_WALK := 2.0
+## drag speed with a body in tow
+const SPEED_DRAG := 1.5
+const Stealth = preload("res://scripts/stealth/stealth.gd")
+## takedown timings (s): a kill is quick, a choke-out takes longer but leaves no blood
+## (the kill draws the combat knife first: grab, draw, one stab to the neck)
+const TD_TIME_KILL := 1.55
+const TD_STAB := 0.72
+const TD_TIME_KO := 2.4
+const TD_ALIGN := 0.25
+const DECOY_COOLDOWN := 4.0
 const SPEED_SPRINT := 7.0
 const PEEK_DIST := 0.65
 const MOUSE_SENS := 0.0022
@@ -109,6 +121,33 @@ const TORCH_GLB := "res://assets/thirdparty/low_poly_attachments/flashlight.glb"
 
 ## Set by the HUD while an in-game menu is open in multiplayer (the world keeps running).
 static var input_blocked := false
+
+# ---- cutscenes (cutscene_director.gd drives the operator while input is blocked)
+var cine_velocity := Vector3.ZERO
+var cine_aim := false
+var in_cutscene := false
+
+# ---- stealth
+## slow-walking (Alt held)
+var walking := false
+## takedown in progress: the guard held, lethal or not, the clock (-1 = none)
+var takedown_target: Node3D = null
+var takedown_lethal := false
+var _td_t := -1.0
+var _td_from := Vector3.ZERO
+var _td_at := Vector3.ZERO
+var _td_yaw := 0.0
+var _td_struck := false
+var _td_prev_weapon := -1
+var _drag_crouched := false
+var _td_next_struggle := 0.0
+## a body in tow (F to pick up / put down)
+var dragging: Node3D = null
+## what F / V would do now (the HUD shows the prompt): a guard to take down, a body to drag
+var td_candidate: Node3D = null
+var body_candidate: Node3D = null
+var _stealth_scan := 0.0
+var decoy_cd := 0.0
 var _net_flags := 0
 var _net_weapon := 0
 var _net_lean := 0.0
@@ -435,6 +474,8 @@ func set_flashlight(on: bool) -> void:
 ## Interact objective or the zombie arcade shop in reach: F / X act on it
 ## instead of view / reload.
 func _interact_context() -> bool:
+	if td_candidate != null or body_candidate != null or dragging != null or _td_t >= 0.0:
+		return true
 	var c = get_tree().get_first_node_in_group("campaign")
 	if c != null and c.can_interact():
 		return true
@@ -454,7 +495,7 @@ func _input(event: InputEvent) -> void:
 			using_pad = true
 	elif ((event is InputEventMouseMotion and event.relative.length() > 3.0) or event is InputEventMouseButton or event is InputEventKey) 			and not preload("res://scripts/core/platform.gd").touch_mode():
 		using_pad = false   # on phones the touch sticks drive the stick-aim path
-	if first_person and not is_dead and event is InputEventMouseMotion 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if first_person and not is_dead and _td_t < 0.0 and event is InputEventMouseMotion 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var sens := MOUSE_SENS * float(Settings.v.sensitivity) * (0.6 if aiming else 1.0) / maxf(lerpf(1.0, float(current_weapon().stats.zoom), rig.aim_amt), 1.0)
 		aim_yaw = wrapf(aim_yaw - event.screen_relative.x * sens, -PI, PI)
 		fp_pitch = clampf(fp_pitch - event.screen_relative.y * sens, -1.25, 1.2)
@@ -579,7 +620,7 @@ func get_fire_origin() -> Vector3:
 ## Aim is updated every rendered frame (not once per physics tick), so the
 ## operator turns with the mouse / stick with no added latency.
 func _process(delta: float) -> void:
-	if rig == null or puppet or is_dead or kicking or input_blocked:
+	if rig == null or puppet or is_dead or kicking or input_blocked or _td_t >= 0.0:
 		return   # (aim keeps updating during a vault: the operator can shoot in it)
 	_update_aim(delta)
 	rig.aim_yaw = aim_yaw
@@ -595,13 +636,14 @@ func _physics_process(delta: float) -> void:
 	_vault_cooldown = maxf(_vault_cooldown - delta, 0.0)
 	if input_blocked and not is_dead and not vaulting and not kicking:
 		_end_bullet_time()
-		rig.cancel_inspect()
-		aiming = false
+		if not in_cutscene:
+			rig.cancel_inspect()   # (a cutscene plays the weapon check on purpose)
+		aiming = cine_aim
 		sprinting = false
 		sliding = false
 		_vault_buffer = 0.0
 		_peek_off = Vector3.ZERO
-		move_with(Vector3.ZERO, delta)
+		move_with(cine_velocity, delta)
 		_sync_rig()
 		rig.lean_target = 0.0
 		rig.slide_target = 0.0
@@ -642,6 +684,31 @@ func _physics_process(delta: float) -> void:
 		_sync_rig()
 		rig.slide_target = 0.0
 		return
+	# ---- stealth: takedowns (F knock out / V kill from behind), bodies (F drag / drop), decoys
+	if _td_t >= 0.0:
+		_update_takedown(delta)
+		_sync_rig()
+		return
+	_stealth_scan -= delta
+	if _stealth_scan <= 0.0:
+		_stealth_scan = 0.1
+		_scan_stealth()
+	decoy_cd = maxf(decoy_cd - delta, 0.0)
+	var td_kill := Input.is_action_just_pressed("kick") and not sprinting
+	if (Input.is_action_just_pressed("interact") or td_kill) and is_instance_valid(td_candidate) \
+			and dragging == null and Stealth.can_takedown(self, td_candidate):
+		_start_takedown(td_candidate, td_kill)
+		_sync_rig()
+		return
+	if Input.is_action_just_pressed("interact"):
+		if dragging != null:
+			drop_body()
+		elif is_instance_valid(body_candidate):
+			start_drag(body_candidate)
+	if dragging != null and (Input.is_action_pressed("fire") or Input.is_action_pressed("aim") or Input.is_action_just_pressed("vault")):
+		drop_body()   # back to the fight: let go at once
+	if Input.is_action_just_pressed("decoy"):
+		throw_decoy()
 
 	var iv := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var cam_yaw: float = camera_rig.yaw if camera_rig else 0.0
@@ -722,6 +789,10 @@ func _physics_process(delta: float) -> void:
 			rig.hit_react(Vector3(-sin(rig.lower_yaw), 0, -cos(rig.lower_yaw)), _fall_speed * 2.0)
 		_fall_speed = 0.0
 
+	walking = Input.is_action_pressed("walk") and not sprinting and not crouching
+	if dragging != null:
+		sprinting = false
+		aiming = false
 	var speed := SPEED_JOG
 	if sprinting:
 		speed = SPEED_SPRINT
@@ -729,6 +800,10 @@ func _physics_process(delta: float) -> void:
 		speed = SPEED_CROUCH
 	elif aiming:
 		speed = SPEED_AIM
+	elif walking:
+		speed = SPEED_WALK
+	if dragging != null:
+		speed = minf(speed, SPEED_DRAG)
 	if not sprinting and wish.length() > 0.1:
 		var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
 		var d := wish.normalized().dot(fwd)
@@ -758,7 +833,10 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("launcher"):
 		fire_launcher(aim_point)
 	if Input.is_action_just_pressed("reload") and not ctx:
+		var was := reload_timer
 		start_reload()
+		if reload_timer > 0.0 and was <= 0.0:
+			Stealth.emit_sound(self, global_position, 5.0, "reload", self)
 	if Input.is_action_just_pressed("weapon_1"):
 		switch_to(_slot("primary"))
 	if Input.is_action_just_pressed("weapon_2"):
@@ -771,13 +849,17 @@ func _physics_process(delta: float) -> void:
 		switch_to((weapon_index + 1) % weapons.size())
 
 	var w := current_weapon()
-	if bool(w.stats.auto):
+	if dragging != null:
+		_update_drag()
+	elif bool(w.stats.auto):
 		if firing:
 			_fire()
 	elif Input.is_action_just_pressed("fire"):
 		_fire()
 	_update_focus(delta)
 	_sync_rig()
+	if dragging != null:
+		rig.sprint_target = 1.0   # rifle slung low in one hand, the other on the body
 	_update_scope_visibility()
 	rig.lean_target = lean_in
 	rig.slide_target = 1.0 if sliding else 0.0
@@ -1327,18 +1409,21 @@ func _throw(kind: String = "frag") -> void:
 		aim_yaw = atan2(-flat.x, -flat.z) if not first_person else aim_yaw
 
 
-## Footsteps: sprinting is loud, jogging carries a little, walking / crouching is silent.
+## Footsteps: sprinting is loud, jogging carries a little, walking, slow walking
+## and crouching are silent (a hard landing is not). Walls muffle them (stealth.gd).
 func _on_footstep(pos: Vector3, intensity: float) -> void:
 	super._on_footstep(pos, intensity)
 	var radius := 0.0
 	if sprinting:
 		radius = 10.0
-	elif not crouching and not aiming and Vector2(velocity.x, velocity.z).length() > 3.5:
+	elif not crouching and not aiming and not walking and Vector2(velocity.x, velocity.z).length() > 3.5:
 		radius = 4.5
+	if intensity > 0.6 and not crouching:
+		radius = maxf(radius, 6.0 * intensity)   # landing from a jump or a drop
 	if Water.wading(pos):
 		radius = maxf(radius, 7.0)   # splashing carries
 	if radius > 0.0:
-		get_tree().call_group("enemies", "hear_footstep", pos, radius)
+		Stealth.emit_sound(self, pos, radius, "footstep", self)
 
 
 ## Flashed: white-out on screen and ringing ears (local operator only).
@@ -1350,3 +1435,216 @@ func flashbang(seconds: float, strength: float) -> void:
 	var h = m.get_node_or_null("HUD") if m else null
 	if h != null and h.has_method("flash_white"):
 		h.flash_white(seconds, strength)
+
+
+# ------------------------------------------------------------------ stealth
+
+## Who / what the F and V prompts point at (every 0.1 s). Takedowns run on the
+## machine that simulates the guards (solo or the host); dragging bodies is solo.
+func _scan_stealth() -> void:
+	td_candidate = null
+	body_candidate = null
+	if is_dead or vaulting or kicking or sliding or dragging != null or not (Net.alone() or Net.is_server()):
+		return
+	td_candidate = Stealth.takedown_target(self)
+	if td_candidate != null or not Net.alone():
+		return
+	var best_d := 1.8
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.get("is_dead") != true or e.get("dummy") == true:
+			continue
+		var d: float = (e as Node3D).global_position.distance_to(global_position)
+		if d < best_d:
+			best_d = d
+			body_candidate = e
+
+
+## Grabs `e` from behind: the operator slides into place behind him and either
+## chokes him out (F, quiet, no blood) or kills him (V, quicker, louder).
+## Guards who can see it react (stealth.gd notify_witnesses).
+func _start_takedown(e: Node3D, lethal: bool) -> void:
+	takedown_target = e
+	takedown_lethal = lethal
+	_td_t = 0.0
+	_td_struck = false
+	_td_next_struggle = 0.3
+	e.grab()
+	rig.cancel_inspect()
+	if reload_timer > 0.0:
+		reload_timer = 0.0
+		rig.cancel_reload()
+	aiming = false
+	sliding = false
+	_peek_off = Vector3.ZERO
+	rig.lean_target = 0.0
+	set_crouch(false)
+	_end_bullet_time()
+	# a kill: the free hand clamps his mouth while the other draws the combat knife;
+	# a knockout: the free arm locks round his neck, the gun hangs in the other hand
+	_td_prev_weapon = weapon_index
+	var knife := _slot("knife")
+	if lethal and knife >= 0 and knife != weapon_index:
+		switch_to(knife)
+	sprinting = not lethal or knife < 0     # one-handed carry pose for the rifle
+	var fwd := Vector3(-sin(e.aim_yaw), 0, -cos(e.aim_yaw))
+	_td_from = global_position
+	_td_at = e.global_position - fwd * 0.72
+	_td_at.y = global_position.y
+	_td_yaw = e.aim_yaw
+	velocity = Vector3.ZERO
+	Sfx.play(self, "swipe", e.global_position + Vector3.UP * 1.3, -10.0, 0.1)
+	Stealth.emit_sound(self, e.global_position, 3.5 if lethal else 2.5, "takedown", self)
+	Stealth.notify_witnesses(get_tree(), e.global_position + Vector3.UP * 1.0, "takedown", self, [e])
+
+
+func _update_takedown(delta: float) -> void:
+	_td_t += delta
+	var e := takedown_target
+	if not is_instance_valid(e):
+		_end_takedown()
+		return
+	var dur := TD_TIME_KILL if takedown_lethal else TD_TIME_KO
+	var k := smoothstep(0.0, TD_ALIGN, _td_t)
+	global_position = _td_from.lerp(_td_at, k)
+	velocity = Vector3.ZERO
+	aim_yaw = lerp_angle(aim_yaw, _td_yaw, k)
+	rig.aim_yaw = aim_yaw
+	if first_person:
+		fp_pitch = lerpf(fp_pitch, -0.42, 1.0 - exp(-8.0 * delta))
+		rig.fp_pitch = fp_pitch
+	var back := -Vector3(-sin(_td_yaw), 0, -cos(_td_yaw))
+	if not e.is_dead and e.get("rig") != null and e.rig.head != null:
+		# the free hand on him: over the mouth for a kill, the neck for a choke
+		var hold: Vector3 = e.rig.head.global_position + back * 0.08 + Vector3(0, -0.06 if takedown_lethal else -0.2, 0)
+		rig.left_reach = hold
+	if not e.is_dead:
+		if not takedown_lethal and _td_t >= _td_next_struggle:
+			# he fights the hold, weaker each time
+			_td_next_struggle += randf_range(0.25, 0.4)
+			e.rig.hit_react(back + Vector3(randf_range(-0.4, 0.4), 0, 0), lerpf(2.4, 0.6, _td_t / dur))
+			if camera_rig:
+				camera_rig.add_shake(0.06)
+		if takedown_lethal and current_weapon().is_melee() and _td_t >= TD_STAB - 0.22 and not _td_struck and rig.slash_t < 0.0:
+			rig.play_slash(0.5)   # the stab comes in round his shoulder
+		var strike := TD_STAB if takedown_lethal else dur - 0.45
+		if _td_t >= strike and not _td_struck:
+			_td_struck = true
+			if takedown_lethal:
+				if not current_weapon().is_melee():
+					rig.play_attack(0.4)
+				Sfx.play(self, "knife_hit", e.global_position + Vector3.UP * 1.3, -2.0, 0.1)
+				FX.blood(self, e.global_position + Vector3.UP * 1.35, back)
+				e.grabbed = false
+				e.apply_damage(e.health + 50.0, e.global_position + Vector3.UP * 1.0, -back, self)
+				Stealth.emit_sound(self, e.global_position, 4.0, "takedown", self)
+			else:
+				Sfx.play(self, "groan", e.global_position + Vector3.UP * 1.3, -14.0, 0.1)
+				e.knock_out(-back)
+				var m = get_tree().current_scene
+				if m != null and m.has_method("on_takedown"):
+					m.on_takedown(e)
+	if takedown_lethal and _td_struck and _td_t >= TD_STAB + 0.25:
+		rig.left_reach = Vector3.INF   # he goes down: let go
+	if _td_t >= dur:
+		_end_takedown()
+	else:
+		move_with(Vector3.ZERO, delta)
+
+
+func _end_takedown() -> void:
+	if is_instance_valid(takedown_target) and not takedown_target.is_dead:
+		takedown_target.grabbed = false   # interrupted: he's free
+	takedown_target = null
+	_td_t = -1.0
+	sprinting = false
+	rig.left_reach = Vector3.INF
+	if _td_prev_weapon >= 0 and _td_prev_weapon != weapon_index:
+		switch_to(_td_prev_weapon)   # knife away, back to the gun
+	_td_prev_weapon = -1
+	_stealth_scan = 0.0
+
+
+func is_taking_down() -> bool:
+	return _td_t >= 0.0
+
+
+## Picks a body up by the shoulders: slow, no shooting until it's put down.
+func start_drag(body: Node3D) -> void:
+	dragging = body
+	body.set_meta("dragged", true)
+	rig.cancel_inspect()
+	aiming = false
+	_drag_crouched = crouching
+	set_crouch(true)   # stooped over him, one hand on his collar
+	body_candidate = null
+	Sfx.play_foley(self, "step_grass", body.global_position, -14.0, 0.2)
+
+
+## Puts the body down where it is; in a bush or the dark it's hidden.
+func drop_body() -> void:
+	if dragging == null:
+		return
+	var b := dragging
+	dragging = null
+	rig.left_reach = Vector3.INF
+	set_crouch(_drag_crouched)
+	if is_instance_valid(b):
+		b.remove_meta("dragged")
+		Stealth.emit_sound(self, b.global_position, 3.0, "body", self)
+		var lvl = get_tree().current_scene.get("level") if get_tree().current_scene else null
+		var m = get_tree().current_scene
+		if m != null and m.get("hud") != null and Stealth.body_hidden(lvl, b):
+			m.hud.add_feed("BODY HIDDEN", Color(0.55, 0.85, 0.6))
+	_stealth_scan = 0.0
+
+
+## The body is held by the shoulders in front of the operator, who backs away
+## pulling it along the ground (in first person it stays in view).
+func _update_drag() -> void:
+	var b := dragging
+	if not is_instance_valid(b) or is_dead:
+		dragging = null
+		return
+	var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	var right := Vector3(fwd.z, 0, -fwd.x) * -1.0
+	# his shoulders come to the operator's left hand, his legs trail away from him
+	var grip := global_position + fwd * 0.5 - right * 0.18
+	var brig = b.get("rig")
+	if brig != null and brig.chest != null and brig.hips != null:
+		var chest: Vector3 = brig.chest.global_position
+		var hips: Vector3 = brig.hips.global_position
+		var along := Vector3(hips.x - chest.x, 0, hips.z - chest.z)
+		if along.length() > 0.1:
+			var turn := along.signed_angle_to(fwd, Vector3.UP)   # legs pointing away
+			b.rotation.y += turn * 0.2
+		var off := Vector3(chest.x - b.global_position.x, 0, chest.z - b.global_position.z)
+		var want := grip - off
+		want.y = global_position.y
+		b.global_position = b.global_position.lerp(want, 0.35)
+		# a settled corpse's model stops updating (soldier_rig.gd): carry it with the body
+		brig.global_transform = b.global_transform.scaled_local(brig._render_scale)
+		rig.left_reach = brig.chest.global_position + Vector3(0, 0.12, 0)
+	else:
+		var want := global_position + fwd * 1.3
+		want.y = global_position.y
+		b.global_position = b.global_position.lerp(want, 0.35)
+		b.rotation.y = lerp_angle(b.rotation.y, aim_yaw + PI, 0.2)
+
+
+## Throws a pebble-sized decoy: where it lands it clatters and guards in earshot
+## go to look (stealth.gd "distraction"). A short cooldown, no ammo.
+func throw_decoy() -> bool:
+	if decoy_cd > 0.0 or dragging != null or not can_act():
+		return false
+	var target := aim_point
+	var flat := target - global_position
+	flat.y = 0.0
+	if flat.length() < 3.0:
+		flat = Vector3(-sin(aim_yaw), 0, -cos(aim_yaw)) * 8.0
+	if flat.length() > 20.0:
+		flat = flat.normalized() * 20.0
+	target = global_position + flat
+	if throw_grenade(target, "decoy"):
+		decoy_cd = DECOY_COOLDOWN
+		return true
+	return false

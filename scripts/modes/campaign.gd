@@ -418,7 +418,7 @@ func _wreck_generator() -> void:
 				(c as MeshInstance3D).material_override = M.solid(Color(0.08, 0.07, 0.06), 0.9)
 	_burning(g.global_position + Vector3(0, 1.2, 0))
 	main.hud.add_feed("POWER CUT  ·  OUTPOST LIGHTS DOWN", Color(0.6, 0.85, 1.0))
-	get_tree().call_group("enemies", "hear_noise", g.global_position, 45.0)
+	preload("res://scripts/stealth/stealth.gd").emit_sound(main, g.global_position, 45.0, "explosion")
 
 
 func _topple_tower() -> void:

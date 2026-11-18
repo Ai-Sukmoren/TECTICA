@@ -185,6 +185,11 @@ func setup(p_main: Node) -> void:
 		_auth_row = 1 if _auth_user != "" else 0
 		if Profile.accounts().filter(func(a): return String(a).to_lower() != Profile.ADMIN_NAME).is_empty():
 			_auth_msg = "NO ACCOUNTS YET  ·  PICK A USERNAME + %d-DIGIT PASSWORD, THEN CREATE ACCOUNT" % Profile.PIN_LEN
+		if Profile._from_guest:
+			# the guest chose CREATE ACCOUNT: a fresh name, and its progress comes along
+			_auth_user = ""
+			_auth_row = 0
+			_auth_msg = "PICK A USERNAME + %d-DIGIT PASSWORD, THEN CREATE ACCOUNT  ·  YOUR GUEST PROGRESS COMES WITH YOU" % Profile.PIN_LEN
 	if Net.pending_join != "" and not Net.active:
 		# launched from a clicked invite link: straight to joining
 		var inv := Net.parse_invite(Net.pending_join)
@@ -360,14 +365,16 @@ func _menu_entries() -> Array:
 		{"id": "loadout", "sec": "OPERATOR", "label": "LOADOUT", "value": Loadout.class_label(), "arrow": true},
 		{"id": "armory", "sec": "OPERATOR", "label": "ARMORY", "value": "CR " + str(Collection.credits)},
 		{"id": "view", "sec": "SYSTEM", "label": "VIEW", "value": "FIRST PERSON" if main.start_first_person else "TOP-DOWN", "arrow": true},
-		{"id": "graphics", "sec": "SYSTEM", "label": "GRAPHICS", "value": Settings.PRESETS[main.quality], "arrow": true},
-		{"id": "music", "sec": "SYSTEM", "label": "MUSIC", "value": "OFF" if main.music.muted else "ON", "arrow": true},
-		{"id": "settings", "sec": "SYSTEM", "label": "SETTINGS"},
+		# graphics quality and music live in SETTINGS (VIDEO / AUDIO); M still mutes music
+		{"id": "settings", "sec": "SYSTEM", "label": "SETTINGS", "value": "QUALITY " + Settings.PRESETS[main.quality]},
 		{"id": "update", "sec": "SYSTEM", "label": "↓  UPDATE GAME", "value": "LATEST RELEASE"},
 	]
 	if Profile.is_admin():
 		e.append({"id": "admin", "sec": "SYSTEM", "label": "ADMIN DASHBOARD"})
-	e.append({"id": "account", "sec": "SYSTEM", "label": "SIGN OUT", "value": Profile.current.to_upper()})
+	if Profile.is_guest():
+		e.append({"id": "account", "sec": "SYSTEM", "label": "CREATE ACCOUNT", "value": "KEEPS YOUR PROGRESS"})
+	else:
+		e.append({"id": "account", "sec": "SYSTEM", "label": "SIGN OUT", "value": Profile.current.to_upper()})
 	e.append({"id": "quit", "sec": "SYSTEM", "label": "QUIT"})
 	return e
 
@@ -492,10 +499,6 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 				Loadout.save()
 		"view":
 			main.start_first_person = not main.start_first_person
-		"graphics":
-			main.set_quality(posmod(main.quality + (dir if dir != 0 else 1), Settings.CUSTOM))
-		"music":
-			main.music.toggle_mute()
 		"settings":
 			settings_open = true
 			settings_row = 0
@@ -781,9 +784,11 @@ func _draw_overlay(c: Control) -> void:
 		var k := _flash_t / _flash_len
 		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(1, 1, 0.97, clampf(k * 1.6, 0.0, 1.0)))
 
+	if briefing_t >= 0.0:
+		_draw_letterbox(c, vp)
 	# Quiet backing plates keep telemetry readable over bright surfaces.
 	var focus_bar := Net.alone()   # bullet time only with no other player connected
-	for panel in [Rect2(vp.x - 344, 24, 328, 126), Rect2(16, vp.y - (124 if focus_bar else 100), 224, 106 if focus_bar else 82)]:
+	for panel in [_weapon_panel_rect(vp), Rect2(16, vp.y - (124 if focus_bar else 100), 224, 106 if focus_bar else 82)]:
 		c.draw_rect(panel, Color(0.025, 0.045, 0.055, 0.78))
 		c.draw_rect(panel, Color(0.42, 0.66, 0.69, 0.24), false, 1.0)
 		c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
@@ -937,7 +942,13 @@ func _draw_overlay(c: Control) -> void:
 		var help := "WASD move  ·  Mouse aim  ·  LMB fire  ·  RMB ADS  ·  Wheel switch weapon  ·  Shift sprint  ·  V dropkick (sprinting, or mid-jump: flying kick)  ·  Space vault / jump  ·  Q/E peek  ·  C crouch  ·  R reload  ·  G frag  ·  T flashlight  ·  N night vision  ·  F interact / first person  ·  Z/V rotate  ·  M music"
 		if player.using_pad:
 			help = "L-stick move  ·  R-stick aim  ·  RT fire  ·  LT ADS  ·  L3 sprint  ·  A vault  ·  LB/RB peek  ·  B crouch  ·  X reload / interact  ·  Y weapon  ·  Back flashlight  ·  R3 first person  ·  Start pause"
-		_text(c, Vector2(0, vp.y - 26), help, 12, Color(TEXT, a * 0.75), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+		# two centred lines between the health panel and the radar
+		var parts := help.split("  ·  ")
+		var half := int(ceil(parts.size() / 2.0))
+		var lx := 260.0
+		var lw := vp.x - lx * 2.0
+		_text(c, Vector2(lx, vp.y - 44), "  ·  ".join(parts.slice(0, half)), 12, Color(TEXT, a * 0.75), HORIZONTAL_ALIGNMENT_CENTER, lw)
+		_text(c, Vector2(lx, vp.y - 26), "  ·  ".join(parts.slice(half)), 12, Color(TEXT, a * 0.75), HORIZONTAL_ALIGNMENT_CENTER, lw)
 
 	if Net.active and not main.game_over:
 		_draw_squad(c, vp)
@@ -1217,6 +1228,11 @@ func _mission_lines() -> Array:
 		if main.director != null and main.director.best_wave > 0:
 			out.append(["BEST  WAVE %d   ·   SCORE %d" % [main.director.best_wave, main.director.best_score], 13, ACCENT])
 		return out
+	if main.mode == "training":
+		return [["TRAINING", 12, RED], ["THE RANGE", 28, TEXT],
+				["A guided course: every move in 16 short steps.", 13, Color(TEXT, 0.8)],
+				["DONE  ·  REPLAY ANY TIME" if Campaign.completed.has("training") else "FINISH IT ONCE FOR +250 CREDITS", 13,
+						ACCENT if Campaign.completed.has("training") else WARN]]
 	var ci := Campaign.chapter_info(main.mode)
 	var lines: Array = [
 		["CHAPTER %d" % int(ci.num), 12, RED],
@@ -1268,12 +1284,24 @@ func _menu_card(c: Control, r: Rect2, heading: String, lines: Array) -> float:
 	return r.end.y
 
 
+## The briefing's cinema bars (first ~5 s). Drawn under the HUD so the compass,
+## ammo and health stay readable while they are up.
+## The weapon / ammo panel in the top-right corner.
+func _weapon_panel_rect(vp: Vector2) -> Rect2:
+	return Rect2(vp.x - 344, 24, 328, 126)
+
+
+func _draw_letterbox(c: Control, vp: Vector2) -> void:
+	var bar_h := 60.0 * clampf(1.0 - maxf(briefing_t - 4.8, 0.0) / 0.8, 0.0, 1.0)
+	if bar_h <= 0.0:
+		return
+	c.draw_rect(Rect2(0, 0, vp.x, bar_h), Color(0, 0, 0, 0.85))
+	c.draw_rect(Rect2(0, vp.y - bar_h, vp.x, bar_h), Color(0, 0, 0, 0.85))
+
+
 func _draw_briefing(c: Control, vp: Vector2) -> void:
 	var t := briefing_t
 	var a := clampf(t / 0.3, 0.0, 1.0) * clampf((6.0 - t) / 0.8, 0.0, 1.0)
-	var bar_h := 60.0 * clampf(1.0 - maxf(t - 4.8, 0.0) / 0.8, 0.0, 1.0)
-	c.draw_rect(Rect2(0, 0, vp.x, bar_h), Color(0, 0, 0, 0.85))
-	c.draw_rect(Rect2(0, vp.y - bar_h, vp.x, bar_h), Color(0, 0, 0, 0.85))
 	var lines := [
 		["TECTICA  //  ZOMBIE SURVIVAL", RED, 20],
 		[String({"warehouse": "LOCATION   WAREHOUSE - LOADING FLOOR, OVERRUN", "backrooms": "LOCATION   THE BACKROOMS - LEVEL 0, NO EXIT", "tokyo": "LOCATION   TOKYO - CANAL STREET BY THE RAIL LINE, WALLED IN"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
@@ -1364,6 +1392,17 @@ func _draw_waypoint(c: Control, vp: Vector2) -> void:
 		sp = cam.unproject_position(target)
 	var margin := 60.0
 	var clamped := Vector2(clampf(sp.x, margin, vp.x - margin), clampf(sp.y, margin + 80.0, vp.y - margin - 40.0))
+	# keep off the weapon panel with the grenade lines and feed under it (top right)
+	# and the radar (bottom right): slide below / above
+	var column := _weapon_panel_rect(vp)
+	column.end.y = 200.0 + feed.size() * 22.0
+	var avoid := [[column, 1.0]]
+	if touch == null:
+		avoid.append([Rect2(vp.x - 236, vp.y - 248, 216, 216), -1.0])
+	for a in avoid:
+		var r: Rect2 = (a[0] as Rect2).grow(18.0)
+		if r.has_point(clamped):
+			clamped.y = r.end.y + 12.0 if float(a[1]) > 0.0 else r.position.y - 30.0
 	var edge := behind or clamped.distance_to(sp) > 1.0
 	var pulse := 0.75 + 0.25 * sin(_time * 4.0)
 	var col := Color(WARN, pulse)
@@ -2845,7 +2884,7 @@ var _auth_msg := ""
 var _auth_bad := false
 var _auth_rects: Array = []
 var _auth_acc_rects: Array = []
-const AUTH_ROWS := ["USERNAME", "PASSWORD", "SIGN IN", "CREATE ACCOUNT", "QUIT"]
+const AUTH_ROWS := ["USERNAME", "PASSWORD", "SIGN IN", "CREATE ACCOUNT", "PLAY AS GUEST", "QUIT"]
 
 
 func _needs_auth() -> bool:
@@ -2861,6 +2900,13 @@ func _auth_submit(create: bool) -> void:
 		_auth_row = 1
 		Sfx.play(player, "dry", player.global_position, -6.0, 0.0)
 		return
+	Sfx.play(player, "mag_in", player.global_position, -2.0, 0.0)
+	_switch_profile()
+
+
+## No account needed: plays at once, progress kept for a later CREATE ACCOUNT.
+func _play_as_guest() -> void:
+	Profile.play_as_guest()
 	Sfx.play(player, "mag_in", player.global_position, -2.0, 0.0)
 	_switch_profile()
 
@@ -2974,6 +3020,8 @@ func _auth_activate(i: int) -> void:
 		3:
 			_auth_submit(true)
 		4:
+			_play_as_guest()
+		5:
 			print("[quit] sign-in QUIT row")
 			Settings.mark_clean_exit()
 			get_tree().quit()
@@ -2988,15 +3036,15 @@ func _draw_auth(c: Control, vp: Vector2) -> void:
 	var pw := 460.0
 	var px := vp.x * 0.5 - pw * 0.5
 	var top := vp.y * 0.38
-	c.draw_rect(Rect2(px - 30, top - 50, pw + 60, 360), Color(0.03, 0.045, 0.055, 0.85))
-	_brackets(c, Rect2(px - 30, top - 50, pw + 60, 360), 16.0, Color(TEXT, 0.35), 1.5)
+	c.draw_rect(Rect2(px - 30, top - 50, pw + 60, 408), Color(0.03, 0.045, 0.055, 0.85))
+	_brackets(c, Rect2(px - 30, top - 50, pw + 60, 408), 16.0, Color(TEXT, 0.35), 1.5)
 	_text(c, Vector2(0, top - 18), "SIGN IN", 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	_text(c, Vector2(0, top - 42), "Successful sign-ins report your username, time and game version to the game owner.", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	var cur := "_" if int(_time * 2.0) % 2 == 0 else " "
 	var pin_show := ""
 	for i in Profile.PIN_LEN:
 		pin_show += ("*" if i < _auth_pin.length() else "_") + ("  " if i < Profile.PIN_LEN - 1 else "")
-	var values := [_auth_user + (cur if _auth_row == 0 else ""), pin_show, "", "", ""]
+	var values := [_auth_user + (cur if _auth_row == 0 else ""), pin_show, "", "", "", ""]
 	_auth_rects.clear()
 	for i in AUTH_ROWS.size():
 		var y := top + 22 + i * 48.0 + (14.0 if i >= 2 else 0.0)
@@ -3014,21 +3062,21 @@ func _draw_auth(c: Control, vp: Vector2) -> void:
 				_brackets(c, r, 10.0, RED, 2.0)
 			_text(c, Vector2(r.position.x, r.position.y + 26), AUTH_ROWS[i], 17, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 	if _auth_msg != "":
-		_text(c, Vector2(0, top + 330), _auth_msg, 14, DANGER if _auth_bad else ACCENT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+		_text(c, Vector2(0, top + 378), _auth_msg, 14, DANGER if _auth_bad else ACCENT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	# accounts on this PC (click to pick)
 	_auth_acc_rects.clear()
 	var accs := Profile.accounts()
 	if not accs.is_empty():
-		_text(c, Vector2(0, top + 368), "ACCOUNTS ON THIS PC", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+		_text(c, Vector2(0, top + 416), "ACCOUNTS ON THIS PC", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		var shown := accs.slice(0, 6)
 		var w := 150.0
 		var x0 := vp.x * 0.5 - (shown.size() * (w + 10) - 10) * 0.5
 		for i in shown.size():
-			var r := Rect2(x0 + i * (w + 10), top + 380, w, 28)
+			var r := Rect2(x0 + i * (w + 10), top + 428, w, 28)
 			_auth_acc_rects.append([r, shown[i]])
 			c.draw_rect(r, Color(1, 1, 1, 0.05))
 			c.draw_rect(r, Color(TEXT, 0.25), false, 1.0)
 			_text(c, Vector2(r.position.x, r.position.y + 19), String(shown[i]).to_upper(), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
-	_text(c, Vector2(0, vp.y - 40), "Type your username and %d-digit password   ·   Tab / Up / Down move   ·   Enter sign in   ·   new here? CREATE ACCOUNT" % Profile.PIN_LEN,
+	_text(c, Vector2(0, vp.y - 40), "Type your username and %d-digit password   ·   Tab / Up / Down move   ·   Enter sign in   ·   just want to play? PLAY AS GUEST" % Profile.PIN_LEN,
 			12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	_text(c, Vector2(0, vp.y - 22), "Accounts are stored on this PC only  ·  each one keeps its own credits, skins, loadouts and campaign progress", 11, Color(DIM, 0.7), HORIZONTAL_ALIGNMENT_CENTER, vp.x)

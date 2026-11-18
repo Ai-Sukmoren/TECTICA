@@ -131,7 +131,7 @@ func _layout_keyboard() -> void:
 	# bar above the keys: on sign-in the two fields (tap to type in one) and
 	# the two buttons; elsewhere what is being typed and HIDE KEYBOARD
 	var bar_y := top - 62.0
-	var actions: Array = [["SIGN IN", "act_signin"], ["CREATE ACCOUNT", "act_create"]] if hud._needs_auth() else [["HIDE KEYBOARD", "act_hide"]]
+	var actions: Array = [["SIGN IN", "act_signin"], ["CREATE ACCOUNT", "act_create"], ["GUEST", "act_guest"]] if hud._needs_auth() else [["HIDE KEYBOARD", "act_hide"]]
 	var ax := s.x - 12.0
 	for i in range(actions.size() - 1, -1, -1):
 		var w := 64.0 + String(actions[i][0]).length() * 12.0
@@ -321,6 +321,8 @@ func _type_key(k: Array) -> void:
 				hud._auth_submit(false)
 			"act_create":
 				hud._auth_submit(true)
+			"act_guest":
+				hud._play_as_guest()
 			"act_hide":
 				hud.mp_row = 1   # off the text rows
 			"act_field0":

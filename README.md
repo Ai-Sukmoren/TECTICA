@@ -13,9 +13,27 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.43
+## 🆕 What's new in v1.44
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.43.1-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.44.0-beta)
+
+### A better first five minutes
+- **Play as guest.** A PC with no accounts goes straight to the title menu as GUEST, with no username or password. The
+  sign-in screen also has **PLAY AS GUEST**, and the guest's **CREATE ACCOUNT** keeps everything it earned.
+- **New players start in Training.** Until you finish Training or a chapter, DEPLOY starts THE RANGE, and the title
+  screen shows its own mission card.
+- **Chapter 1 starts hot.** Gunfire carries from the logging camp in the first seconds and the radio calls it in.
+- **A cleaner HUD.** The briefing bars sit under the HUD, so ammo, health and the compass stay readable. The objective
+  marker never covers the weapon panel or the radar, and the controls hint fits between the panels.
+- **A shorter title menu.** GRAPHICS and MUSIC moved into SETTINGS (M still mutes the music).
+
+| Play as guest | Training first | Chapter 1 opening |
+|---|---|---|
+| ![Guest sign-in](docs/screenshots/v144-guest-signin.jpg) | ![Training by default](docs/screenshots/v144-training-default.jpg) | ![Chapter 1 opening](docs/screenshots/v144-chapter1-opening.jpg) |
+
+## Earlier: v1.43
+
+[Release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.43.1-beta)
 
 ### v1.43.1: attachment fit
 Under-barrel rails now sit flush on every gun: no more floating bars, they follow sloped handguards and slide to

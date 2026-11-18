@@ -58,6 +58,10 @@ static var saved_tdm := false
 static var saved_bots := 0
 ## Skip the title screen once (used by restart).
 static var quick_restart := false
+## The new-player check (_new_player_start) has run for a signed-in operator this launch.
+static var _new_player_checked := false
+## The guest auto sign-in is only tried on the launch's first map (signing out stays signed out).
+static var _guest_tried := false
 static var _launch_checked := false
 
 var level   # forest_level.gd, town_level.gd or desert_level.gd
@@ -117,6 +121,26 @@ var killcam: Node
 var _ammo_taken: Array = []
 
 
+## First launch on a PC with no accounts: straight in as the guest (no sign-in
+## screen). Then, once per launch, an operator with no finished chapter and no
+## finished training deploys into TRAINING instead of Chapter 1.
+func _new_player_start() -> void:
+	var Profile = preload("res://scripts/core/profile.gd")
+	var first_map := not _guest_tried
+	_guest_tried = true
+	var players: Array = Profile.accounts().filter(func(a): return String(a).to_lower() != Profile.ADMIN_NAME)
+	if first_map and not Profile.signed_in() and not Profile._is_test_run() and players.is_empty():
+		Profile.play_as_guest()
+		Net.player_name = Profile.current.to_upper()
+	Campaign.load_progress()
+	if _new_player_checked or not Profile.signed_in():
+		return
+	_new_player_checked = true
+	if not quick_restart and mode == "ch1" and Campaign.completed.is_empty():
+		mode = "training"
+		saved_mode = mode
+
+
 func _ready() -> void:
 	randomize()
 	Engine.time_scale = 1.0   # never carry a slow-mo / kill freeze / bullet time into a new map
@@ -125,7 +149,7 @@ func _ready() -> void:
 	mode = saved_mode if saved_mode in ["ch1", "ch2", "training", "zombie", "pvp"] else "ch1"
 	if mode == "pvp" and not Net.is_pvp():
 		mode = "ch1"   # deathmatch only exists in a multiplayer session
-	Campaign.load_progress()
+	_new_player_start()
 	InputSetup.setup()
 	_setup_audio_bus()
 	Settings.ensure()

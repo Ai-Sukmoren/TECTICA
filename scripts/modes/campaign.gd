@@ -43,6 +43,15 @@ var _flare: Node3D
 var _beep := 0.0
 var _tower_down := false
 ## host: peer id -> holding the interact key at the objective
+## Chapter 1 opens with the fight already on: gunfire carries from the camp in the
+## first seconds and the radio calls it, so the landing is never a quiet walk.
+## [seconds after deploy, shots in the burst] (sound only; nothing spawns).
+const OPENING_BURSTS := [[1.5, 5], [4.0, 3], [7.5, 6], [11.0, 4]]
+const OPENING_RADIO_AT := 3.0
+var _opening_t := -1.0
+var _opening_shots: Array = []
+var _opening_radio := false
+
 var net_interact: Dictionary = {}
 var _sent_interact := false
 
@@ -198,6 +207,7 @@ func _client_tick(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if main == null or main.game_over or not main._deployed:
 		return
+	_opening(delta)
 	if not Net.is_server():
 		_client_tick(delta)
 		return
@@ -245,6 +255,29 @@ func _physics_process(delta: float) -> void:
 				_spawn_reinforcements()
 			if hold_timer <= 0.0:
 				_advance()
+
+
+## Distant bursts from the camp and one radio call in the opening seconds of Chapter 1
+## (played on every machine, so co-op players hear it too).
+func _opening(delta: float) -> void:
+	if chapter != "ch1" or step > 0 or _opening_t > 20.0:
+		return
+	if _opening_t < 0.0:
+		_opening_t = 0.0
+		for b in OPENING_BURSTS:
+			for i in int(b[1]):
+				_opening_shots.append(float(b[0]) + i * randf_range(0.09, 0.14))
+	_opening_t += delta
+	var pp: Vector3 = main.player.global_position
+	var to_camp := Vector3(level.camp.x - pp.x, 0.0, level.camp.z - pp.z)
+	while not _opening_shots.is_empty() and _opening_t >= float(_opening_shots[0]):
+		_opening_shots.pop_front()
+		# out by the camp but inside hearing range (sfx.gd: 90 m)
+		var at := pp + to_camp.limit_length(55.0) + Vector3(randf_range(-6, 6), 1.5, randf_range(-6, 6))
+		Sfx.play(main, "shot_ak", at, 2.0)
+	if not _opening_radio and _opening_t >= OPENING_RADIO_AT and main.hud != null:
+		_opening_radio = true
+		main.hud.add_feed("RADIO  ·  SHOTS AT THE CAMP  ·  MOVE UP", main.hud.WARN)
 
 
 func _advance() -> void:

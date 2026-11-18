@@ -5,19 +5,24 @@ extends RefCounted
 ## SHA-256 hash. Five wrong PINs lock sign-in for 30 seconds.
 ## (Local only: there is no online account server.)
 
-const ACCOUNTS := "user://accounts.cfg"
+const ACCOUNTS := "accounts.cfg"   # under _root()
 const PIN_LEN := 4
 const MAX_TRIES := 5
 const LOCK_SECONDS := 30.0
 const HASH_ROUNDS := 2000
 ## sign-in history kept for the admin dashboard (newest last, capped)
-const LOGIN_LOG := "user://login_log.cfg"
+const LOGIN_LOG := "login_log.cfg"   # under _root()
 const LOG_MAX := 400
 ## progress files that live per account
 const FILES := ["armory.cfg", "loadout.cfg", "campaign.cfg"]
 
 ## signed-in username ("" = nobody, files fall back to the shared user:// root)
 static var current := ""
+## The no-password guest: plays at once, keeps its progress in profiles/guest/,
+## and hands that progress to the account created when it signs out.
+const GUEST := "Guest"
+## Set when the guest signs out: the next account created takes over its progress.
+static var _from_guest := false
 static var _fails := 0
 static var _locked_until := 0.0
 static var _admin_for := "?"
@@ -28,10 +33,23 @@ static func signed_in() -> bool:
 	return current != ""
 
 
+static func is_guest() -> bool:
+	return current == GUEST
+
+
+## Signs in as the guest (no password). The first launch does this by itself.
+static func play_as_guest() -> void:
+	current = GUEST
+	_fails = 0
+	if not _is_test_run():
+		DirAccess.make_dir_recursive_absolute(_root() + "profiles/" + GUEST.to_lower())
+	log_event(current, "guest")
+
+
 ## Where a progress file lives for the signed-in account. Automated tests
 ## (scripts under res://tests/) get a sandbox so they never touch real saves.
 static func path(file: String) -> String:
-	var root := "user://test_sandbox/" if _is_test_run() else "user://"
+	var root := _root()
 	if current == "":
 		return root + file
 	var dir := root + "profiles/" + current.to_lower()
@@ -41,6 +59,16 @@ static func path(file: String) -> String:
 
 
 static var _test_run := -1
+
+
+## Where accounts, the login log and every profile live: automated tests get a
+## sandbox so a test run never adds accounts to (or reads them from) this PC.
+static func _root() -> String:
+	if not _is_test_run():
+		return "user://"
+	if not DirAccess.dir_exists_absolute("user://test_sandbox"):
+		DirAccess.make_dir_recursive_absolute("user://test_sandbox")
+	return "user://test_sandbox/"
 
 
 static func _is_test_run() -> bool:
@@ -53,7 +81,7 @@ static func _is_test_run() -> bool:
 
 static func _cfg() -> ConfigFile:
 	var cfg := ConfigFile.new()
-	cfg.load(ACCOUNTS)
+	cfg.load(_root() + ACCOUNTS)
 	return cfg
 
 
@@ -79,6 +107,8 @@ static func check_name(n: String) -> String:
 	var s := n.strip_edges()
 	if s.length() < 3 or s.length() > 16:
 		return "USERNAME MUST BE 3-16 CHARACTERS"
+	if s.to_lower() == GUEST.to_lower():
+		return "PICK ANOTHER USERNAME  ·  GUEST IS RESERVED"
 	for ch in s:
 		if not (ch.is_valid_identifier() or ch.is_valid_int() or ch == "-"):
 			return "USERNAME: LETTERS, NUMBERS, _ AND - ONLY"
@@ -118,14 +148,19 @@ static func create(name: String, pin: String) -> String:
 	var salt := Crypto.new().generate_random_bytes(16).hex_encode()
 	cfg.set_value("users", key, {"name": name.strip_edges(), "salt": salt, "hash": _hash(pin, salt),
 			"created": Time.get_unix_time_from_system(), "last": Time.get_unix_time_from_system()})
-	if cfg.save(ACCOUNTS) != OK:
+	if cfg.save(_root() + ACCOUNTS) != OK:
 		return "COULD NOT SAVE THE ACCOUNT"
-	DirAccess.make_dir_recursive_absolute("user://profiles/" + key)
-	if first:
-		# the first account keeps the progress made before accounts existed
+	DirAccess.make_dir_recursive_absolute(_root() + "profiles/" + key)
+	# a guest who signs out to make an account keeps what it earned as the guest;
+	# otherwise the first account keeps the progress made before accounts existed
+	var from := _root() + "profiles/%s/" % GUEST.to_lower() if _from_guest else (_root() if first else "")
+	if from != "":
 		for f in FILES:
-			if FileAccess.file_exists("user://" + f):
-				DirAccess.copy_absolute("user://" + f, "user://profiles/%s/%s" % [key, f])
+			if FileAccess.file_exists(from + f):
+				DirAccess.copy_absolute(from + f, _root() + "profiles/%s/%s" % [key, f])
+				if _from_guest:
+					DirAccess.remove_absolute(from + f)   # handed over: the guest starts fresh
+	_from_guest = false
 	current = name.strip_edges()
 	_fails = 0
 	_ensure_admin()
@@ -150,7 +185,7 @@ static func sign_in(name: String, pin: String) -> String:
 		_fails += 1
 		u.fails = int(u.get("fails", 0)) + 1
 		cfg.set_value("users", key, u)
-		cfg.save(ACCOUNTS)
+		cfg.save(_root() + ACCOUNTS)
 		log_event(String(u.get("name", key)), "wrong_pin")
 		if _fails >= MAX_TRIES:
 			_fails = 0
@@ -162,9 +197,10 @@ static func sign_in(name: String, pin: String) -> String:
 	u.last = Time.get_unix_time_from_system()
 	u.logins = int(u.get("logins", 0)) + 1
 	cfg.set_value("users", key, u)
-	cfg.save(ACCOUNTS)
-	DirAccess.make_dir_recursive_absolute("user://profiles/" + key)
+	cfg.save(_root() + ACCOUNTS)
+	DirAccess.make_dir_recursive_absolute(_root() + "profiles/" + key)
 	current = String(u.get("name", name.strip_edges()))
+	_from_guest = false   # an existing account: the guest keeps its own progress
 	_ensure_admin()
 	log_event(current, "sign_in")
 	_report_login()
@@ -183,6 +219,7 @@ static func _report_login() -> void:
 static func sign_out() -> void:
 	if current != "":
 		log_event(current, "sign_out")
+	_from_guest = is_guest()
 	current = ""
 
 
@@ -222,13 +259,13 @@ static func seed_admin() -> void:
 		if not bool(u.get("admin", false)):
 			u.admin = true
 			cfg.set_value("users", key, u)
-			cfg.save(ACCOUNTS)
+			cfg.save(_root() + ACCOUNTS)
 		return
 	var salt := Crypto.new().generate_random_bytes(16).hex_encode()
 	cfg.set_value("users", key, {"name": ADMIN_NAME, "salt": salt, "hash": _hash(ADMIN_PIN, salt), "admin": true,
 			"created": Time.get_unix_time_from_system(), "last": 0.0})
-	cfg.save(ACCOUNTS)
-	DirAccess.make_dir_recursive_absolute("user://profiles/" + key)
+	cfg.save(_root() + ACCOUNTS)
+	DirAccess.make_dir_recursive_absolute(_root() + "profiles/" + key)
 	_admin_for = "?"
 
 
@@ -243,20 +280,20 @@ static func set_admin(name: String, on: bool) -> bool:
 	var u: Dictionary = cfg.get_value("users", key)
 	u.admin = on
 	cfg.set_value("users", key, u)
-	cfg.save(ACCOUNTS)
+	cfg.save(_root() + ACCOUNTS)
 	log_event(current, ("grant_admin:" if on else "revoke_admin:") + String(u.get("name", key)))
 	return true
 
 
 static func log_event(user: String, event: String) -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(LOGIN_LOG)
+	cfg.load(_root() + LOGIN_LOG)
 	var entries: Array = cfg.get_value("log", "entries", [])
 	entries.append({"t": Time.get_unix_time_from_system(), "user": user, "event": event})
 	if entries.size() > LOG_MAX:
 		entries = entries.slice(entries.size() - LOG_MAX)
 	cfg.set_value("log", "entries", entries)
-	cfg.save(LOGIN_LOG)
+	cfg.save(_root() + LOGIN_LOG)
 
 
 ## Newest first. Empty unless the signed-in account is admin.
@@ -264,7 +301,7 @@ static func login_log(limit: int = 100) -> Array:
 	if not is_admin():
 		return []
 	var cfg := ConfigFile.new()
-	cfg.load(LOGIN_LOG)
+	cfg.load(_root() + LOGIN_LOG)
 	var entries: Array = cfg.get_value("log", "entries", [])
 	entries.reverse()
 	return entries.slice(0, limit)
@@ -282,10 +319,10 @@ static func dashboard_rows() -> Array:
 	for k in cfg.get_section_keys("users"):
 		var u: Dictionary = cfg.get_value("users", k, {})
 		var arm := ConfigFile.new()
-		arm.load("user://profiles/%s/armory.cfg" % k)
+		arm.load(_root() + "profiles/%s/armory.cfg" % k)
 		var owned: Dictionary = arm.get_value("armory", "owned", {})
 		var camp := ConfigFile.new()
-		camp.load("user://profiles/%s/campaign.cfg" % k)
+		camp.load(_root() + "profiles/%s/campaign.cfg" % k)
 		var chapters: Array = []
 		if camp.has_section("campaign"):
 			for ck in camp.get_section_keys("campaign"):

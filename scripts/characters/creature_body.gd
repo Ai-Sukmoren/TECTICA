@@ -5,6 +5,7 @@ extends Node3D
 
 const M = preload("res://scripts/core/materials.gd")
 const ML = preload("res://scripts/core/mesh_lib.gd")
+const Body = preload("res://scripts/characters/body_mesh.gd")
 
 ## Bats hover this high above their (ground-level) body origin.
 const BAT_HOVER := 1.75
@@ -54,21 +55,24 @@ func _pivot(parent: Node3D, pos: Vector3) -> Node3D:
 
 
 func _build_dog() -> void:
-	var hide := M.solid(Color(0.24, 0.21, 0.17), 0.95)
+	var hide := M.matte("hound_coat", Color("#393e40"), 0.95)
 	var raw := M.solid(Color(0.45, 0.12, 0.1), 0.6)
 	var bone := M.solid(Color(0.78, 0.74, 0.62), 0.7)
 	var eye := M.emissive("zombie_eye", Color(1.0, 0.75, 0.2), 6.0)
 	_body = _pivot(self, Vector3(0, 0.56, 0))
-	_mesh(_body, ML.rbox(Vector3(0.3, 0.3, 0.72)), hide, Vector3.ZERO)
+	var trunk := Body.loft("hound_trunk", [[0.36, 0.075, 0.08, 0.01], [0.23, 0.134, 0.133, 0.0],
+		[0.02, 0.106, 0.115, 0.025], [-0.17, 0.157, 0.177, 0.0], [-0.33, 0.115, 0.13, -0.02]], 8)
+	_mesh(_body, trunk, hide, Vector3.ZERO, Vector3(PI * 0.5, 0, 0))
 	_mesh(_body, ML.rbox(Vector3(0.24, 0.22, 0.3)), raw, Vector3(0.05, -0.02, 0.02))   # torn flank
 	for i in 4:
 		_mesh(_body, ML.rbox(Vector3(0.012, 0.16, 0.02)), bone, Vector3(0.155, 0.0, -0.1 + i * 0.07))
 	_head = _pivot(_body, Vector3(0, 0.12, -0.4))
-	_mesh(_head, ML.rbox(Vector3(0.2, 0.19, 0.22)), hide, Vector3(0, 0, -0.05))
+	_mesh(_head, Body.loft("hound_skull", [[0.065, 0.078, 0.072, 0], [-0.035, 0.113, 0.096, 0],
+		[-0.125, 0.082, 0.081, 0.006], [-0.176, 0.051, 0.042, 0.014]], 8), hide, Vector3.ZERO, Vector3(PI * 0.5, 0, 0))
 	_mesh(_head, ML.rbox(Vector3(0.12, 0.1, 0.2)), hide, Vector3(0, -0.03, -0.24))
 	_mesh(_head, ML.rbox(Vector3(0.1, 0.03, 0.17)), raw, Vector3(0, -0.095, -0.22))      # jaw
 	for sx in [-1.0, 1.0]:
-		_mesh(_head, ML.rbox(Vector3(0.05, 0.1, 0.03)), hide, Vector3(sx * 0.07, 0.12, 0.0), Vector3(0.3, 0, sx * 0.25))
+		_mesh(_head, ML.cylinder(0.004, 0.044, 0.13, 4), hide, Vector3(sx * 0.065, 0.121, 0.0), Vector3(0.3, 0, sx * 0.25))
 		var e := _mesh(_head, ML.sphere(0.018, false, 6), eye, Vector3(sx * 0.055, 0.03, -0.165))
 		e.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		for k in 2:
@@ -77,10 +81,32 @@ func _build_dog() -> void:
 		var leg := _pivot(_body, corner)
 		_mesh(leg, ML.cylinder(0.035, 0.045, 0.26, 6), hide, Vector3(0, -0.13, 0))
 		_mesh(leg, ML.cylinder(0.025, 0.035, 0.22, 6), hide, Vector3(0, -0.36, 0.02))
+		_mesh(leg, ML.rbox(Vector3(0.071, 0.042, 0.106)), hide, Vector3(0, -0.455, -0.004))
 		_legs.append(leg)
 	_tail = _pivot(_body, Vector3(0, 0.08, 0.36))
 	_mesh(_tail, ML.cylinder(0.015, 0.03, 0.3, 5), hide, Vector3(0, 0.0, 0.14), Vector3(PI * 0.5 + 0.5, 0, 0))
 
+
+## Folded triangular panels share a raised spar. Reverse winding gives the
+## membrane an underside when the animated wing turns above the camera.
+static var _membranes := {}
+
+static func _membrane(side: float) -> ArrayMesh:
+	if _membranes.has(side):
+		return _membranes[side]
+	var points := [Vector3.ZERO, Vector3(0.20, 0.042, -0.085), Vector3(0.44, 0.003, -0.105),
+		Vector3(0.33, -0.016, 0.024), Vector3(0.30, -0.007, 0.085), Vector3(0.18, -0.015, 0.045),
+		Vector3(0.13, -0.008, 0.132), Vector3(0, 0, 0.064)]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_smooth_group(-1)
+	for tri in [[0, 1, 7], [1, 6, 7], [1, 5, 6], [1, 4, 5], [1, 3, 4], [1, 2, 3]]:
+		for index in [tri[0], tri[1], tri[2], tri[2], tri[1], tri[0]]:
+			var v: Vector3 = points[index]
+			st.add_vertex(Vector3(side * v.x, v.y, v.z))
+	st.generate_normals()
+	_membranes[side] = st.commit()
+	return _membranes[side]
 
 func _build_bat() -> void:
 	var fur := M.solid(Color(0.13, 0.1, 0.1), 0.95)
@@ -95,8 +121,7 @@ func _build_bat() -> void:
 		var e := _mesh(_head, ML.sphere(0.013, false, 6), eye, Vector3(sx * 0.025, 0.01, -0.055))
 		e.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var wing := _pivot(_body, Vector3(sx * 0.07, 0.02, 0))
-		_mesh(wing, ML.rbox(Vector3(0.24, 0.012, 0.2)), skin, Vector3(sx * 0.13, 0, 0.02))
-		_mesh(wing, ML.rbox(Vector3(0.16, 0.01, 0.14)), skin, Vector3(sx * 0.32, 0, 0.05), Vector3(0, sx * 0.25, 0))
+		_mesh(wing, _membrane(sx), skin, Vector3.ZERO)
 		_mesh(wing, ML.cylinder(0.008, 0.008, 0.4, 4), fur, Vector3(sx * 0.2, 0.006, -0.07), Vector3(0, 0, PI * 0.5))
 		_wings.append(wing)
 

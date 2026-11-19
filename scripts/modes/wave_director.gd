@@ -153,13 +153,13 @@ func _begin_wave() -> void:
 
 func _announce_wave() -> void:
 	main.hud.add_feed("WAVE %d  ·  %d INFECTED INBOUND" % [wave, to_spawn], Color(1.0, 0.4, 0.3))
-	main.hud.wave_banner("WAVE %d" % wave)
+	main.hud.wave_banner("WAVE %d" % wave, "%d INFECTED INBOUND" % to_spawn)
 	match wave:
 		3: main.hud.add_feed("CRAWLERS  ·  WATCH THE GROUND", Color(0.7, 0.9, 0.3))
 		5: main.hud.add_feed("ARMORED  ·  AIM FOR HEAD OR FLANK", Color(0.6, 0.8, 1.0))
 		6: main.hud.add_feed("BERSERKERS  ·  WOUNDED INFECTED ENRAGE", Color(1.0, 0.35, 0.12))
 	if Types.is_boss_wave(wave):
-		main.hud.wave_banner("WAVE %d  ·  BOSS" % wave)
+		main.hud.wave_banner("WAVE %d  ·  BOSS" % wave, "%s INBOUND  ·  BAIT ITS CHARGE INTO A WALL" % boss_name)
 		main.hud.add_feed("%s INBOUND  ·  AIM HIGH  ·  BAIT ITS CHARGE INTO A WALL" % boss_name, Color(1.0, 0.25, 0.2))
 		Sfx.play(main, "groan", main.player.global_position + Vector3(0, 6, 0), 2.0, 0.05)
 		if main.level != null and main.level.has_method("test_flash"):
@@ -195,7 +195,7 @@ func apply_wave_end() -> void:
 	preload("res://scripts/core/progression.gd").on_wave_cleared(wave, String(main.get("map_id")) if main.get("map_id") != null else "forest")
 	main.hud.add_feed("WAVE %d CLEARED  ·  +35 HP  ·  +%d PTS  ·  +%d CR" % [wave, pts, cr], Color(0.55, 1.0, 0.6))
 	main.hud.add_feed("[%s] SHOP  ·  %d PTS TO SPEND" % [preload("res://scripts/core/settings.gd").Controls.short("shop"), shop.points], Color(1.0, 0.82, 0.35))
-	main.hud.wave_banner("WAVE %d CLEARED" % wave)
+	main.hud.wave_banner("WAVE %d CLEARED" % wave, "+35 HP   ·   +%d PTS   ·   +%d CR   ·   SHOP OPEN" % [pts, cr])
 	Sfx.play(main, "mag_in", p.global_position, 0.0)
 
 

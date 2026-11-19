@@ -22,6 +22,11 @@ var _cmb: AudioStreamPlayer
 var _thread: Thread
 var _level := 0.0
 var _ready_to_play := false
+## The score is the same take every time, so it is synthesised once per run and every later map reuses it (making
+## it on each load cost CPU while loading, and leaving a map before it was done froze the screen for a second).
+static var _made: Array = []
+## Set when the map is left mid-synthesis: the worker stops at the next stage instead of finishing a take.
+var _abort := false
 
 
 func _ready() -> void:
@@ -32,12 +37,16 @@ func _ready() -> void:
 		p.volume_db = -80.0
 		p.bus = &"Music"
 		add_child(p)
+	if not _made.is_empty():
+		_start(_made[0], _made[1])
+		return
 	_thread = Thread.new()
 	_thread.start(_generate)
 
 
 func _exit_tree() -> void:
 	if _thread and _thread.is_started():
+		_abort = true
 		_thread.wait_to_finish()
 
 
@@ -96,6 +105,8 @@ func _generate() -> void:
 			for k in ch.size():
 				_add_ep(keys, t0 + k * 0.022, 2.6, float(ch[k]), 0.085 * float(h[1]) * (1.0 if k > 0 else 1.25))
 
+	if _abort:
+		return
 	# ---------------- bells: sparse melody, D minor pentatonic ----------------
 	var tune := [
 		[0, 1.0, 587.33], [0, 2.5, 523.25], [1, 0.5, 440.0], [1, 3.0, 349.23],
@@ -108,6 +119,8 @@ func _generate() -> void:
 		_add_bell(bells, int(nt[0]) * bar + (float(nt[1]) + late) * beat, float(nt[2]), 0.11)
 	_echo(bells, int(beat * 0.75 * RATE), 0.38)
 
+	if _abort:
+		return
 	# ---------------- beat: dusty boom-bap ----------------
 	for b in BARS:
 		var bt := b * bar
@@ -133,24 +146,32 @@ func _generate() -> void:
 		if b % 2 == 1:
 			_add_sub(bass, bt + (3.5 + SWING) * beat, beat * 0.4, (root + next) * 0.5, 0.32)
 
+	if _abort:
+		return
 	# ---------------- vinyl: hiss and crackle ----------------
 	var vinyl := PackedFloat32Array()
 	vinyl.resize(n)
 	var hiss := 0.0
 	var pop := 0.0
 	for i in n:
+		if i & 8191 == 0 and _abort:
+			return
 		hiss += ((rng.randf() * 2.0 - 1.0) - hiss) * 0.35
 		if rng.randf() < 0.00075:
 			pop = rng.randf_range(-1.0, 1.0) * rng.randf_range(0.25, 1.0)
 		pop *= 0.72
 		vinyl[i] = hiss * 0.012 + pop * 0.09
 
+	if _abort:
+		return
 	# ---------------- mix ----------------
 	var amb := PackedFloat32Array()
 	amb.resize(n)
 	var cmb := PackedFloat32Array()
 	cmb.resize(n)
 	for i in n:
+		if i & 8191 == 0 and _abort:
+			return
 		var t := float(i) / RATE
 		var trem := 1.0 - 0.14 * (0.5 + 0.5 * sin(TAU * 4.6 * t))
 		var k := keys[i] * trem
@@ -164,7 +185,22 @@ func _generate() -> void:
 			# gentle saturation, then a 9-bit crush for grit
 			buf[i] = roundf(tanh(buf[i] * 1.25) * 256.0) / 256.0
 
-	call_deferred("_start", _to_stream(amb), _to_stream(cmb))
+	if _abort:
+		return
+	var a := _to_stream(amb)
+	var c := _to_stream(cmb)
+	if _abort:
+		return
+	call_deferred("_finish_take", a, c)
+
+
+## Back on the main thread: keep the take for later maps and play it.
+func _finish_take(a: AudioStreamWAV, c: AudioStreamWAV) -> void:
+	_made = [a, c]
+	if _thread != null and _thread.is_started():
+		_thread.wait_to_finish()   # it has just returned
+	if is_inside_tree():
+		_start(a, c)
 
 
 func _start(a: AudioStreamWAV, c: AudioStreamWAV) -> void:
@@ -179,6 +215,8 @@ func _to_stream(buf: PackedFloat32Array) -> AudioStreamWAV:
 	var data := PackedByteArray()
 	data.resize(buf.size() * 2)
 	for i in buf.size():
+		if i & 8191 == 0 and _abort:
+			return null
 		data.encode_s16(i * 2, int(clampf(buf[i], -1.0, 1.0) * 30000.0))
 	var s := AudioStreamWAV.new()
 	s.format = AudioStreamWAV.FORMAT_16_BITS
@@ -194,6 +232,8 @@ func _to_stream(buf: PackedFloat32Array) -> AudioStreamWAV:
 ## Electric piano note: a mellow fundamental with a bell-like attack that
 ## fades fast. Tails wrap around the loop so the seam is silent.
 func _add_ep(buf: PackedFloat32Array, t0: float, dur: float, f: float, vol: float) -> void:
+	if _abort:
+		return
 	var n := buf.size()
 	var a := int(t0 * RATE)
 	var count := int(dur * RATE)
@@ -207,6 +247,8 @@ func _add_ep(buf: PackedFloat32Array, t0: float, dur: float, f: float, vol: floa
 
 ## Soft bell / kalimba pluck for the melody.
 func _add_bell(buf: PackedFloat32Array, t0: float, f: float, vol: float) -> void:
+	if _abort:
+		return
 	var n := buf.size()
 	var a := int(t0 * RATE)
 	var w := TAU * f / RATE
@@ -217,6 +259,8 @@ func _add_bell(buf: PackedFloat32Array, t0: float, f: float, vol: float) -> void
 
 
 func _add_kick(buf: PackedFloat32Array, t0: float, vol: float) -> void:
+	if _abort:
+		return
 	var n := buf.size()
 	var a := int(t0 * RATE)
 	var ph := 0.0
@@ -228,6 +272,8 @@ func _add_kick(buf: PackedFloat32Array, t0: float, vol: float) -> void:
 
 ## Sidechain: the keys dip right after a kick and swell back.
 func _add_duck(duck: PackedFloat32Array, t0: float) -> void:
+	if _abort:
+		return
 	var n := duck.size()
 	var a := int(t0 * RATE)
 	for j in int(0.4 * RATE):
@@ -238,6 +284,8 @@ func _add_duck(duck: PackedFloat32Array, t0: float) -> void:
 
 ## Dusty snare: filtered noise over a short body, no crack.
 func _add_snare(buf: PackedFloat32Array, t0: float, vol: float, rng: RandomNumberGenerator) -> void:
+	if _abort:
+		return
 	var n := buf.size()
 	var a := int(t0 * RATE)
 	var lp := 0.0
@@ -248,6 +296,8 @@ func _add_snare(buf: PackedFloat32Array, t0: float, vol: float, rng: RandomNumbe
 
 
 func _add_hat(buf: PackedFloat32Array, t0: float, vol: float, rng: RandomNumberGenerator) -> void:
+	if _abort:
+		return
 	var n := buf.size()
 	var a := int(t0 * RATE)
 	var prev := 0.0
@@ -260,6 +310,8 @@ func _add_hat(buf: PackedFloat32Array, t0: float, vol: float, rng: RandomNumberG
 
 ## Warm sub: sine with a little second harmonic, soft edges.
 func _add_sub(buf: PackedFloat32Array, t0: float, dur: float, f: float, vol: float) -> void:
+	if _abort:
+		return
 	var n := buf.size()
 	var a := int(t0 * RATE)
 	var w := TAU * f / RATE
@@ -275,6 +327,8 @@ func _add_sub(buf: PackedFloat32Array, t0: float, dur: float, f: float, vol: flo
 func _echo(buf: PackedFloat32Array, delay: int, feedback: float) -> void:
 	var n := buf.size()
 	for i in n:
+		if i & 8191 == 0 and _abort:
+			return
 		buf[i] += buf[(i - delay + n) % n] * feedback
 
 
@@ -287,6 +341,8 @@ func _tape(buf: PackedFloat32Array) -> void:
 	var wow := TAU * roundf(loop_t * 0.55) / loop_t      # ~0.55 Hz
 	var flutter := TAU * roundf(loop_t * 6.3) / loop_t   # ~6.3 Hz
 	for i in n:
+		if i & 8191 == 0 and _abort:
+			return
 		var t := float(i) / RATE
 		var pos := float(i) + sin(wow * t) * 14.0 + sin(flutter * t) * 2.2 + n
 		var i0 := int(pos)
@@ -300,5 +356,7 @@ func _lowpass(buf: PackedFloat32Array, a: float) -> void:
 	for i in range(buf.size() - 2000, buf.size()):
 		y += (buf[i] - y) * a
 	for i in buf.size():
+		if i & 8191 == 0 and _abort:
+			return
 		y += (buf[i] - y) * a
 		buf[i] = y

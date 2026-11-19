@@ -130,6 +130,12 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 	if ub.has("laser"):
 		parts.laser = ub.laser
 	parts.launcher = ub.get("launcher")
+	var holds := _palm_sockets(root, b, model, att, ub_at, ub.get("housing"))
+	parts.palm_grip = _marker(root, "PalmGrip", Vector3.ZERO)
+	parts.palm_grip.transform = holds[1]
+	parts.palm_support = _marker(root, "PalmSupport", Vector3.ZERO)
+	parts.palm_support.transform = holds[0]
+	parts.hand_open = holds[2]
 	# optic
 	parts.sight = _optic(root, b, String(att.get("optic", "iron")))
 	_tag_new(root, seen, "optic")
@@ -546,7 +552,7 @@ const LP_GUNS := {
 			"sight": Vector2(0.6, 0.83), "rail": Vector2(1.1, 0.82), "relief": 0.2},
 	"scar_h": {"length": 0.91, "grip": Vector2(-1.75, -0.7), "support": Vector2(1.3, -0.05), "mag": Vector2(-0.34, -0.6),
 			"muzzle": Vector2(4.81, 0.226), "eject": Vector2(-0.3, 0.45), "charge": Vector2(1.6, 0.4), "under": Vector2(2.0, -0.05),
-			"sight": Vector2(-1.88, 0.98), "rail": Vector2(-0.6, 0.7)},
+			"sight": Vector2(-1.88, 1.12), "rail": Vector2(-0.6, 0.7)},
 	# bolt_action: [handle lift (rad), bolt throw (m)]. The AW's three-lug bolt
 	# lifts a short 60 degrees and runs back a short stroke; the Mosin's two-lug
 	# bolt turns a full 90 degrees and runs back much further.
@@ -876,14 +882,83 @@ static func _underbarrel(at: Node3D, kind: String, small: float = 1.0) -> Dictio
 	if kind == "gp25":
 		var g := _att_model(at, "gp25")
 		if g != null:
-			return {"launcher": _marker(at, "Launcher", _bore_front(g))}
+			return {"launcher": _marker(at, "Launcher", _bore_front(g)), "housing": g}
 		return {"launcher": _marker(at, "Launcher", Vector3(0, -0.045, -0.16))}
 	if kind == "laser":
 		var m := _att_model(at, "laser")
 		if m != null:
 			m.scale = Vector3.ONE * LP_LASER_SCALE * small
-			return {"laser": _marker(at, "Laser", LP_LASER_AT * small)}
+			return {"laser": _marker(at, "Laser", LP_LASER_AT * small), "housing": m}
 	return {}
+
+
+## Fit the glove to the rendered prop in model space. Only the contact geometry
+## enters this cache; paints, optics and muzzle finishes share the same holds.
+static func _palm_sockets(root: Node3D, b: Dictionary, model: String, att: Dictionary,
+		mount: Node3D, housing: Node3D) -> Array:
+	var key := "palms|%s|%s|%s|%s|%s" % [model, att.get("handguard", ""), att.get("rail", ""),
+			att.get("underbarrel", ""), att.get("magazine", "")]
+	if _fit_memo.has(key):
+		return _fit_memo[key]
+	var faces := _faces_of(root)
+	var right: Transform3D = b.grip.transform
+	var left: Transform3D = b.support.transform
+	var pistol := bool(b.get("pistol", false))
+	var z := left.origin.z
+	var under := String(att.get("underbarrel", "none"))
+	if housing != null and not pistol:
+		var mount_xf := mount.transform
+		var parent := mount.get_parent() as Node3D
+		while parent != null and parent != root:
+			mount_xf = parent.transform * mount_xf
+			parent = parent.get_parent() as Node3D
+		var bounds: AABB = mount_xf * _holder_box(housing)
+		if under == "gp25":
+			# Use the reachable end when an adapter sits unusually far forward.
+			z = clampf(left.origin.z, bounds.position.z + 0.025, bounds.end.z - 0.025)
+		elif z >= bounds.position.z - 0.025 and z <= bounds.end.z + 0.035:
+			z = minf(bounds.end.z + 0.036, lerpf(left.origin.z, right.origin.z, 0.35))
+	var vertical := model == "aug_a1" and under != "gp25"
+	var grip_slice := _faces_near(faces, right.origin.z - 0.025, right.origin.z + 0.025)
+	var pitch: float = {"mosin": -0.12, "marlin": -0.18, "l96a1": -0.24, "m700": -0.18}.get(model, right.basis.get_euler().x)
+	right.basis = Basis(Vector3.RIGHT, pitch)
+	right.origin = _palm_edge(grip_slice, right.origin, 1.0, right.basis, 0.018)
+	var openness := Vector2(0, clampf(right.origin.x * 3.0, 0.025, 0.12))
+	if pistol:
+		# The second hand wraps the first glove on compact props.
+		left.origin = right.origin + Vector3(-0.055, -0.014, -0.01)
+		left.basis = Basis.from_euler(Vector3(-0.21, 0.10, -0.24))
+		openness.x = 0.12
+	else:
+		var section := _faces_near(faces, z - 0.012, z + 0.012)
+		var bottom := _bottom_in(section, z)
+		var top := _top_in(section, z, 0.004)
+		var y := left.origin.y
+		if is_finite(bottom) and is_finite(top):
+			y = clampf(y, bottom + 0.008, maxf(bottom + 0.008, top - 0.006)) if vertical else bottom + minf(0.022, (top - bottom) * 0.4)
+		var roll := -0.30 if model in ["gepard", "p90"] else -0.12
+		left.basis = Basis.from_euler(Vector3(-0.14, 0, -0.08 if vertical else roll))
+		left.origin = _palm_edge(section, Vector3(-0.014, y, z), -1.0, left.basis, 0.024)
+		openness.x = clampf((absf(left.origin.x) - 0.023) * 4.5, 0.02, 0.24)
+	_fit_memo[key] = [left, right, openness]
+	return _fit_memo[key]
+
+
+## The socket is the wrist. Fit the fleshy part of the palm, slightly ahead
+## of that socket, to the first triangle seen from this side of the prop.
+static func _palm_edge(faces: PackedVector3Array, center: Vector3, side: float, basis: Basis, palm_length: float) -> Vector3:
+	var start := Vector3(side * 0.25, center.y, center.z)
+	var direction := Vector3.LEFT * side
+	var edge := center
+	var nearest := INF
+	for i in range(0, faces.size(), 3):
+		var hit = Geometry3D.ray_intersects_triangle(start, direction, faces[i], faces[i + 1], faces[i + 2])
+		if hit != null:
+			var distance := start.distance_squared_to(hit)
+			if distance < nearest:
+				nearest = distance
+				edge = hit
+	return edge - basis * Vector3(-side * 0.010, 0, -palm_length)
 
 
 ## The optic on the rail, or the gun's own sights.
@@ -913,7 +988,7 @@ static func _optic(r: Node3D, b: Dictionary, kind: String) -> Dictionary:
 ## (Gepard): the rail's real top is measured under the optic's whole footprint,
 ## the mount slides along the rail (up to 6 cm) to the nearest stretch that is
 ## flat at rail height, and the optic is set down on it.
-static func _seat_optic(r: Node3D, mount: Node3D, optic: Node3D, rail_y: float) -> void:
+static func _seat_optic_compute(r: Node3D, mount: Node3D, optic: Node3D, rail_y: float) -> void:
 	var box := _holder_box(optic)
 	var z0 := mount.position.z
 	var faces := _faces_near(_faces_of(r, mount), z0 + box.position.z - 0.065, z0 + box.end.z + 0.065)
@@ -945,7 +1020,7 @@ static func _top_under(faces: PackedVector3Array, z0: float, z1: float) -> float
 
 ## Lowest point of the gun's underside at `z` along the centreline (where a
 ## rail adapter clamps), from the parts built so far; `fallback` if nothing is there.
-static func _bottom_at(r: Node3D, z: float, fallback: float) -> float:
+static func _bottom_at_compute(r: Node3D, z: float, fallback: float) -> float:
 	var best := _bottom_in(_faces_of(r), z)
 	return best if best < INF else fallback
 
@@ -962,9 +1037,19 @@ static func _faces_of(r: Node3D, skip: Node = null) -> PackedVector3Array:
 		while p != null and p != r:
 			xf = (p as Node3D).transform * xf
 			p = p.get_parent()
-		for v in mi.mesh.get_faces():
-			out.append(xf * v)
+		out.append_array(xf * _mesh_faces(mi.mesh))   # one native transform, not a GDScript loop
 	return out
+
+
+## A mesh's triangles (mesh space), cached: models never change once loaded, and
+## Mesh.get_faces() builds a fresh array on every call.
+static var _faces_cache := {}
+
+static func _mesh_faces(mesh: Mesh) -> PackedVector3Array:
+	var k := mesh.get_instance_id()
+	if not _faces_cache.has(k):
+		_faces_cache[k] = mesh.get_faces()
+	return _faces_cache[k]
 
 
 ## The triangles that reach into z0..z1 near the centreline (|x| < 3 cm).
@@ -1040,7 +1125,7 @@ const RAIL_SLIDE_STEP := 0.005
 ## no flat underside long enough (over a magazine, a trigger loop or under a
 ## suppressor) the rail slides along the gun to the nearest stretch that has one,
 ## forward first, instead of hanging in the air below the lowest point.
-static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
+static func _fit_rail_compute(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
 	var box := _holder_box(rail)
 	# the bar itself sits flush on the gun: its clamp posts (the model's top) sink
 	# into the handguard instead of holding the bar off it with air showing
@@ -1126,7 +1211,7 @@ static func _flat_span(all: PackedVector3Array, z0: float, face_y: float, half: 
 
 
 ## Centre of an optic model's glowing reticle, in its holder's space (INF if none).
-static func _reticle_centre(holder: Node3D) -> Vector3:
+static func _reticle_centre_compute(holder: Node3D) -> Vector3:
 	var sum := Vector3.ZERO
 	var n := 0
 	for c in holder.get_children():
@@ -1140,3 +1225,66 @@ static func _reticle_centre(holder: Node3D) -> Vector3:
 					sum += mi.transform * v
 					n += 1
 	return sum / n if n > 0 else Vector3.INF
+
+# ------------------------------------------------------------------ fit memo
+## Fitting parts onto a gun (seating an optic on the rail, sliding an under-rail
+## to a flat stretch, finding the underside, a reticle's centre) scans the gun's
+## triangles in GDScript: tens of milliseconds per build. The answers depend only
+## on which meshes sit where, so each is worked out once per configuration and
+## remembered: the gunsmith rebuilds a gun on every click.
+static var _fit_memo := {}
+
+
+## Which meshes are under `r` and where (to the millimetre), leaving out `skip`.
+static func _geo_key(r: Node3D, skip: Node = null) -> String:
+	var parts := PackedStringArray()
+	for n in r.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or (skip != null and (skip == mi or skip.is_ancestor_of(mi))):
+			continue
+		var xf := Transform3D.IDENTITY
+		var p: Node = mi
+		while p != null and p != r:
+			xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		parts.append("%d:%s" % [mi.mesh.get_instance_id(), _xf_key(xf)])
+	return ";".join(parts)
+
+
+static func _xf_key(xf: Transform3D) -> String:
+	var b := xf.basis
+	return "%.3f,%.3f,%.3f|%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f" % [xf.origin.x, xf.origin.y, xf.origin.z,
+			b.x.x, b.x.y, b.x.z, b.y.x, b.y.y, b.y.z, b.z.x, b.z.y, b.z.z]
+
+
+static func _seat_optic(r: Node3D, mount: Node3D, optic: Node3D, rail_y: float) -> void:
+	var k := "seat|%s|%s|%s|%.4f" % [_geo_key(r, mount), _geo_key(optic), _xf_key(mount.transform), rail_y]
+	if _fit_memo.has(k):
+		mount.position = _fit_memo[k]
+		return
+	_seat_optic_compute(r, mount, optic, rail_y)
+	_fit_memo[k] = mount.position
+
+
+static func _fit_rail(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
+	var k := "rail|%s|%s|%s|%s" % [_geo_key(r, rail), _geo_key(rail), _xf_key(at.transform), _xf_key(rail.transform)]
+	if _fit_memo.has(k):
+		rail.transform = _fit_memo[k][0]
+		return _fit_memo[k][1]
+	var moved := _fit_rail_compute(r, at, rail)
+	_fit_memo[k] = [rail.transform, moved]
+	return moved
+
+
+static func _bottom_at(r: Node3D, z: float, fallback: float) -> float:
+	var k := "bottom|%s|%.4f|%.4f" % [_geo_key(r), z, fallback]
+	if not _fit_memo.has(k):
+		_fit_memo[k] = _bottom_at_compute(r, z, fallback)
+	return _fit_memo[k]
+
+
+static func _reticle_centre(holder: Node3D) -> Vector3:
+	var k := "reticle|%s" % _geo_key(holder)
+	if not _fit_memo.has(k):
+		_fit_memo[k] = _reticle_centre_compute(holder)
+	return _fit_memo[k]

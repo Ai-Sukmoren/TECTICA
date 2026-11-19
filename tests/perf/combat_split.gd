@@ -52,7 +52,7 @@ func run() -> void:
 	main.player.global_position = Vector3(2.0, 0.05, 30)
 	var spawned := 0
 	for tries in 400:
-		if spawned >= 28:
+		if spawned >= int(OS.get_cmdline_user_args()[0]) if not OS.get_cmdline_user_args().is_empty() else 28:
 			break
 		if d._spawn_one():
 			spawned += 1

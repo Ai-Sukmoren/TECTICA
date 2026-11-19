@@ -62,6 +62,16 @@ static var _nav_cache := {}              # mode -> NavigationMesh
 
 
 func build() -> void:
+	for step in build_steps():
+		step.call()
+
+
+func build_steps() -> Array:
+	return [_build_start, _plan_and_ground, _build_camps, _build_outpost, _build_ruin_site, _build_forest,
+			_build_edges_and_mode, _build_finish]
+
+
+func _build_start() -> void:
 	seed(1337)   # same forest every time
 	_mat_wall = Nature.concrete_material(Color(0.5, 0.5, 0.47))
 	_mat_wall_trim = M.solid(Color(0.2, 0.21, 0.2), 0.8)
@@ -87,21 +97,33 @@ func build() -> void:
 	nav_region.name = "Navigation"
 	add_child(nav_region)
 
+
+func _plan_and_ground() -> void:
 	_plan()
 	_build_heights()
 	_build_ground()
 	_build_creek()
 	# wading: the creek bed is dry only at the bridge, where the road keeps it level
 	Water.set_creek(creek, 2.3, 0.025, [Vector3(bridge.x, bridge.z, 3.2)])
+
+
+func _build_camps() -> void:
 	_build_lz(lz_south, false)
 	_build_lz(lz_north, true)
 	_build_logging_camp()
-	_build_outpost()
+
+
+func _build_ruin_site() -> void:
 	_build_ruin(Vector3(-58, 0, 42))
-	_build_forest()
+
+
+func _build_edges_and_mode() -> void:
 	_build_boundary()
 	_build_fireflies()
 	_define_mode()
+
+
+func _build_finish() -> void:
 	_bake_navigation()
 	seed(Time.get_ticks_usec())
 

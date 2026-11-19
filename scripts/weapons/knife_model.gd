@@ -50,6 +50,10 @@ static func _blade(parent: Node3D, width: float, outline: Array, mat: Material, 
 	return _part(parent, WG.profile(width, PackedVector2Array(outline)), mat, pos)
 
 
+## The glove's palm relative to the middle of the handle, in the grip's frame (metres, at viewmodel scale).
+const PALM_FROM_HANDLE := Vector3(0.005, 0.006, 0.068)
+
+
 static func build(model: String) -> Dictionary:
 	_mats()
 	var root := Node3D.new()
@@ -81,6 +85,11 @@ static func build(model: String) -> Dictionary:
 		_:
 			_combat(spin, out)
 	out.grip = _marker(root, "Grip", Vector3.ZERO, Vector3(-0.15, 0, 0))
+	# Palm socket for the operator glove (operator_hand.gd), like _palm_sockets() for guns: the glove's curled
+	# fingers form a channel about 2 cm across, centred 6.8 cm in front of the heel of its palm. Putting the palm
+	# there, behind the handle, runs the handle through the fingers instead of through the back of the hand, with
+	# the index finger just under the guard. Markers sit under the scaled root, so the offset is in model units.
+	out.palm_grip = _marker(out.grip, "PalmGrip", PALM_FROM_HANDLE / root.scale.x)
 	out.support = _marker(root, "Support", Vector3(-0.09, -0.06, 0.06))   # the free hand guards here
 	out.mag_well = out.grip
 	out.charge = out.grip

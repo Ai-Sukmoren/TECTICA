@@ -67,7 +67,17 @@ var _settings_rects: Array = []
 var _pause_rects: Array = []
 static var last_menu_index := 0
 var _banner := ""
+var _banner_sub := ""
 var _banner_t := 0.0
+## Zombie wave panel: change tracking for its small animations (points gained, a kill, a new wave).
+var _zw_points := -1
+var _zw_pop := 0
+var _zw_pop_t := 0.0
+var _zw_left := -1
+var _zw_hit_t := 0.0
+var _zw_wave := -1
+var _zw_wave_t := 0.0
+var _zw_break := 0.0
 ## multiplayer menu (title) and non-pausing in-game menu
 var mp_open := false
 var mp_row := 0
@@ -332,8 +342,9 @@ func on_player_damaged(amount: float, attacker: Node = null) -> void:
 		Input.start_joy_vibration(0, 0.5, 0.8, 0.2)
 
 
-func wave_banner(text: String) -> void:
+func wave_banner(text: String, sub: String = "") -> void:
 	_banner = text
+	_banner_sub = sub
 	_banner_t = 3.0
 
 
@@ -679,6 +690,9 @@ func _process(delta: float) -> void:
 	damage_flash = maxf(damage_flash - delta * 0.9, 0.0)
 	help_timer -= delta
 	_banner_t = maxf(_banner_t - delta, 0.0)
+	_zw_pop_t = maxf(_zw_pop_t - delta, 0.0)
+	_zw_hit_t = maxf(_zw_hit_t - delta, 0.0)
+	_zw_wave_t += delta
 	for d in _dmg_dirs:
 		d.t -= delta
 	_dmg_dirs = _dmg_dirs.filter(func(d): return d.t > 0.0)
@@ -762,6 +776,121 @@ func _has_letters(s: String) -> bool:
 	if _letters_re == null:
 		_letters_re = RegEx.create_from_string("[A-Za-z]")
 	return _letters_re.search(s) != null
+
+
+## A number in the display face with a drop outline (_text keeps digits in the body face).
+func _num(c: Control, pos: Vector2, s: String, size: int, color: Color, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
+	c.draw_string_outline(_font_display, pos + Vector2(2, 2), s, align, width, size, 5, Color(0, 0, 0, color.a * 0.6))
+	c.draw_string(_font_display, pos, s, align, width, size, color)
+
+
+## Zombie Survival's wave panel, top centre: the wave, how many infected are left (with the wave's progress), the
+## points to spend, and between waves a countdown to the next one. Dark plate and outlined text so it reads over
+## snow, fog, muzzle flash or a night sky alike.
+func _draw_wave_panel(c: Control, vp: Vector2, d) -> void:
+	var pts: int = d.shop.points
+	if _zw_points >= 0 and pts > _zw_points:
+		_zw_pop = pts - _zw_points
+		_zw_pop_t = 1.4
+	_zw_points = pts
+	var left: int = d.remaining()
+	if _zw_left >= 0 and left < _zw_left:
+		_zw_hit_t = 0.35
+	_zw_left = left
+	if d.wave != _zw_wave:
+		_zw_wave = d.wave
+		_zw_wave_t = 0.0
+	if not d.active:
+		_zw_break = maxf(_zw_break, float(d.timer))
+	else:
+		_zw_break = 0.0
+	var w := 470.0
+	var r := Rect2(vp.x * 0.5 - w * 0.5, 70, w, 66)
+	c.draw_rect(r, Color(0.02, 0.025, 0.03, 0.62))
+	var edge := Color(ACCENT, 0.55) if d.active else Color(WARN, 0.7)
+	_brackets(c, r, 12.0, edge, 2.0)
+	var x0 := r.position.x
+	var y0 := r.position.y
+	# divider ticks between the three blocks
+	for dx in [128.0, 330.0]:
+		c.draw_line(Vector2(x0 + dx, y0 + 12), Vector2(x0 + dx, y0 + 54), Color(TEXT, 0.12), 1.0)
+	# --- the wave: flashes red for a moment when a new one starts
+	var fresh := clampf(1.0 - _zw_wave_t / 1.2, 0.0, 1.0)
+	if d.active:
+		_text(c, Vector2(x0 + 16, y0 + 20), "WAVE", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		_num(c, Vector2(x0 + 16, y0 + 56), str(d.wave), 34, TEXT.lerp(RED, fresh))
+		if d.boss_frac >= 0.0 or d.get("_boss_pending"):
+			_text(c, Vector2(x0 + 70, y0 + 54), "BOSS", 11, DANGER, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	else:
+		_text(c, Vector2(x0 + 16, y0 + 20), "NEXT WAVE", 11, WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		_num(c, Vector2(x0 + 16, y0 + 56), str(d.wave + 1), 34, Color(TEXT, 0.55))
+	# --- middle: infected left in this wave, or the countdown to the next
+	var mx := x0 + 144
+	var bar := Rect2(mx, y0 + 50, 170, 5)
+	c.draw_rect(bar, Color(0, 0, 0, 0.55))
+	if d.active:
+		var total: int = 6 + 4 * d.wave + (1 if d.wave > 0 and d.wave % 5 == 0 else 0)
+		var done := clampf(1.0 - float(left) / maxf(float(total), 1.0), 0.0, 1.0)
+		_text(c, Vector2(mx, y0 + 20), "INFECTED LEFT", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		var col := Color(1.0, 0.42, 0.32).lerp(Color.WHITE, _zw_hit_t / 0.35)
+		_num(c, Vector2(mx, y0 + 46), str(left), 28 + int(_zw_hit_t * 10.0), col)
+		_text(c, Vector2(mx, y0 + 44), "%d%% CLEARED" % int(done * 100.0), 10, Color(TEXT, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 170)
+		c.draw_rect(Rect2(bar.position, Vector2(bar.size.x * done, bar.size.y)), ACCENT)
+	else:
+		var tl := maxf(float(d.timer), 0.0)
+		var urgent := tl <= 5.0
+		var pulse := 0.6 + 0.4 * absf(sin(_time * 6.0)) if urgent else 1.0
+		_text(c, Vector2(mx, y0 + 20), "STARTS IN", 11, WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		_num(c, Vector2(mx, y0 + 46), "%d" % int(ceil(tl)), 28, Color(DANGER if urgent else WARN, pulse))
+		_text(c, Vector2(mx, y0 + 44), "SEC", 10, Color(TEXT, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 170)
+		var frac := clampf(tl / maxf(_zw_break, 0.01), 0.0, 1.0)
+		c.draw_rect(Rect2(bar.position, Vector2(bar.size.x * frac, bar.size.y)), Color(DANGER if urgent else WARN, 0.9))
+	# --- points, with the latest gain rising off them
+	var px := x0 + 346
+	_text(c, Vector2(px, y0 + 20), "POINTS", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_num(c, Vector2(px, y0 + 52), str(pts), 24, Color(1.0, 0.84, 0.4))
+	if _zw_pop_t > 0.0:
+		var k := 1.0 - _zw_pop_t / 1.4
+		_num(c, Vector2(px + 64, y0 + 30 - k * 16.0), "+%d" % _zw_pop, 14, Color(ACCENT, clampf(_zw_pop_t / 0.5, 0.0, 1.0)))
+	# --- under the panel: the shop between waves, run stats during them
+	if not d.active:
+		var hint := _arcade_hint()
+		var hw := _font_bold.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 28.0
+		c.draw_rect(Rect2(vp.x * 0.5 - hw * 0.5, y0 + 72, hw, 22), Color(0.02, 0.025, 0.03, 0.55))
+		_text(c, Vector2(0, y0 + 88), hint, 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+		# the last three seconds, large in the middle of the screen
+		var tl2 := float(d.timer)
+		if tl2 > 0.0 and tl2 <= 3.0:
+			var n := int(ceil(tl2))
+			var f: float = tl2 - floor(tl2) if tl2 != floor(tl2) else 1.0
+			_num(c, Vector2(0, vp.y * 0.34), str(n), int(64 + 26 * f), Color(DANGER, clampf(f * 1.6, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+	else:
+		_text(c, Vector2(0, y0 + 84), "KILLS %d   ·   %s   ·   T+ %s" % [d.kills, main.tod.clock_string(), main.time_string()], 11, Color(TEXT, 0.7), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+
+
+## The big announcement (a new wave, a wave cleared, a boss, a chapter objective): a dark band across the screen
+## that opens from the middle, the headline in a colour that says what kind of news it is, and a detail line under it.
+func _draw_banner(c: Control, vp: Vector2) -> void:
+	var age := 3.0 - _banner_t
+	var open := 1.0 - pow(1.0 - clampf(age / 0.28, 0.0, 1.0), 3.0)
+	var a := open * clampf(_banner_t / 0.6, 0.0, 1.0)
+	var col := WARN
+	if "CLEARED" in _banner or "COMPLETE" in _banner:
+		col = ACCENT
+	elif "BOSS" in _banner or "DOWN" in _banner:
+		col = DANGER
+	elif _banner.begins_with("WAVE"):
+		col = RED
+	var cy := vp.y * 0.28
+	var bw := vp.x * open
+	var band := Rect2(vp.x * 0.5 - bw * 0.5, cy - 52, bw, 92 if _banner_sub != "" else 76)
+	c.draw_rect(band, Color(0, 0, 0, 0.5 * a))
+	c.draw_rect(Rect2(band.position, Vector2(band.size.x, 2)), Color(col, 0.85 * a))
+	c.draw_rect(Rect2(band.position + Vector2(0, band.size.y - 2), Vector2(band.size.x, 2)), Color(col, 0.85 * a))
+	var slide := (1.0 - open) * 40.0
+	_text(c, Vector2(slide, cy + 6), _banner, 48, Color(col.lerp(Color.WHITE, 0.15), a), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+	if _banner_sub != "":
+		_text(c, Vector2(-slide, cy + 30), _banner_sub, 14, Color(TEXT, a), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 
 
 func _brackets(c: Control, r: Rect2, arm: float, col: Color, w: float = 2.0) -> void:
@@ -890,11 +1019,7 @@ func _draw_overlay(c: Control) -> void:
 	if main.mode == "pvp":
 		_draw_pvp_header(c, vp)
 	elif dir_node != null:
-		var line := "WAVE %d   ·   INFECTED %d   ·   %d PTS" % [dir_node.wave, dir_node.remaining(), dir_node.shop.points]
-		if not dir_node.active:
-			line = "NEXT WAVE IN %d   ·   %d PTS   ·   %s" % [int(ceil(dir_node.timer)), dir_node.shop.points, _arcade_hint()]
-		_text(c, Vector2(0, 92), line, 14, WARN if not dir_node.active else TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
-		_text(c, Vector2(0, 110), "KILLS %d   ·   %s   ·   T+ %s" % [dir_node.kills, main.tod.clock_string(), main.time_string()], 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
+		_draw_wave_panel(c, vp, dir_node)
 	elif main.training != null:
 		_draw_training(c, vp)
 		_draw_stealth_prompt(c, vp)
@@ -911,8 +1036,7 @@ func _draw_overlay(c: Control) -> void:
 	if dir_node != null and dir_node.boss_frac >= 0.0:
 		_draw_boss_bar(c, vp, dir_node.boss_frac, dir_node.boss_name)
 	if _banner_t > 0.0:
-		var ba := clampf(_banner_t, 0.0, 1.0) * clampf((3.0 - _banner_t) * 4.0, 0.0, 1.0)
-		_text(c, Vector2(0, vp.y * 0.3), _banner, 48, Color(RED, ba), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
+		_draw_banner(c, vp)
 
 	# ---- FOCUS (bottom-left, over health): filled by kills, spent on bullet time
 	if focus_bar:
@@ -2267,7 +2391,10 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 func gunsmith_live_update() -> void:
 	if title or Net.active or player == null or player.is_dead:
 		return
-	_reissue_loadout()
+	if main.director != null:
+		_reissue_loadout()
+	else:
+		player.apply_loadout(true)   # only the gun that changed is rebuilt
 
 
 ## Re-issues the operator's guns. In Zombie Survival the shop's list (bare guns,

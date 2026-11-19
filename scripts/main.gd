@@ -26,6 +26,7 @@ const ML = preload("res://scripts/core/mesh_lib.gd")
 const PackProps = preload("res://scripts/core/pack_props.gd")
 const Transition = preload("res://scripts/ui/transition.gd")
 const GunWarmup = preload("res://scripts/weapons/gun_warmup.gd")
+const ZombieWarmup = preload("res://scripts/characters/zombie_warmup.gd")
 const Sfx = preload("res://scripts/fx/sfx.gd")
 const FX = preload("res://scripts/fx/fx.gd")
 const WaveDirector = preload("res://scripts/modes/wave_director.gd")
@@ -174,6 +175,13 @@ func _ready() -> void:
 	net.setup(self)
 
 	map_id = saved_map if mode in ["zombie", "pvp"] and MAPS.has(saved_map) else "forest"
+	# The map is built over several frames so the loading screen can draw real progress. Until it is complete
+	# nothing in the scene runs and no network packet is handled: everything else only ever sees a whole map.
+	_staged = Transition.is_loading()
+	process_mode = Node.PROCESS_MODE_DISABLED
+	get_tree().multiplayer_poll = false
+	_loading_info()
+	await _stage(26.0, "BUILDING MAP")
 	if mode == "training":
 		level = TrainingLevel.new()
 	elif ModelLevel.CONFIGS.has(map_id):
@@ -183,7 +191,8 @@ func _ready() -> void:
 	level.name = "Level"
 	level.mode = mode
 	add_child(level)
-	level.build()
+	await level.build_staged(func(done: int, total: int) -> void:
+		await _stage(lerpf(26.0, 80.0, float(done) / total), "BUILDING MAP  %d / %d" % [done, total]))
 	_apply_acoustics(bool(ModelLevel.CONFIGS.get(map_id, {}).get("indoor", false)))
 
 	tod = TimeOfDay.new()
@@ -193,6 +202,7 @@ func _ready() -> void:
 	tod.setup(env, sun, level, start_hour)
 	if mode == "zombie":
 		tod.red_tint = 0.6
+	await _stage(82.0, "DEPLOYING OPERATOR")
 
 	# zombie runs start with the pistol and knife only (the shop sells the rest)
 	Player.zombie_specs = ZombieShop.starting_specs() if mode == "zombie" else []
@@ -221,6 +231,7 @@ func _ready() -> void:
 	camera_rig.aim_source = player
 	camera_rig.snap()
 	player.camera_rig = camera_rig
+	await _stage(89.0, "BRIEFING" if is_campaign() else ("SPAWNING HORDE DIRECTOR" if mode == "zombie" else "PLACING SPAWNS"))
 
 	var spawns: Array = level.enemy_spawns if is_campaign() else []
 	if mode == "pvp":
@@ -263,6 +274,7 @@ func _ready() -> void:
 	_base_exposure = env.tonemap_exposure
 	add_to_group("graphics_listener")
 	apply_graphics()
+	await _stage(92.0, "HUD")
 
 	post_fx = PostFX.new()
 	post_fx.name = "PostFX"
@@ -272,12 +284,51 @@ func _ready() -> void:
 	hud.name = "HUD"
 	add_child(hud)
 	hud.setup(self)
+	await _stage(95.0, "WARMING UP WEAPONS")
+	process_mode = Node.PROCESS_MODE_INHERIT
+	get_tree().multiplayer_poll = true
 	# every gun and attachment built and drawn once under the loading screen,
 	# so switching guns mid-match does not stall to load and compile them
 	var warm := GunWarmup.new()
 	warm.name = "GunWarmup"
 	add_child(warm)
+	if director != null:   # and every zombie kind, before the first wave
+		var zwarm := ZombieWarmup.new()
+		zwarm.name = "ZombieWarmup"
+		zwarm.skin_id = director.skin_for_map()
+		add_child(zwarm)
 	Transition.reveal(get_tree())   # fade in once the new map has rendered
+
+
+## What the loading screen names: the map and the mode.
+func _loading_info() -> void:
+	var title: String = MAPS.get(map_id, "PINEWOOD VALLEY")
+	var sub := ""
+	match mode:
+		"zombie":
+			sub = "ZOMBIE SURVIVAL"
+		"pvp":
+			sub = "DEATHMATCH"
+		"training":
+			title = "TRAINING GROUNDS"
+			sub = "TRAINING"
+		_:
+			var ch: Dictionary = Campaign.chapter_info(mode)
+			title = String(ch.location)
+			sub = "CHAPTER %d  -  %s" % [int(ch.num), String(ch.name)]
+	Transition.set_info(get_tree(), title, sub)
+
+
+## Whether this build draws frames between its stages: only under the loading screen. Opened any other way (a
+## test, a tool) the scene builds in one go, complete by the end of _ready as it always was.
+var _staged := false
+
+## Shows the loading stage and lets one frame draw before the build goes on.
+func _stage(percent: float, what: String) -> void:
+	if not _staged:
+		return
+	Transition.stage(get_tree(), percent, what)
+	await get_tree().process_frame
 
 
 func alive_players() -> Array:

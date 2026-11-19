@@ -79,6 +79,15 @@ var _vault_buffer := 0.0
 ## Lowest a vault may land below where it started: over a fence onto a kerb-high step, yes; off a bridge or a
 ## canal wall (3 m and more), never - a vault goes over cover, it does not drop off ledges.
 const VAULT_MAX_DROP := 1.0
+## Mantling: climbing up onto a ledge too deep or too high to vault (a crate stack, a wall top, a platform, a window
+## ledge) and staying on top. From the floor the hands reach a ledge up to MANTLE_MAX over the feet; mid-jump the
+## same reach starts from wherever the feet are. Climbing takes MANTLE_BASE s plus MANTLE_PER_M s per metre of height.
+const MANTLE_MIN := 0.5
+const MANTLE_MAX := 2.05
+const MANTLE_BASE := 0.42
+const MANTLE_PER_M := 0.3
+var mantling := false
+var _mantle_gap := 0.0
 const JUMP_SPEED := 5.8          # ~0.95 m apex with GRAVITY 18
 const Terrain = preload("res://scripts/world/terrain.gd")
 var _jump_cd := 0.0
@@ -537,8 +546,8 @@ func _update_scope_visibility() -> void:
 		s.visible = not scoped
 
 
-func apply_loadout() -> void:
-	set_loadout(own_specs())
+func apply_loadout(reuse: bool = false) -> void:
+	set_loadout(own_specs(), reuse)
 
 
 func set_first_person(on: bool) -> void:
@@ -661,6 +670,11 @@ func _physics_process(delta: float) -> void:
 		Sfx.play(self, "dry", global_position + Vector3.UP * 1.4, -12.0, 0.1)
 	if is_dead:
 		sliding = false
+		if vaulting:   # killed mid-vault or mid-climb: collide again, or the body falls through the floor
+			vaulting = false
+			mantling = false
+			collision_mask = _saved_mask
+			rig.drive_vault(-1.0, -1.0)
 		_end_bullet_time()
 		if first_person:
 			set_first_person(false)
@@ -671,6 +685,11 @@ func _physics_process(delta: float) -> void:
 	# health regeneration after a few seconds out of harm's way
 	if since_damage > 5.0 and health < regen_cap:
 		health = minf(health + 7.0 * delta, regen_cap)
+	if vaulting and mantling:
+		_update_mantle(delta)   # both hands busy: no shooting while climbing
+		_update_focus(delta)
+		_sync_rig()
+		return
 	if vaulting:
 		_update_vault(delta)
 		_vault_fire()
@@ -769,6 +788,16 @@ func _physics_process(delta: float) -> void:
 		if v != null:
 			_vault_buffer = 0.0
 			_start_vault(v, vdir)
+			_sync_rig()
+			return
+	# ---- mantle up onto a ledge: Space / A at it, or Space held into it mid-jump
+	if not sliding and not crouching and _vault_cooldown <= 0.0 and dragging == null \
+			and (_vault_buffer > 0.0 or (not is_on_floor() and Input.is_action_pressed("vault"))):
+		var mdir := wish.normalized() if wish.length() > 0.2 else Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+		var m = _find_mantle(mdir)
+		if m != null:
+			_vault_buffer = 0.0
+			_start_mantle(m, mdir)
 			_sync_rig()
 			return
 
@@ -1210,6 +1239,138 @@ func _update_vault(delta: float) -> void:
 		Sfx.play(self, "hit", global_position, -10.0)
 		if using_pad:
 			Input.start_joy_vibration(0, 0.3, 0.2, 0.12)
+
+
+# ------------------------------------------------------------------ mantle
+
+## A ledge to climb up onto, or null: a wall facing the climb within arm's reach, a walkable top between MANTLE_MIN
+## and MANTLE_MAX above the feet, and the body itself able to make the climb - swept up to the wall, up past the
+## ledge, across onto the top and down onto it, with room to stand there. These are the same real collision sweeps
+## the vault uses, so a wall above the ledge, a gap too small for the body, a ceiling, a railing or the map's edge
+## stops it, and the climb never ends inside geometry or outside the play area.
+func _find_mantle(dir: Vector3):
+	var space := get_world_3d().direct_space_state
+	var base := global_position
+	# the nearest face at knee or waist height (the waist ray alone passes over a low ledge to the wall behind it)
+	var hit := {}
+	for hgt in [0.45, 1.0]:
+		var o := base + Vector3(0, hgt, 0)
+		var h := space.intersect_ray(PhysicsRayQueryParameters3D.create(o, o + dir * 0.9, Layers.WORLD, [get_rid()]))
+		if not h.is_empty() and (hit.is_empty() or o.distance_to(h.position) < hit.position.distance_to(base + Vector3(0, 0.45, 0)) - 0.02):
+			hit = h
+	if hit.is_empty() or (hit.normal as Vector3).dot(-dir) < 0.6:
+		return null
+	var front: Vector3 = hit.position
+	var front_dist := Vector2(front.x - base.x, front.z - base.z).length()
+	# the ledge: the first walkable surface coming down just past the face
+	var probe := front + dir * 0.22
+	var top_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(probe.x, base.y + MANTLE_MAX + 0.4, probe.z),
+			Vector3(probe.x, base.y + MANTLE_MIN * 0.5, probe.z), Layers.WORLD, [get_rid()]))
+	if top_hit.is_empty() or (top_hit.normal as Vector3).y < 0.75:
+		return null
+	var top: float = top_hit.position.y
+	if top - base.y < MANTLE_MIN or top - base.y > MANTLE_MAX:
+		return null
+	var xf := global_transform
+	var gap := maxf(front_dist - _shape.radius - 0.04, 0.0)
+	if gap > 0.0 and test_move(xf, dir * gap):
+		return null
+	var at_wall := xf.translated(dir * gap)
+	var lift := Vector3.UP * (top - base.y + 0.08)
+	if test_move(at_wall, lift):
+		return null   # a ceiling or an overhang: no room to come up
+	var over := at_wall.translated(lift)
+	for onto in [0.45, 0.3]:   # the body's middle this far past the edge: well on, or just on a narrow top
+		var land: Vector3 = front + dir * (_shape.radius + float(onto))
+		var across := Vector3(land.x - at_wall.origin.x, 0.0, land.z - at_wall.origin.z)
+		if test_move(over, across):
+			continue   # a wall over the ledge, or an opening too small for the body
+		var down := KinematicCollision3D.new()
+		if not test_move(over.translated(across), Vector3.DOWN * 0.3, down) or down.get_normal().y < 0.75:
+			continue
+		land.y = over.origin.y + down.get_travel().y
+		if not _landing_ok(Transform3D(xf.basis, land), dir) or not _in_play_area(land):
+			continue
+		return {"top": top, "plant": Vector3(front.x, top, front.z) + dir * 0.1 + Vector3(-dir.z, 0, dir.x) * -0.18,
+				"to": land, "gap": gap}
+	return null
+
+
+## On the map's walkable area: the navigation mesh is close by (a crate or wall top inside the map qualifies, the top
+## of the map's outer wall or a roof outside it does not).
+func _in_play_area(p: Vector3) -> bool:
+	var map_rid := get_world_3d().navigation_map
+	if NavigationServer3D.map_get_iteration_id(map_rid) == 0:
+		return true   # no navigation baked (some tests): nothing to check against
+	var near := NavigationServer3D.map_get_closest_point(map_rid, p)
+	return Vector2(near.x - p.x, near.z - p.z).length() < 1.5 and absf(near.y - p.y) < 2.5
+
+
+func _start_mantle(m: Dictionary, dir: Vector3) -> void:
+	vaulting = true
+	mantling = true
+	_vault_t = 0.0
+	_vault_from = global_position
+	_vault_to = m.to
+	_mantle_gap = float(m.gap)
+	var height := float(m.top) - global_position.y
+	_vault_dur = MANTLE_BASE + MANTLE_PER_M * maxf(height, 0.0)
+	_vault_exit_speed = clampf(Vector2(velocity.x, velocity.z).length() * 0.5, 0.0, SPEED_JOG * 0.6)
+	_saved_mask = collision_mask
+	collision_mask = 0
+	velocity = Vector3.ZERO
+	aiming = false
+	if reload_timer > 0.0:
+		reload_timer = 0.0
+	var look := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
+	if look.dot(dir) > 0.2:
+		aim_yaw = atan2(-dir.x, -dir.z)
+		_pad_dir = dir
+	_peek_off = Vector3.ZERO
+	rig.lean_target = 0.0
+	rig.play_vault(_vault_dur, minf(height, 1.3), m.plant)
+	rig.drive_vault(0.0, 0.0)
+	Sfx.play(self, "switch", global_position + Vector3.UP, -6.0)
+	if Net.active and Net.sync:
+		Net.sync.send_event(self, "vault", [_vault_dur, minf(height, 1.3), m.plant])
+
+
+## The climb: reach and pull up close against the face (the body only closes the gap to the wall on the way up),
+## then, once the feet are over the ledge, roll forward onto it. Up is fast at first and slows near the top, as a
+## pull-up does; the hand plant, tuck and landing of the vault animation follow the same timeline.
+func _update_mantle(delta: float) -> void:
+	_vault_t += delta / _vault_dur
+	var t := minf(_vault_t, 1.0)
+	var flat := Vector3(_vault_to.x - _vault_from.x, 0.0, _vault_to.z - _vault_from.z)
+	var dist := flat.length()
+	var dir := flat / maxf(dist, 0.001)
+	var gap := minf(_mantle_gap, dist)
+	var up := 1.0 - pow(1.0 - clampf(t / 0.62, 0.0, 1.0), 2.2)
+	var fwd := gap * smoothstep(0.0, 0.5, t) + (dist - gap) * smoothstep(0.58, 1.0, t)
+	var prev := global_position
+	global_position = Vector3(_vault_from.x, _vault_from.y + (_vault_to.y - _vault_from.y) * up, _vault_from.z) + dir * fwd
+	velocity = (global_position - prev) / maxf(delta, 0.0001)
+	velocity.y = 0.0
+	var phase := 0.99
+	if t < 1.0:
+		if t < 0.12:
+			phase = 0.2 * t / 0.12
+		elif t < 0.62:
+			phase = lerpf(0.2, 0.55, (t - 0.12) / 0.5)
+		else:
+			phase = lerpf(0.55, 0.99, (t - 0.62) / 0.38)
+	rig.drive_vault(phase, 0.0)
+	if _vault_t >= 1.0:
+		vaulting = false
+		mantling = false
+		global_position = _vault_to
+		rig.drive_vault(-1.0, -1.0)
+		_vault_cooldown = 0.35
+		collision_mask = _saved_mask
+		velocity = dir * _vault_exit_speed
+		Sfx.play(self, "hit", global_position, -10.0)
+		if using_pad:
+			Input.start_joy_vibration(0, 0.25, 0.15, 0.1)
 
 
 # ------------------------------------------------------------------ jump kick

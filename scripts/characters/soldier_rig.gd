@@ -22,6 +22,8 @@ const Layers = preload("res://scripts/core/layers.gd")
 const ROLL_HAMMER_COCKED := 0.75   # matches WeaponModel.ROLL_HAMMER_COCKED
 const Weapon = preload("res://scripts/weapons/weapon.gd")
 const ModelSkin = preload("res://scripts/characters/model_skin.gd")
+const OperatorHand = preload("res://scripts/characters/operator_hand.gd")
+const TaskForceKit = preload("res://scripts/characters/task_force_kit.gd")
 const Body = preload("res://scripts/characters/body_mesh.gd")
 const FPSArmRig = preload("res://scripts/characters/fps_arm_rig.gd")
 const Settings = preload("res://scripts/core/settings.gd")
@@ -79,7 +81,8 @@ const POSES := {
 const FP_POSES := {
 	"rifle": {"hip": [Vector3(0.16, -0.2, -0.34), Vector3(0.04, 0.06, 0.04)], "aim": [Vector3(0.0, -0.15, -0.19), Vector3.ZERO],
 			"sprint": [Vector3(0.1, -0.235, -0.31), Vector3(-0.42, 0.72, 0.62)]},
-	"knife": {"hip": [Vector3(0.16, -0.21, -0.3), Vector3(-0.05, 0.3, -0.2)], "aim": [Vector3(0.16, -0.21, -0.3), Vector3(-0.05, 0.3, -0.2)],
+	# knife: low on the right, blade angled forward and in with its flat to the view (wrist inside FP_HANDS limits)
+	"knife": {"hip": [Vector3(0.2, -0.235, -0.34), Vector3(-0.45, 0.4, 0.36)], "aim": [Vector3(0.2, -0.235, -0.34), Vector3(-0.45, 0.4, 0.36)],
 			"sprint": [Vector3(0.19, -0.27, -0.28), Vector3(-0.45, 0.25, 0.1)]},
 	"pistol": {"hip": [Vector3(0.13, -0.15, -0.36), Vector3(0.03, 0.05, 0.0)], "aim": [Vector3(0.0, -0.077, -0.4), Vector3.ZERO],
 			"sprint": [Vector3(0.065, -0.225, -0.3), Vector3(-0.2, 0.24, 0.16)]},
@@ -272,6 +275,7 @@ var _body_meshes: Array[MeshInstance3D] = []
 const USE_SUPPLIED_FP_ARMS := false
 var fp_arm_rig: FPSArmRig
 var _fp_arm_shadows := {}
+var _operator_hands: Array[MeshInstance3D] = []
 
 
 # =====================================================================
@@ -280,8 +284,10 @@ var _fp_arm_shadows := {}
 
 func build(p: Dictionary) -> void:
 	palette = p
+	var task_force := bool(p.get("task_force_kit", false))
 	var camo: Material = p.camo
-	var vest: Material = p.vest
+	var trousers: Material = p.get("trousers", p.vest)
+	var sleeve: Material = p.get("undershirt", p.skin if p.get("eyes", false) else camo)
 	var gear: Material = p.gear
 	var detail: Material = p.detail
 
@@ -289,25 +295,29 @@ func build(p: Dictionary) -> void:
 	hips = _node(pivot, "Hips", Vector3(0, HIP_STAND, 0))
 
 	# --- pelvis & belt ---
-	_mesh(hips, Body.pelvis(), camo, Vector3.ZERO)
-	_mesh(hips, ML.rbox(Vector3(0.37, 0.07, 0.26)), gear, Vector3(0, 0.06, 0))
-	_mesh(hips, ML.rbox(Vector3(0.05, 0.045, 0.02)), detail, Vector3(0, 0.06, -0.135))
-	_mesh(hips, ML.rbox(Vector3(0.15, 0.12, 0.08)), gear, Vector3(0.06, -0.01, 0.16))
-	_mesh(hips, ML.rbox(Vector3(0.06, 0.1, 0.06)), gear, Vector3(-0.17, 0.0, 0.08))
+	_mesh(hips, Body.pelvis(), trousers, Vector3.ZERO)
+	if not task_force:
+		_mesh(hips, ML.rbox(Vector3(0.37, 0.07, 0.26)), gear, Vector3(0, 0.06, 0))
+		_mesh(hips, ML.rbox(Vector3(0.05, 0.045, 0.02)), detail, Vector3(0, 0.06, -0.135))
+		_mesh(hips, ML.rbox(Vector3(0.15, 0.12, 0.08)), gear, Vector3(0.06, -0.01, 0.16))
+		_mesh(hips, ML.rbox(Vector3(0.06, 0.1, 0.06)), gear, Vector3(-0.17, 0.0, 0.08))
 
 	# --- legs ---
 	for side in [-1, 1]:
 		var thigh := _node(hips, "Thigh", Vector3(side * HIP_HALF, -0.03, 0))
-		_mesh(thigh, Body.thigh(THIGH), camo, Vector3.ZERO)
-		_mesh(thigh, ML.rbox(Vector3(0.05, 0.15, 0.12)), camo, Vector3(side * 0.085, -0.25, 0))
+		_mesh(thigh, Body.thigh(THIGH), trousers, Vector3.ZERO)
+		if not task_force:
+			_mesh(thigh, ML.rbox(Vector3(0.05, 0.15, 0.12)), camo, Vector3(side * 0.085, -0.25, 0))
 		var shin := _node(thigh, "Shin", Vector3(0, -THIGH, 0))
-		_mesh(shin, Body.shin(SHIN), camo, Vector3.ZERO)
-		_mesh(shin, Body.joint(0.058), camo, Vector3(0, 0.0, 0.004))   # knee: no gap when it bends
-		_mesh(shin, ML.rbox(Vector3(0.115, 0.13, 0.06)), detail, Vector3(0, -0.035, -0.07))
+		_mesh(shin, Body.shin(SHIN), trousers, Vector3.ZERO)
+		_mesh(shin, Body.joint(0.058), trousers, Vector3(0, 0.0, 0.004))   # knee: no gap when it bends
 		var foot := _node(shin, "Foot", Vector3(0, -SHIN, 0))
-		_mesh(foot, ML.rbox(Vector3(0.115, 0.1, 0.28)), p.boots, Vector3(0, -0.035, -0.055))
-		_mesh(foot, ML.rbox(Vector3(0.125, 0.025, 0.3)), M.solid(Color(0.05, 0.05, 0.05), 0.9), Vector3(0, -0.075, -0.055))
-		_mesh(foot, ML.cylinder(0.074, 0.078, 0.15, 12), p.boots, Vector3(0, 0.04, 0))
+		if not task_force:
+			_mesh(shin, ML.rbox(Vector3(0.115, 0.13, 0.06)), detail, Vector3(0, -0.035, -0.07))
+			_mesh(foot, ML.rbox(Vector3(0.115, 0.1, 0.28)), p.boots, Vector3(0, -0.035, -0.055))
+			_mesh(foot, ML.cylinder(0.074, 0.078, 0.15, 12), p.boots, Vector3(0, 0.04, 0))
+		if not task_force:
+			_mesh(foot, ML.rbox(Vector3(0.125, 0.025, 0.3)), M.solid(Color(0.05, 0.05, 0.05), 0.9), Vector3(0, -0.075, -0.055))
 		thighs.append(thigh)
 		shins.append(shin)
 		feet.append(foot)
@@ -315,14 +325,98 @@ func build(p: Dictionary) -> void:
 	# thigh holster on the right leg
 	thigh_slot = _node(thighs[1], "HolsterSlot", Vector3(0.125, -0.13, 0.0))
 	thigh_slot.basis = Basis(Vector3.RIGHT, -PI * 0.5)
-	_mesh(thighs[1], ML.rbox(Vector3(0.05, 0.2, 0.11)), gear, Vector3(0.115, -0.17, 0.0))
+	if task_force:
+		_mesh(thighs[1], ML.rbox(Vector3(0.037, 0.145, 0.087)), trousers, Vector3(0.084, -0.155, 0.0))
+	else:
+		_mesh(thighs[1], ML.rbox(Vector3(0.05, 0.2, 0.11)), gear, Vector3(0.115, -0.17, 0.0))
 
 	# --- spine / torso ---
 	spine = _node(hips, "Spine", Vector3(0, 0.08, 0))
-	_mesh(spine, Body.abdomen(), camo, Vector3.ZERO)
+	if not task_force:
+		_mesh(spine, Body.abdomen(), camo, Vector3.ZERO)
 	chest = _node(spine, "Chest", Vector3(0, 0.22, 0))
-	_mesh(chest, Body.chest_body(), camo, Vector3.ZERO)
 
+	if task_force:
+		TaskForceKit.torso(self, p)
+	else:
+		_mesh(chest, Body.chest_body(), camo, Vector3.ZERO)
+		_build_field_pack(p)
+
+	# --- neck & head ---
+	_mesh(chest, Body.neck(), p.face, Vector3.ZERO)
+	head = _node(chest, "Head", Vector3(0, 0.42, 0))
+	_mesh(head, Body.head(), p.face, Vector3.ZERO)
+	if task_force and p.get("mask", false):
+		TaskForceKit.head(self, p)
+	else:
+		_build_face(head, p)
+		_build_headgear(head, p)
+
+	# --- arms ---
+	for side in [-1, 1]:
+		var sh := _node(chest, "Shoulder", Vector3(side * 0.2, 0.21, 0))
+		if task_force:
+			_mesh(sh, Body.upper_arm(UPPER_ARM - 0.09), sleeve, Vector3(0, -0.09, 0), Vector3.ZERO, Vector3(0.82, 1, 0.83))
+		else:
+			_mesh(sh, Body.upper_arm(UPPER_ARM), sleeve, Vector3.ZERO)
+			_mesh(sh, ML.rbox(Vector3(0.012, 0.07, 0.07)), gear, Vector3(side * 0.06, -0.09, 0))
+		var el := _node(sh, "Elbow", Vector3(0, -UPPER_ARM, 0))
+		# forearm: a sleeve that tapers to the wrist, bunched cloth at the elbow,
+		# a rolled cuff and the glove's wrist strap
+		_mesh(el, Body.joint(0.05), sleeve, Vector3(0, -0.006, 0))   # elbow: no gap when it bends
+		if task_force:
+			_mesh(el, Body.forearm(FOREARM, true), sleeve, Vector3.ZERO)
+		elif String(p.get("sleeves", "")) == "rolled":
+			# sleeve rolled to just below the elbow, bare forearm to the glove
+			_mesh(el, Body.forearm(FOREARM, true), p.skin, Vector3.ZERO)
+			_mesh(el, ML.cylinder(0.058, 0.06, 0.05, 14), camo, Vector3(0, -0.045, 0))
+		else:
+			_mesh(el, Body.forearm(FOREARM), camo, Vector3.ZERO)
+			for k in 3:
+				_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
+			_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
+		var hand := _node(el, "Hand", Vector3(0, -FOREARM, 0))
+		if task_force:
+			_mesh(el, ML.cylinder(0.035, 0.031, 0.046, 14), p.gloves, Vector3(0, -FOREARM + 0.02, 0))
+			var glove := _mesh(hand, OperatorHand.mesh(side), null, Vector3.ZERO)
+			glove.set_surface_override_material(0, p.gloves)
+			glove.set_surface_override_material(1, p.skin)
+			_operator_hands.append(glove)
+			if p.get("eyes", false):
+				glove.set_blend_shape_value(0, 0.7)
+			_mesh(hand, OperatorHand.padding(side), p.face, Vector3.ZERO)
+		else:
+			_mesh(el, Body.glove_cuff(-FOREARM), p.gloves, Vector3.ZERO)
+			_mesh(el, Body.glove_strap(-FOREARM), detail, Vector3.ZERO)
+			_mesh(sh, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -UPPER_ARM - 0.01, -0.05))
+			_mesh(hand, Body.glove(side), p.gloves, Vector3.ZERO)
+			_mesh(hand, Body.glove_trim(side), detail, Vector3.ZERO)
+		shoulders.append(sh)
+		elbows.append(el)
+		hands.append(hand)
+
+	# --- weapon mounting points ---
+	weapon_anchor = _node(chest, "WeaponAnchor", Vector3.ZERO)
+	back_slot = _node(chest, "BackSlot", Vector3(0.0, 0.12, 0.36))
+	back_slot.basis = Basis(Vector3.BACK, 0.65) * Basis(Vector3.RIGHT, PI * 0.5)
+	back_slot_b = _node(chest, "BackSlotB", Vector3(0.0, 0.1, 0.39))
+	back_slot_b.basis = Basis(Vector3.BACK, -0.65) * Basis(Vector3.RIGHT, PI * 0.5)
+	if task_force:
+		back_slot.position.z = 0.166
+		back_slot_b.position.z = 0.2
+	hand_mag = _node(hands[0], "HandMag", Vector3(0, -0.04, 0))
+	_grenade_mesh = _mesh(hands[1], ML.sphere(0.042, false, 10), M.painted_metal("grenade", Color(0.25, 0.3, 0.2)), Vector3(0, -0.05, -0.03))
+	_grenade_mesh.visible = false
+	if task_force:
+		TaskForceKit.limbs(self, p)
+	else:
+		_build_details(p)
+
+
+func _build_field_pack(p: Dictionary) -> void:
+	var vest: Material = p.vest
+	var gear: Material = p.gear
+	var detail: Material = p.detail
 	# plate carrier: front/back plates, cummerbund, shoulder straps
 	_mesh(chest, ML.rbox(Vector3(0.36, 0.34, 0.08)), vest, Vector3(0, 0.07, -0.125))
 	_mesh(chest, ML.rbox(Vector3(0.37, 0.36, 0.08)), vest, Vector3(0, 0.08, 0.125))
@@ -345,55 +439,6 @@ func build(p: Dictionary) -> void:
 	_mesh(chest, ML.capsule(0.07, 0.36), p.get("bedroll", M.fabric("bedroll", Color(0.25, 0.27, 0.2))), Vector3(0, 0.33, 0.23), Vector3(0, 0, PI * 0.5))
 	for side in [-1, 1]:
 		_mesh(chest, ML.rbox(Vector3(0.06, 0.18, 0.11)), vest, Vector3(side * 0.185, 0.06, 0.25))
-
-	# --- neck & head ---
-	_mesh(chest, Body.neck(), p.face, Vector3.ZERO)
-	head = _node(chest, "Head", Vector3(0, 0.42, 0))
-	_mesh(head, Body.head(), p.face, Vector3.ZERO)
-	_build_face(head, p)
-	_build_headgear(head, p)
-
-	# --- arms ---
-	for side in [-1, 1]:
-		var sh := _node(chest, "Shoulder", Vector3(side * 0.2, 0.21, 0))
-		_mesh(sh, Body.upper_arm(UPPER_ARM), camo, Vector3.ZERO)
-		_mesh(sh, ML.rbox(Vector3(0.012, 0.07, 0.07)), gear, Vector3(side * 0.06, -0.09, 0))
-		var el := _node(sh, "Elbow", Vector3(0, -UPPER_ARM, 0))
-		# forearm: a sleeve that tapers to the wrist, bunched cloth at the elbow,
-		# a rolled cuff and the glove's wrist strap
-		_mesh(el, Body.joint(0.05), camo, Vector3(0, -0.006, 0))   # elbow: no gap when it bends
-		if String(p.get("sleeves", "")) == "rolled":
-			# sleeve rolled to just below the elbow, bare forearm to the glove
-			_mesh(el, Body.forearm(FOREARM, true), p.skin, Vector3.ZERO)
-			_mesh(el, ML.cylinder(0.058, 0.06, 0.05, 14), camo, Vector3(0, -0.045, 0))
-		else:
-			_mesh(el, Body.forearm(FOREARM), camo, Vector3.ZERO)
-			for k in 3:
-				_mesh(el, ML.cylinder(0.05 - k * 0.003, 0.053 - k * 0.003, 0.014, 14), camo, Vector3(0, -0.05 - k * 0.045, 0), Vector3(0.12 * (k - 1), 0, 0.1 * (1 - k)))
-			_mesh(el, ML.cylinder(0.043, 0.045, 0.03, 14), camo, Vector3(0, -0.252, 0))
-		_mesh(el, Body.glove_cuff(-FOREARM), p.gloves, Vector3.ZERO)
-		_mesh(el, Body.glove_strap(-FOREARM), detail, Vector3.ZERO)
-		# elbow plate on the point of the elbow: carried by the upper arm, which stays in
-		# the bend plane (the forearm itself turns with the hand, see _roll_forearm)
-		_mesh(sh, ML.rbox(Vector3(0.085, 0.085, 0.05)), detail, Vector3(0, -UPPER_ARM - 0.01, -0.05))
-		var hand := _node(el, "Hand", Vector3(0, -FOREARM, 0))
-		# glove: rounded palm, jointed fingers wrapping the grip, thumb over the top
-		_mesh(hand, Body.glove(side), p.gloves, Vector3.ZERO)
-		_mesh(hand, Body.glove_trim(side), detail, Vector3.ZERO)
-		shoulders.append(sh)
-		elbows.append(el)
-		hands.append(hand)
-
-	# --- weapon mounting points ---
-	weapon_anchor = _node(chest, "WeaponAnchor", Vector3.ZERO)
-	back_slot = _node(chest, "BackSlot", Vector3(0.0, 0.12, 0.36))
-	back_slot.basis = Basis(Vector3.BACK, 0.65) * Basis(Vector3.RIGHT, PI * 0.5)
-	back_slot_b = _node(chest, "BackSlotB", Vector3(0.0, 0.1, 0.39))
-	back_slot_b.basis = Basis(Vector3.BACK, -0.65) * Basis(Vector3.RIGHT, PI * 0.5)
-	hand_mag = _node(hands[0], "HandMag", Vector3(0, -0.04, 0))
-	_grenade_mesh = _mesh(hands[1], ML.sphere(0.042, false, 10), M.painted_metal("grenade", Color(0.25, 0.3, 0.2)), Vector3(0, -0.05, -0.03))
-	_grenade_mesh.visible = false
-	_build_details(p)
 
 
 ## Second pass of gear detail shared by every soldier: webbing, pads, cuffs,
@@ -489,7 +534,12 @@ func _build_kit_detail(p: Dictionary) -> void:
 
 func _build_headgear(h: Node3D, p: Dictionary) -> void:
 	var detail: Material = p.detail
-	match String(p.headgear):
+	var style := String(p.headgear)
+	if style == "helmet" and p.get("task_force_kit", false):
+		style = "faceted_helmet"
+	match style:
+		"faceted_helmet":
+			TaskForceKit.helmet(self, p)
 		"helmet":
 			var hm: Material = p.helmet
 			var hg := h
@@ -532,6 +582,8 @@ func _build_headgear(h: Node3D, p: Dictionary) -> void:
 		for sx in [-1, 1]:
 			var eye := _mesh(h, ML.sphere(0.012, false, 6), M.emissive("zombie_eye", Color(1.0, 0.75, 0.2), 6.0), Vector3(sx * 0.034, 0.02, -0.093))
 			eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if p.get("task_force_kit", false) and p.get("mask", false):
+		return  # the split visor is part of the mask
 	if p.get("goggles", false):
 		if p.has("goggle_frame"):
 			# full ballistic goggles: coloured frame, dark lens, strap round the helmet
@@ -838,6 +890,10 @@ func set_first_person(on: bool) -> void:
 		for n in parent.get_children():
 			if n is MeshInstance3D:
 				(n as MeshInstance3D).cast_shadow = mode
+	for sh in shoulders:
+		for n in sh.get_children():
+			if n is MeshInstance3D and n.has_meta("fp_shadow_only"):
+				(n as MeshInstance3D).cast_shadow = mode
 	_apply_model_visibility()
 	# Only the local first-person operator allocates the supplied skinned arms.
 	if on and USE_SUPPLIED_FP_ARMS and not zombie and fp_arm_rig == null and ResourceLoader.exists(FPSArmRig.ASSET):
@@ -894,6 +950,10 @@ func sever(bone: Node3D, dir: Vector3) -> void:
 		var copy := MeshInstance3D.new()
 		copy.mesh = mi.mesh
 		copy.material_override = mi.material_override
+		for surface in mi.get_surface_override_material_count():
+			copy.set_surface_override_material(surface, mi.get_surface_override_material(surface))
+		for shape in mi.get_blend_shape_count():
+			copy.set_blend_shape_value(shape, mi.get_blend_shape_value(shape))
 		copy.transform = inv * mi.global_transform
 		body.add_child(copy)
 		var a: AABB = copy.transform * mi.mesh.get_aabb()
@@ -1201,6 +1261,8 @@ static var _lod_cam_frame := -1
 const LOD_NEAR := 18.0     # full rate inside this distance
 const LOD_MID := 35.0      # every 2nd frame up to here, every 3rd beyond
 const LOD_HIDDEN := 40.0   # off screen: every 4th frame, every 6th beyond this
+## Process frame of the last pose update; a model skin re-fits only on those.
+var posed_frame := -1
 
 
 func _lod_interval() -> int:
@@ -1237,6 +1299,7 @@ func _process(delta: float) -> void:
 			return
 		delta = _lod_acc
 		_lod_acc = 0.0
+	posed_frame = Engine.get_process_frames()
 	# Preserve elapsed animation time at low FPS; small integration steps keep
 	# recoil and hit springs stable without slowing reloads, vaults or deaths.
 	var elapsed := minf(delta, 0.25)
@@ -1415,7 +1478,10 @@ func _update_body(delta: float) -> void:
 	# hips: walking rises at mid-stance, running compresses at mid-stance
 	var bob_amp := lerpf(0.022, 0.06, run) * m
 	var bob := cos(2.0 * (phase - PI * stance)) * lerpf(1.0, -1.0, run)
-	var hip_h := lerpf(HIP_STAND, HIP_CROUCH, crouch_amt) + bob * bob_amp - bob_amp - 0.05 * run
+	var stand_height := HIP_STAND
+	if not _operator_hands.is_empty():
+		stand_height += 0.038 * (1.0 - m) * (1.0 - aim_amt) * (1.0 - v_any)
+	var hip_h := lerpf(stand_height, HIP_CROUCH, crouch_amt) + bob * bob_amp - bob_amp - 0.05 * run
 	if turning:
 		hip_h -= 0.012 * (0.5 - 0.5 * cos(phase * 2.0))
 	hip_h -= 0.24 * v_tuck + 0.14 * v_land
@@ -1502,6 +1568,9 @@ var _reach_w := 0.0
 var _reach_at := Vector3.ZERO
 var _slash_dur := 0.45
 var _slash_side := 1.0
+## Attacks run forehand, backhand, forehand, thrust, and round again.
+var _slash_count := 0
+var _slash_thrust := false
 ## Blade bites in: the swing holds at contact for a moment and jolts.
 var _slash_hold := 0.0
 var _slash_jolt := 0.0
@@ -1511,7 +1580,10 @@ func play_slash(duration: float) -> void:
 	cancel_inspect()
 	slash_t = 0.0
 	_slash_dur = clampf(duration * 0.85, 0.3, 0.6)
-	_slash_side = -_slash_side
+	_slash_count += 1
+	_slash_thrust = _slash_count % 4 == 0
+	if not _slash_thrust:
+		_slash_side = -_slash_side
 	_slash_hold = 0.0
 	_slash_jolt = 0.0
 
@@ -1525,15 +1597,38 @@ func slash_impact(heavy: bool) -> void:
 	_slash_jolt = 1.0 if heavy else 0.7
 
 
-## Snap back across the body, an accelerating cut that lunges through the
-## centre, follow-through past it, then recover. Damage lands on the click, so
-## the wind-up is kept very short and the blade crosses the centre almost at
-## once. Offsets are in the pose's parent space (chest, or eye in first person).
+## Arc of the slash trail (FX.slash_trail): the side the cut comes from, 0 for a thrust.
+func slash_arc() -> float:
+	return 0.0 if _slash_thrust else _slash_side
+
+
+## Knife attack keys, offsets from the held pose in its parent space (chest, or eye in first person):
+## [wind-up, cut through the centre, follow-through], each [position, euler]. The held pose sits right of
+## the centre line (FP_POSES.knife x 0.2), so the centre of the screen is about x -0.2 from it. The forehand
+## cocks the wrist on the right and cuts right to left; the backhand winds up on the left at arm's length (never
+## toward the eye, where the forearm would fill the view) and cuts left to right; the thrust draws the hand back
+## and drives the point straight out.
+const SLASH_KEYS := {
+	"fore": [[Vector3(0.05, 0.08, 0.0), Vector3(-0.35, 0.9, 0.55)],
+			[Vector3(-0.2, 0.1, -0.08), Vector3(0.1, -0.2, -0.25)],
+			[Vector3(-0.34, 0.0, -0.02), Vector3(0.4, -1.0, -0.7)]],
+	"back": [[Vector3(-0.24, 0.07, -0.06), Vector3(-0.35, -0.9, -0.55)],
+			[Vector3(-0.2, 0.08, -0.08), Vector3(0.1, 0.2, 0.25)],
+			[Vector3(0.06, 0.0, 0.0), Vector3(0.4, 0.9, 0.6)]],
+	"thrust": [[Vector3(0.02, 0.03, 0.04), Vector3(0.15, 0.1, 0.1)],
+			[Vector3(-0.07, 0.08, -0.14), Vector3(-0.5, 0.05, -0.05)],
+			[Vector3(-0.08, 0.07, -0.17), Vector3(-0.55, 0.05, -0.05)]],
+}
+
+
+## Snap out to the wind-up, an accelerating cut (or thrust) through the centre, follow-through past it, then an
+## eased recovery to the held pose. Damage lands on the click, so the wind-up is kept very short and the blade
+## crosses the centre almost at once.
 func _slash_pose(base: Transform3D, u: float) -> Transform3D:
-	var s := _slash_side
-	var wind := Transform3D(Basis.from_euler(Vector3(-0.5, s * 1.2, s * 0.85)), Vector3(s * 0.21, 0.1, 0.1))
-	var cut := Transform3D(Basis.from_euler(Vector3(0.12, -s * 0.15, -s * 0.2)), Vector3(-s * 0.02, -0.02, -0.27))
-	var through := Transform3D(Basis.from_euler(Vector3(0.45, -s * 1.15, -s * 0.8)), Vector3(-s * 0.25, -0.11, -0.12))
+	var keys: Array = SLASH_KEYS["thrust" if _slash_thrust else ("fore" if _slash_side > 0.0 else "back")]
+	var wind := Transform3D(Basis.from_euler(keys[0][1]), keys[0][0])
+	var cut := Transform3D(Basis.from_euler(keys[1][1]), keys[1][0])
+	var through := Transform3D(Basis.from_euler(keys[2][1]), keys[2][0])
 	var off: Transform3D
 	if u < 0.06:
 		var k := 1.0 - pow(1.0 - u / 0.06, 2.0)                 # snap out to the wind-up
@@ -1935,6 +2030,8 @@ func _update_legs(delta: float) -> void:
 			toe = 0.28 * sin(PI * s)
 		var off := dir * along * m
 		var width := HIP_HALF + 0.02 + 0.04 * crouch_amt
+		if not _operator_hands.is_empty():
+			width += 0.044 * (1.0 - m) * (1.0 - slide_amt)
 		var local := Vector3(side * width + off.x, ANKLE_H + lift, off.y)
 		# relaxed staggered stance when idle (support foot forward), wider stance when peeking
 		local.z += (0.07 if i == 1 else -0.05) * (1.0 - m) * (0.4 + 0.6 * maxf(aim_amt, crouch_amt))
@@ -1971,6 +2068,13 @@ func _update_arms(delta: float) -> void:
 		_update_zombie_arms()
 		return
 	if weapon == null:
+		if not _operator_hands.is_empty():
+			for i in 2:
+				var side := -1.0 if i == 0 else 1.0
+				shoulders[i].rotation = Vector3(-0.045, 0, side * 0.47)
+				elbows[i].rotation = Vector3(0.1, 0, -side * 0.12)
+				hands[i].rotation = Vector3(-PI * 0.5, 0, 0)
+				_operator_hands[i].set_blend_shape_value(0, 0.86)
 		return
 	var cb := chest.global_transform.basis
 	# First person: shoulders hang from the eye (like viewmodel arms), so a
@@ -1984,7 +2088,10 @@ func _update_arms(delta: float) -> void:
 			shoulders[i].position = Vector3(side * 0.2, 0.21, 0)
 	if fp_mode:
 		cb = fp_eye.basis
-	var r_xf: Transform3D = weapon.grip.global_transform
+	var fitted := not _operator_hands.is_empty() and not (fp_mode and fp_arm_rig != null)
+	var grip := weapon.palm_grip if fitted else weapon.grip
+	var support := weapon.palm_support if fitted else weapon.support
+	var r_xf: Transform3D = grip.global_transform
 	if fp_mode and fp_arm_rig != null:
 		r_xf = fp_arm_rig.grip_transform(weapon, 1, r_xf)
 	if _twirl != 0.0 and weapon.twirl != null:
@@ -2018,7 +2125,7 @@ func _update_arms(delta: float) -> void:
 		r_xf.origin = r_xf.origin.lerp(weapon.charge.global_position, bw)
 	if throw_t >= 0.0:
 		r_xf.origin = _throw_hand(r_xf.origin)
-	var l_xf: Transform3D = weapon.support.global_transform
+	var l_xf: Transform3D = support.global_transform
 	if fp_mode and fp_arm_rig != null:
 		l_xf = fp_arm_rig.grip_transform(weapon, 0, l_xf)
 	var l_pos := l_xf.origin
@@ -2031,14 +2138,18 @@ func _update_arms(delta: float) -> void:
 	if reload_t >= 0.0:
 		_update_reload_events()
 		if reload_t >= 0.0:
-			l_pos = _reload_left_target(reload_t)
+			l_pos = _reload_left_target(reload_t, l_xf.origin)
 			if fp_mode and fp_arm_rig != null:
 				l_basis = fp_arm_rig.reload_basis(weapon, reload_t, l_basis)
 	# vault: left hand reaches for and plants on the obstacle top
 	var plant_w := _vw(0.02, 0.2, 0.5, 0.68) * (1.0 - _vault_aim_amt)
 	if plant_w > 0.0:
 		var palm := Basis(Vector3.UP, lower_yaw)
-		l_pos = l_pos.lerp(_vault_plant + Vector3(0, 0.05, 0), plant_w)
+		var clearance := 0.05
+		if not _operator_hands.is_empty():
+			palm *= Basis(Vector3.BACK, -PI * 0.5)
+			clearance = 0.018
+		l_pos = l_pos.lerp(_vault_plant + Vector3.UP * clearance, plant_w)
 		l_basis = l_basis.slerp(palm, plant_w)
 	# one-handed sprint: left hand leaves the handguard and pumps with the stride
 	var free_want := 0.0
@@ -2083,8 +2194,8 @@ func _update_arms(delta: float) -> void:
 		# aiming in first person, the gloves and cuffs must not rise into the
 		# view of the gun: each hand drops just below its hold point as the eye sees it
 		var up := fp_eye.basis.y.normalized()
-		r_xf.origin -= up * _ads_hand_drop(hands[1], r_xf.basis, r_xf.origin, weapon.grip.global_position, shoulders[1].global_position) * aim_amt
-		l_pos -= up * _ads_hand_drop(hands[0], l_basis, l_pos, weapon.support.global_position, shoulders[0].global_position) * aim_amt
+		r_xf.origin -= up * _ads_hand_drop(hands[1], r_xf.basis, r_xf.origin, grip.global_position, shoulders[1].global_position) * aim_amt
+		l_pos -= up * _ads_hand_drop(hands[0], l_basis, l_pos, support.global_position, shoulders[0].global_position) * aim_amt
 	if fp_mode:
 		# wrist-led: the forearms swing into line with the hands that grip the gun
 		# aiming, the shooting hand sits behind the gun under the eye: its elbow stays down
@@ -2106,6 +2217,14 @@ func _update_arms(delta: float) -> void:
 			free_basis = cb * FPSArmRig.frame(Vector3(0.15, -1.0, -0.4), Vector3.RIGHT)
 		l_basis = l_basis.orthonormalized().slerp(free_basis, _free_arm)
 	_set_basis(hands[0], l_basis)
+	if not _operator_hands.is_empty():
+		# Spread the fingers as the palm takes weight; lightly uncurl a free hand.
+		var release := maxf(plant_w, _free_arm * 0.58)
+		if reload_t >= 0.0:
+			release = maxf(release, 0.48 * (1.0 - smoothstep(0.0, 0.12, absf(reload_t - float(_reload_ev.grab)))))
+		_operator_hands[0].set_blend_shape_value(0, maxf(weapon.hand_open.x, release))
+		var throwing := smoothstep(0.4, 0.58, throw_t) * (1.0 - smoothstep(0.73, 1.0, throw_t))
+		_operator_hands[1].set_blend_shape_value(0, maxf(weapon.hand_open.y, throwing))
 	if fp_mode and fp_arm_rig != null and hand_mag.visible:
 		# HandMag used to inherit the block glove's axes. Keep the magazine upright
 		# with the new anatomical palm, meeting its original socket on insertion.
@@ -2542,13 +2661,11 @@ func _set_bolt(s: float) -> void:
 	weapon.bolt.position = weapon.bolt_rest + Vector3(0, 0, float(weapon.bolt_action[1]) * pull)
 
 
-func _reload_left_target(t: float) -> Vector3:
-	var hg: Vector3 = weapon.support.global_position
+func _reload_left_target(t: float, hg: Vector3) -> Vector3:
 	var well: Vector3 = weapon.mag_well.global_position
 	var pouch := chest.global_transform * Vector3(-0.07, -0.02, -0.25)
 	var charge: Vector3 = weapon.charge.global_position
 	if fp_mode and fp_arm_rig != null:
-		hg = fp_arm_rig.grip_transform(weapon, 0, weapon.support.global_transform).origin
 		var wb := weapon.global_transform.basis.orthonormalized()
 		well += wb * Vector3(-0.025, -0.025, 0.025)
 		charge += wb * Vector3(-0.025, 0.018, 0.02)

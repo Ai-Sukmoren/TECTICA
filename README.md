@@ -13,9 +13,24 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.45
+## 🆕 What's new in v1.46
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.45.3-beta) · [watch the update (2.5 min)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.45.0-beta/tectica_v145_update.mp4)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.46.0-beta) · [watch the trailer (60 s)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.46.0-beta/tectica-update-1.46.mp4)
+
+[![Watch the 1.46 trailer](docs/screenshots/v146-devlog-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.46.0-beta/tectica-update-1.46.mp4)
+
+- **Climbing:** Space at a 0.5–2 m ledge climbs onto it; jump and hold Space to grab a higher one. Tested on every map.
+- **New operators:** every character in the Task Force kit, each outfit with its own visor colour; bots wear operator outfits.
+- **Knives:** a real grip round the handle, a reverse-grip karambit, and forehand, backhand and thrust attacks.
+- **Zombie Survival:** 28 infected hold 60 fps, no freeze when the first wave arrives, and a new wave HUD with a countdown.
+- **Loading:** a new loading screen with real progress; the longest load freeze dropped from 4.5 s to about 1 s.
+- **Also:** SCAR-H iron sights line up, and the gunsmith rebuilds only the gun you change.
+
+![The operators](docs/screenshots/v146-characters.jpg)
+
+## What came in v1.45
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.45.3-beta) · [watch the update (2.5 min)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.45.0-beta/tectica_v145_update.mp4)
 
 ### Story cutscenes
 Both chapters open with an in-engine cinematic that glides straight into play: **Chapter 1** flies KILO-1 into the

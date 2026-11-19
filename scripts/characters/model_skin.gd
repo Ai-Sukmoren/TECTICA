@@ -430,6 +430,10 @@ func set_first_person(on: bool) -> void:
 func _process(_delta: float) -> void:
 	if rig == null or skel == null or rig.get("hips") == null:
 		return
+	# The skin rides under the rig, so a frame the rig's LOD skipped keeps the last fit
+	var posed = rig.get("posed_frame")
+	if posed != null and posed != Engine.get_process_frames():
+		return
 	_retarget()
 
 

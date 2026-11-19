@@ -47,6 +47,22 @@ var _mat_concrete: Material
 var _mat_metal: Material
 
 
+## The map's build as a list of steps. Maps that take long to build (the forest, the model maps) list several;
+## the others build in one.
+func build_steps() -> Array:
+	return [build]
+
+
+## The same build with a frame drawn between steps, so the loading screen keeps moving and shows real progress:
+## `report.call(done, total)` is awaited after each step. Nothing else may use the global random numbers meanwhile
+## (map layouts are seeded), which holds while main.gd keeps the scene from processing during the build.
+func build_staged(report: Callable) -> void:
+	var steps := build_steps()
+	for i in steps.size():
+		steps[i].call()
+		await report.call(i + 1, steps.size())
+
+
 func build() -> void:
 	_mat_wall = M.concrete("wall", Color(0.36, 0.38, 0.42), 0.4)
 	_mat_wall_trim = M.solid(Color(0.2, 0.21, 0.23), 0.8)

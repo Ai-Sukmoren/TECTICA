@@ -66,9 +66,11 @@ var daze := 0.0             # > 0: ran into a wall, dazed and vulnerable
 ## ("arm0"/"arm1"/"leg0"/"leg1" -> "upper" | "lower": cut at shoulder/hip or elbow/knee).
 var limb_damage := {}
 var severed := {}
-## Far from every operator the AI thinks on alternate physics ticks and
-## glides along its velocity in between (half the CPU for distant hordes).
-const FAR_THINK := 20.0
+## Beyond arm's reach of its target the AI thinks (and collides) on alternate
+## physics ticks and glides along its velocity in between: half the CPU for a
+## horde on its way in. Close in, where a few centimetres decide a swipe, every
+## tick is full. (Physics runs at 120 Hz, so the half rate is still 60 Hz.)
+const FAR_THINK := 2.5
 var _far := false
 var _skip_acc := 0.0
 var _tick_phase := randi() % 2

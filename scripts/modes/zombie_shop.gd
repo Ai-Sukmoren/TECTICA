@@ -307,7 +307,7 @@ func reissue(p, index: int) -> void:
 	var keep := {}
 	for w in p.weapons:
 		keep[String(w.id)] = [w.ammo, w.reserve]
-	p.set_loadout(specs())
+	p.set_loadout(specs(), true)   # unchanged guns are kept, not rebuilt
 	for w in p.weapons:
 		if keep.has(String(w.id)):
 			w.ammo = int(keep[w.id][0])

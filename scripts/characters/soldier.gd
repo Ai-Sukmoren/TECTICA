@@ -209,6 +209,7 @@ func _merge_exclude() -> Array:
 
 func _make_weapon(spec) -> Weapon:
 	var w := Weapon.new()
+	w.set_meta("spec", str(spec))   # what it was built from (set_loadout reuse)
 	if spec is Array:
 		w.setup(String(spec[0]), spec[1])
 		if spec.size() > 2:
@@ -223,15 +224,24 @@ func _make_weapon(spec) -> Weapon:
 	return w
 
 
-## Replaces the whole inventory (used when the loadout changes).
-func set_loadout(specs: Array) -> void:
-	for w in weapons:
-		if is_instance_valid(w):
-			w.queue_free()
+## Replaces the whole inventory (used when the loadout changes). `reuse`: a gun
+## whose spec hasn't changed is kept as it is (its ammo too) instead of rebuilt,
+## so tweaking one attachment in the gunsmith doesn't rebuild the whole loadout.
+func set_loadout(specs: Array, reuse: bool = false) -> void:
+	var old := weapons.duplicate()
+	var keep_index := weapon_index
 	weapons.clear()
-	for spec in specs:
-		weapons.append(_make_weapon(spec))
-	weapon_index = 0
+	for i in specs.size():
+		var spec = specs[i]
+		if reuse and i < old.size() and is_instance_valid(old[i]) and old[i].get_meta("spec", "") == str(spec):
+			weapons.append(old[i])
+			old[i] = null
+		else:
+			weapons.append(_make_weapon(spec))
+	for w in old:
+		if w != null and is_instance_valid(w):
+			w.queue_free()
+	weapon_index = keep_index if reuse and keep_index < weapons.size() else 0
 	reload_timer = 0.0
 	switch_timer = 0.0
 	_equip_current()
@@ -324,6 +334,8 @@ func _step_up(delta: float) -> void:
 	var hit := KinematicCollision3D.new()
 	if not test_move(xf.translated(skim), ahead, hit) or hit.get_normal().y > 0.7:
 		return   # nothing in the way, or a slope the floor already handles
+	if hit.get_collider() is CharacterBody3D:
+		return   # another body, never a step (a crowd pressing in would test every tick)
 	var rise := Vector3.UP * STEP_HEIGHT
 	var ceiling := KinematicCollision3D.new()
 	if test_move(xf, rise, ceiling):
@@ -458,7 +470,7 @@ func net_shot(ends: Array) -> void:
 ## A pale arc where the blade swept, so a slash reads in top-down view too.
 func _slash_trail(hit: bool, heavy: bool) -> void:
 	var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
-	FX.slash_trail(self, global_position + Vector3.UP * chest_height(), fwd, rig._slash_side, hit, heavy)
+	FX.slash_trail(self, global_position + Vector3.UP * chest_height(), fwd, rig.slash_arc(), hit, heavy)
 
 
 func start_reload() -> void:

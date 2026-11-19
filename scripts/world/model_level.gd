@@ -64,6 +64,15 @@ func _init(id: String = "warehouse") -> void:
 
 
 func build() -> void:
+	for step in build_steps():
+		step.call()
+
+
+func build_steps() -> Array:
+	return [_build_start, _build_main_model, _build_extras, _build_finish]
+
+
+func _build_start() -> void:
 	seed(4711)
 	Terrain.clear()
 	_mat_wall = M.concrete("model_wall", Color(0.5, 0.48, 0.45), 0.6)
@@ -80,6 +89,9 @@ func build() -> void:
 	nav_region = NavigationRegion3D.new()
 	nav_region.name = "Navigation"
 	add_child(nav_region)
+
+
+func _build_main_model() -> void:
 	var cfg: Dictionary = CONFIGS[map_key]
 	var path := MAP_DIR + String(cfg.glb)
 	if ResourceLoader.exists(path):
@@ -87,6 +99,11 @@ func build() -> void:
 	else:
 		_lo = Vector3(-20, 0, -20)
 		_hi = Vector3(20, 4, 20)
+
+
+func _build_extras() -> void:
+	var cfg: Dictionary = CONFIGS[map_key]
+	var path := MAP_DIR + String(cfg.glb)
 	# a catch floor well below the model (out of the navigation bake), in case anyone slips through
 	var g := _body(Vector3.ZERO)
 	var size := Vector2(_hi.x - _lo.x, _hi.z - _lo.z) + Vector2(20, 20)
@@ -98,6 +115,9 @@ func build() -> void:
 		_build_ramp(r[0], r[1])
 	for r in cfg.get("stairs", []):
 		_build_ramp(r[0], r[1], r[2], false)
+
+
+func _build_finish() -> void:
 	_bake_navigation()
 	_collect_walkable()
 	_define_mode()

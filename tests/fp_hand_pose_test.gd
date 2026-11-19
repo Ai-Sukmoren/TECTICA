@@ -78,12 +78,18 @@ func run() -> void:
 			variants.append({"underbarrel": "gp25"})
 		if "hex" in Data.WEAPONS[id].options.get("handguard", {}):
 			variants.append({"handguard": "hex"})
+			if "gp25" in Data.WEAPONS[id].options.underbarrel:
+				variants.append({"handguard": "hex", "underbarrel": "gp25"})
+		if "rail" in Data.WEAPONS[id].options.rail:
+			variants.append({"rail": "rail"})
+		if "laser" in Data.WEAPONS[id].options.underbarrel:
+			variants.append({"underbarrel": "laser"})
 		for att in variants:
 			var w = Weapon.new()
 			w.setup(String(id), att)
 			rig.set_weapon(w, [])
 			w.set_process(false)
-			var name := String(id) + ("" if att.is_empty() else "+" + String(att.values()[0]))
+			var name := String(id) + ("" if att.is_empty() else "+" + "+".join(att.values()))
 			for hz in ([30, 60, 144] if att.is_empty() else [60]):
 				await check_weapon(name, w, hz)
 				configs += 1
@@ -190,8 +196,8 @@ func steps(id: String, w, n: int, dt: float, state: String, checked: bool) -> vo
 				fail(id + "wristL" + state, tag + ": left wrist flexion %.0f / deviation %.0f degrees" % [l.x, l.y])
 		# both hands on the gun through the sprint (and while aiming)
 		if not w.is_melee() and state in ["sprint", "ads"] and rig.sprint_amt > 0.9 or state == "ads" and rig.aim_amt > 0.95 and not w.is_melee():
-			var gr: float = rig.hands[1].global_position.distance_to(w.grip.global_position)
-			var gl: float = rig.hands[0].global_position.distance_to(w.support.global_position)
+			var gr: float = rig.hands[1].global_position.distance_to(w.palm_grip.global_position)
+			var gl: float = rig.hands[0].global_position.distance_to(w.palm_support.global_position)
 			var gap := maxf(gr, gl)
 			if state == "sprint":
 				worst.sprint_grip = maxf(worst.sprint_grip, gap)

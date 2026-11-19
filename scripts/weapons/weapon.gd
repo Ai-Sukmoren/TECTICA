@@ -38,6 +38,9 @@ var _charm: Node3D
 
 var grip: Node3D
 var support: Node3D
+var palm_grip: Node3D
+var palm_support: Node3D
+var hand_open := Vector2.ZERO
 var muzzle: Node3D
 var mag_node: Node3D
 var mag_well: Node3D
@@ -86,6 +89,9 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 	_model_root = parts.root
 	grip = parts.grip
 	support = parts.support
+	palm_grip = parts.get("palm_grip", grip)
+	palm_support = parts.get("palm_support", support)
+	hand_open = parts.get("hand_open", Vector2.ZERO)
 	muzzle = parts.muzzle
 	mag_node = parts.mag
 	mag_well = parts.mag_well

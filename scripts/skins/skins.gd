@@ -64,8 +64,9 @@ const FINISHES := {
 	# --- mythic, admin exclusive: never in packs
 	"ruby": {"name": "Mythic Ruby", "r": 5, "p": P.RUBY, "s": 9.0, "m": 0.6, "ro": 0.03, "e": 1.6, "a": 1.0, "admin": true, "sticker": "patch_02",
 			"c": [Color(0.3, 0.0, 0.02), Color(0.78, 0.0, 0.05), Color(1.0, 0.22, 0.3)]},
-	"carbon_mythic": {"name": "Mythic Carbon", "r": Rarity.MYTHIC, "p": P.CARBON_X, "s": 9.0, "m": 0.4, "ro": 0.16, "a": 1.0, "admin": true,
-			"c": [Color(0.022, 0.023, 0.027), Color(0.17, 0.18, 0.21)]},
+	# the same photographed twill as Carbon Weave, finer, deeper lacquer and a slow light sweep
+	"carbon_mythic": {"name": "Mythic Carbon", "r": Rarity.MYTHIC, "p": P.CARBON_TEX, "s": 22.0, "m": 0.5, "ro": 0.15, "a": 1.0, "admin": true,
+			"c": [Color(0.92, 0.94, 1.0), Color(0.75, 0.78, 0.85)], "texture": preload("res://assets/skins/carbon_weave.png")},
 	"mythicskin": {"name": "mythicskin", "r": Rarity.MYTHIC, "p": P.TEXTURE, "s": 6.0, "m": 0.1, "ro": 0.4, "admin": true,
 			"c": [Color(1.0, 1.0, 1.0)], "texture": preload("res://assets/skins/mythicskin.png")},
 	# --- mythic, one player only: "owners" are that player's account names (any
@@ -374,12 +375,18 @@ void fragment() {
 			break;
 		}
 		case 19: {  // carbon fibre from a tiled weave photo: the bright tows catch the light, all under lacquer
-			vec3 t = texture(finish_texture, p).rgb;
-			float lum = dot(t, vec3(0.299, 0.587, 0.114));
-			col = t * c0;
+			vec3 tex = texture(finish_texture, p).rgb;
+			float lum = dot(tex, vec3(0.299, 0.587, 0.114));
+			col = tex * c0;
 			m = metal * (0.45 + 0.9 * lum);
 			r = mix(rough + 0.12, rough * 0.6, lum);
 			cc = 1.0;
+			if (anim > 0.0) {
+				// mythic: a slow diagonal light sweep across the lacquer and a sheen at grazing angles
+				float sweep = smoothstep(0.92, 1.0, sin((uv.x + uv.y) * 3.0 - t * 1.2));
+				float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+				col += c1 * (sweep * (0.25 + 0.6 * lum) + fres * 0.18);
+			}
 			break;
 		}
 		case 16: {  // artwork projected onto the dominant face of each part

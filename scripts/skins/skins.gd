@@ -17,7 +17,7 @@ const RARITY_COLORS := [Color(0.72, 0.74, 0.77), Color(0.42, 0.86, 0.46), Color(
 const DUP_REFUND := [15, 30, 70, 180, 500, 0]
 
 ## pattern ids understood by FINISH_SHADER
-enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY, TEXTURE, CARBON_X, KITTY }
+enum P { SOLID, CAMO, DIGITAL, TIGER, SPLINTER, CARBON, HEX, DAMASCUS, NEON, CRACKS, CIRCUIT, GOLD, SCALES, AURORA, VOID, RUBY, TEXTURE, CARBON_X, KITTY, CARBON_TEX }
 
 ## id -> name, rarity, pattern, 4 colours, metallic, roughness, scale, emission, animated
 const FINISHES := {
@@ -36,8 +36,9 @@ const FINISHES := {
 	"desert_splinter": {"name": "Desert Splinter", "r": 1, "p": P.SPLINTER, "s": 10.0,
 			"c": [Color(0.66, 0.57, 0.41), Color(0.5, 0.42, 0.29), Color(0.36, 0.3, 0.21), Color(0.74, 0.67, 0.52)]},
 	# --- rare: premium materials
-	"carbon_weave": {"name": "Carbon Weave", "r": 2, "p": P.CARBON, "s": 7.0, "m": 0.35, "ro": 0.22,
-			"c": [Color(0.05, 0.05, 0.06), Color(0.2, 0.21, 0.23)]},
+	# a photographed 2x2 twill tile (assets/skins/carbon_weave.png) under clear lacquer
+	"carbon_weave": {"name": "Carbon Weave", "r": 2, "p": P.CARBON_TEX, "s": 18.0, "m": 0.45, "ro": 0.24,
+			"c": [Color(1.0, 1.0, 1.0)], "texture": preload("res://assets/skins/carbon_weave.png")},
 	"hex_plate": {"name": "Hex Plate", "r": 2, "p": P.HEX, "s": 7.0, "m": 0.7, "ro": 0.3,
 			"c": [Color(0.24, 0.33, 0.42), Color(0.07, 0.09, 0.12), Color(0.45, 0.58, 0.7)]},
 	"damascus": {"name": "Damascus Steel", "r": 2, "p": P.DAMASCUS, "s": 18.0, "m": 0.95, "ro": 0.24,
@@ -370,6 +371,15 @@ void fragment() {
 			cc = 1.0;   // glossy lacquer over the gem
 			float glow = 0.5 + 0.5 * sin(t * 0.8 + facet * 6.28);
 			e = c1 * (0.1 + 0.2 * facet * glow + fres * 0.45) * emit + c2 * glint * emit * 2.2;
+			break;
+		}
+		case 19: {  // carbon fibre from a tiled weave photo: the bright tows catch the light, all under lacquer
+			vec3 t = texture(finish_texture, p).rgb;
+			float lum = dot(t, vec3(0.299, 0.587, 0.114));
+			col = t * c0;
+			m = metal * (0.45 + 0.9 * lum);
+			r = mix(rough + 0.12, rough * 0.6, lum);
+			cc = 1.0;
 			break;
 		}
 		case 16: {  // artwork projected onto the dominant face of each part

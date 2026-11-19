@@ -775,14 +775,17 @@ func is_cover_good(c: Dictionary, threat: Vector3) -> bool:
 	return p.distance_to(threat) > 4.0 and is_covered(p, threat)
 
 
-## retreat: only cover further from the threat than the agent is now, ideally ~20 m out.
-func find_cover(agent: Node3D, threat: Vector3, retreat: bool = false):
+## Environmental query for cover: every free cover point within reach is graded
+## for the agent against the threat, then the best few are re-graded on the actual
+## route there (find_cover_score). retreat: only cover further from the threat
+## than the agent is now, ideally ~20 m out. `keep`: the agent's current cover,
+## allowed back in with a small bonus so it doesn't hop between equal spots.
+func find_cover(agent: Node3D, threat: Vector3, retreat: bool = false, keep = null):
 	if not _cover_validated:
 		_validate_cover()
-	var best = null
-	var best_score := INF
 	var my := agent.global_position
 	var my_threat_dist := my.distance_to(threat)
+	var cands: Array = []
 	for c in cover_points:
 		if not c.valid:
 			continue
@@ -805,9 +808,110 @@ func find_cover(agent: Node3D, threat: Vector3, retreat: bool = false):
 		var score := d_self + absf(d_threat - (20.0 if retreat else 12.0)) * 0.6
 		if d_threat < my_threat_dist - 4.0:
 			score += 6.0
-		if score < best_score and is_covered(p, threat):
+		score += _squad_crowding(agent, p, threat)
+		if c == keep:
+			score -= 2.5
+		cands.append([score, c])
+	cands.sort_custom(func(a, b): return a[0] < b[0])
+	var best = null
+	var best_score := INF
+	var checked := 0
+	for e in cands:
+		if checked >= COVER_ROUTE_CHECKS:
+			break
+		var c = e[1]
+		if not is_covered(c.pos, threat):
+			continue
+		checked += 1
+		var score: float = e[0] + route_exposure(agent, c.pos, threat) * COVER_ROUTE_WEIGHT
+		if not can_fire_from(c, threat):
+			score += COVER_BLIND_COST   # safe, but he could never shoot back from it
+		if score < best_score:
 			best = c
 			best_score = score
+	last_cover_score = best_score
 	if best != null:
 		best.taken = agent
 	return best
+
+
+## How many of the cheapest candidates get the (raycast-heavy) route check.
+const COVER_ROUTE_CHECKS := 5
+## Score cost of a route the threat can see all the way (about a 10 m detour).
+const COVER_ROUTE_WEIGHT := 10.0
+## Score cost of a spot with no line of fire from any peek (step out, stand up, lean).
+const COVER_BLIND_COST := 12.0
+## The last find_cover result's score (lower is better; INF = nothing found).
+var last_cover_score := INF
+
+
+## Share (0..1) of the walk from `agent` to `to`, along its real navmesh path, that
+## the threat can see: a spot behind a wall is no good if getting there means
+## crossing open ground under fire.
+func route_exposure(agent: Node3D, to: Vector3, threat: Vector3) -> float:
+	var nav_map: RID = agent.get_world_3d().navigation_map
+	var path := NavigationServer3D.map_get_path(nav_map, agent.global_position, to, true)
+	if path.size() < 2:
+		return 0.0
+	var space := get_world_3d().direct_space_state
+	var eye := threat + Vector3(0, 1.5, 0)
+	var seen := 0
+	var samples := 0
+	var carry := 0.0
+	for i in range(path.size() - 1):
+		var a: Vector3 = path[i]
+		var b: Vector3 = path[i + 1]
+		var seg := a.distance_to(b)
+		var d := carry
+		while d < seg and samples < 14:
+			var p := a.lerp(b, d / maxf(seg, 0.001)) + Vector3(0, 1.1, 0)
+			samples += 1
+			var q := PhysicsRayQueryParameters3D.create(eye, p, Layers.WORLD)
+			if space.intersect_ray(q).is_empty():
+				seen += 1
+			d += 1.6
+		carry = d - seg
+	return float(seen) / maxf(samples, 1)
+
+
+## Whether a guard in cover `c` can get a line of fire on `threat` when he peeks:
+## stepping out past a wall's corner, standing up over low cover, or leaning out
+## either side of a tree or a rock (enemy.gd PEEKING).
+func can_fire_from(c: Dictionary, threat: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	var p: Vector3 = c.pos
+	var aim := threat + Vector3(0, 1.2, 0)
+	var to := Vector3(aim.x - p.x, 0, aim.z - p.z).normalized()
+	var side := Vector3(-to.z, 0, to.x)
+	var eyes: Array = [p + Vector3(0, 1.55, 0)]
+	var pk: Vector3 = c.get("peek", Vector3.ZERO)
+	if pk != Vector3.ZERO:
+		eyes.append(p + pk + Vector3(0, 1.55, 0))
+	eyes.append(p + side * 0.45 + Vector3(0, 1.5, 0))
+	eyes.append(p - side * 0.45 + Vector3(0, 1.5, 0))
+	for eye in eyes:
+		var q := PhysicsRayQueryParameters3D.create(eye, aim, Layers.WORLD)
+		if space.intersect_ray(q).is_empty():
+			return true
+	return false
+
+
+## Squad spread: a spot near a squadmate's cover, or on the same bearing from the
+## threat, costs more, so a squad fans out round the threat instead of bunching.
+func _squad_crowding(agent: Node3D, p: Vector3, threat: Vector3) -> float:
+	var cost := 0.0
+	var my_bearing := Vector2(p.x - threat.x, p.z - threat.z)
+	for c in cover_points:
+		var taker = c.taken
+		if taker == null or taker == agent or not is_instance_valid(taker) or taker.is_dead:
+			continue
+		var q: Vector3 = c.pos
+		var d := q.distance_to(p)
+		if d < 5.0:
+			cost += (5.0 - d) * 3.0   # two guards behind one rock is one grenade
+		var their := Vector2(q.x - threat.x, q.z - threat.z)
+		if my_bearing.length() > 0.1 and their.length() > 0.1:
+			var ang := absf(my_bearing.angle_to(their))
+			if ang < 0.45:
+				cost += (0.45 - ang) * 6.0
+	return cost

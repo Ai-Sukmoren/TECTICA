@@ -46,6 +46,11 @@ var time_since_seen := 99.0
 var reaction_timer := 0.0
 var alert_flash := 0.0
 var cover = null
+## where the threat was when this cover was graded; re-graded once it moves this far
+var _cover_threat := Vector3.INF
+const COVER_REGRADE_MOVE := 5.0
+## times this guard moved to a better spot after the threat moved (tests / debug)
+var cover_moves := 0
 var nav: NavigationAgent3D
 
 var _perceive_timer := 0.0
@@ -111,6 +116,7 @@ func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
 	torch.light_volumetric_fog_energy = 0.8
 	torch.visible = false
 	rig.weapon_anchor.add_child(torch)
+	_add_lean_zone()
 	max_health = 100.0
 	health = max_health
 	_scan_t = randf() * 10.0
@@ -160,6 +166,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if torch:
 		torch.visible = _night() > 0.45
+	if state != State.COMBAT and (_lean_side != 0.0 or _peek_off != Vector3.ZERO):
+		_lean_side = 0.0
+		_lean(0.0)
 	_perceive(delta)
 	match state:
 		State.PATROL:
@@ -312,6 +321,92 @@ func _perceive_legacy(delta: float) -> void:
 		awareness = maxf(awareness - 0.1 * delta, 0.0)
 
 
+# ================================================================ leaning
+
+## How far a guard leans out round cover (the operator's own peek is about the same).
+const LEAN_DIST := 0.45
+## which way he leans on this peek: 1 right, -1 left, 0 stand up instead
+var _lean_side := 0.0
+var _lean_zone: Area3D
+var _lean_shape: CapsuleShape3D
+
+
+## Which way to lean out to see `threat`: a wall's corner says (its peek side);
+## round a tree or a rock, whichever side has a clear line to the threat
+## (0: nothing clear, so stand up over the cover instead).
+func _choose_lean_side(threat: Vector3) -> float:
+	var yaw := _yaw_to(threat)
+	var right := Vector3(cos(yaw), 0, -sin(yaw))
+	if cover != null and cover.get("peek", Vector3.ZERO) != Vector3.ZERO:
+		var pk: Vector3 = cover.peek
+		return 1.0 if pk.dot(right) >= 0.0 else -1.0
+	var space := get_world_3d().direct_space_state
+	var sides := [1.0, -1.0] if randf() < 0.5 else [-1.0, 1.0]
+	for side in sides:
+		var eye: Vector3 = global_position + right * float(side) * LEAN_DIST + Vector3(0, STAND_HEIGHT - 0.2, 0)
+		var q := PhysicsRayQueryParameters3D.create(eye, threat + Vector3(0, 1.2, 0), Layers.WORLD)
+		if space.intersect_ray(q).is_empty():
+			return side
+	return 0.0
+
+
+## Leans toward `side` (0 = back upright). The eye, the muzzle (soldier.gd uses
+## _peek_off) and the bullet zone go with the upper body; a wall beside him stops it.
+func _lean(side: float) -> void:
+	rig.lean_target = side
+	var right := Vector3(cos(aim_yaw), 0, -sin(aim_yaw))
+	var want := right * rig.lean_amt * LEAN_DIST
+	if want.length() > 0.02:
+		var base := global_position + Vector3(0, chest_height(), 0)
+		var q := PhysicsRayQueryParameters3D.create(base, base + want * 1.4, Layers.WORLD, [get_rid()])
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		if not hit.is_empty():
+			var room := maxf(base.distance_to(hit.position) / 1.4 - 0.08, 0.0)
+			want = want.normalized() * minf(room, want.length())
+	_peek_off = want if want.length() > 0.02 else Vector3.ZERO
+	if _lean_zone != null:
+		var out := _peek_off != Vector3.ZERO
+		_lean_zone.collision_layer = Layers.HITZONE if out else 0
+		if out:
+			_lean_shape.height = head_height() - chest_height() + 0.75
+			_lean_zone.position = _peek_off.rotated(Vector3.UP, -rotation.y) + Vector3(0, (chest_height() - 0.25 + head_height() + 0.12) * 0.5, 0)
+
+
+## Bullet-only zone for the leaned-out upper body: the movement capsule stays
+## behind the cover, so without it a leaning guard could shoot but not be shot.
+func _add_lean_zone() -> void:
+	_lean_zone = Area3D.new()
+	_lean_zone.name = "HitZone"
+	_lean_zone.collision_layer = 0
+	_lean_zone.collision_mask = 0
+	_lean_zone.monitoring = false
+	var cs := CollisionShape3D.new()
+	_lean_shape = CapsuleShape3D.new()
+	_lean_shape.radius = 0.28
+	_lean_shape.height = 1.0
+	cs.shape = _lean_shape
+	_lean_zone.add_child(cs)
+	add_child(_lean_zone)
+
+
+## weapon.gd asks where a shot along origin + dir hit this guard: the leaned-out
+## chest and head (when leaning), or his body as usual; {} = it passed by.
+func hit_part(origin: Vector3, dir: Vector3, reach: float) -> Dictionary:
+	var end := origin + dir * reach
+	if _peek_off != Vector3.ZERO:
+		var a := global_position + _peek_off + Vector3(0, chest_height() - 0.25, 0)
+		var b := global_position + _peek_off + Vector3(0, head_height() + 0.12, 0)
+		var pts := Geometry3D.get_closest_points_between_segments(origin, end, a, b)
+		if (pts[0] as Vector3).distance_to(pts[1]) < 0.3:
+			return {"pos": pts[0]}
+	var c0 := global_position   # from the feet: leg hits count
+	var c1 := global_position + Vector3(0, head_height() + 0.12, 0)
+	var bp := Geometry3D.get_closest_points_between_segments(origin, end, c0, c1)
+	if (bp[0] as Vector3).distance_to(bp[1]) < 0.36:
+		return {"pos": Vector3.INF}   # the body itself: keep the hit as traced
+	return {}
+
+
 ## Moving quietly enough to get right behind a guard unnoticed.
 func _sneaking(p) -> bool:
 	return p.get("crouching") == true or p.get("walking") == true 			or Vector2(p.velocity.x, p.velocity.z).length() < 2.6
@@ -343,7 +438,7 @@ func can_see_point(pos: Vector3, max_dist: float = VIEW_DIST) -> bool:
 		var fwd := Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
 		if fwd.angle_to(to) > FOV_HALF * (1.5 if state == State.COMBAT else 1.0):
 			return false
-	var eye := global_position + Vector3(0, head_height() - 0.05, 0)
+	var eye := global_position + _peek_off + Vector3(0, head_height() - 0.05, 0)
 	var q := PhysicsRayQueryParameters3D.create(eye, pos, Layers.WORLD)
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
@@ -394,7 +489,7 @@ func _can_see(p) -> bool:
 		var fov := FOV_HALF * (1.5 if state == State.COMBAT else 1.0)
 		if fwd.angle_to(to) > fov:
 			return false
-	var eye := global_position + Vector3(0, head_height() - 0.05, 0)
+	var eye := global_position + _peek_off + Vector3(0, head_height() - 0.05, 0)
 	var space := get_world_3d().direct_space_state
 	for h in [p.chest_height(), p.head_height() - 0.05]:
 		var q := PhysicsRayQueryParameters3D.create(eye, p.global_position + p.peek_offset() + Vector3(0, h, 0), Layers.WORLD)
@@ -983,13 +1078,29 @@ func _do_combat(delta: float) -> void:
 		elif _wants_cover() and (cover == null or not level.is_cover_good(cover, threat)):
 			_release_cover()
 			cover = level.find_cover(self, threat)
+			_cover_threat = threat
 			phase = Phase.MOVING if cover != null else Phase.OPEN
+		elif cover != null and phase != Phase.FLANK and threat.distance_to(_cover_threat) > COVER_REGRADE_MOVE:
+			# the threat has moved: grade the area again; keep this spot unless another is clearly better
+			_cover_threat = threat
+			var mine = cover
+			var better = level.find_cover(self, threat, false, mine)
+			if better != null and better != mine:
+				_release_cover()
+				better.taken = self
+				cover = better
+				phase = Phase.MOVING
+				cover_moves += 1
+			elif better == null:
+				mine.taken = self
 		elif cover != null and phase == Phase.OPEN:
 			phase = Phase.MOVING
 	if cover == null and phase in [Phase.MOVING, Phase.HIDDEN, Phase.PEEKING]:
 		phase = Phase.OPEN   # no cover to go to (a deathmatch bot not under fire, or it was let go): fight in the open
 
 	_turn_to(_yaw_to(threat), delta, 7.0)
+	if phase != Phase.PEEKING:
+		_lean(0.0)
 
 	match phase:
 		Phase.MOVING:
@@ -1015,8 +1126,14 @@ func _do_combat(delta: float) -> void:
 				phase = Phase.PEEKING
 				_phase_timer = randf_range(1.5, 3.0)
 				_burst_timer = 0.0
+				_lean_side = _choose_lean_side(threat)
 		Phase.PEEKING:
-			_hold(_cover_spot(true), delta)
+			if _lean_side != 0.0:
+				# at a wall's corner: step out to it and lean round; at a tree or a rock: lean out in place
+				_hold(_cover_spot(true), delta)
+				_lean(_lean_side)
+			else:
+				_hold(_cover_spot(true), delta)   # low cover: stand up over it
 			set_crouch(false)
 			aiming = true
 			if sees_player:

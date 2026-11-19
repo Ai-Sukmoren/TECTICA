@@ -15,7 +15,7 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 
 ## 🆕 What's new in v1.45
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.45.0-beta) · [watch the update (2.5 min)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.45.0-beta/tectica_v145_update.mp4)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.45.1-beta) · [watch the update (2.5 min)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.45.0-beta/tectica_v145_update.mp4)
 
 ### Story cutscenes
 Both chapters open with an in-engine cinematic that glides straight into play: **Chapter 1** flies KILO-1 into the
@@ -27,6 +27,10 @@ skip; SETTINGS > GAME > STORY CUTSCENES turns them off.
 Guards notice you gradually (a ring over each one fills), investigate noises, find and radio in bodies, and search
 as a squad. Sneak up behind one: **V** is a knife takedown, **F** a silent choke-out. **F** drags a body by the collar into bushes or shadows,
 **J** throws a decoy, **Alt** slow-walks. Suppressors cut how far shots carry; walls muffle sound.
+
+### v1.45.1: smarter cover
+Guards lean out round cover to shoot (and can be hit where they lean), grade cover by how exposed the route to it is,
+only pick spots they can fire from, spread out as a squad, and re-grade when you move.
 
 | Chapter 1 cutscene | Chapter 2 cutscene | Takedown |
 |---|---|---|

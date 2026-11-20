@@ -54,12 +54,16 @@ func build_steps() -> Array:
 
 
 ## The same build with a frame drawn between steps, so the loading screen keeps moving and shows real progress:
-## `report.call(done, total)` is awaited after each step. Nothing else may use the global random numbers meanwhile
-## (map layouts are seeded), which holds while main.gd keeps the scene from processing during the build.
+## `report.call(done, total)` is awaited after each step. A step that returns false has more to do: it is called
+## again after awaiting `report` once more with the steps done so far (a frame under the loading screen; opened
+## without one, report returns at once and the step simply runs to the end, as a synchronous build() does).
+## Nothing else may use the global random numbers meanwhile (map layouts are seeded), which holds while main.gd
+## keeps the scene from processing during the build.
 func build_staged(report: Callable) -> void:
 	var steps := build_steps()
 	for i in steps.size():
-		steps[i].call()
+		while steps[i].call() == false:
+			await report.call(i, steps.size())
 		await report.call(i + 1, steps.size())
 
 

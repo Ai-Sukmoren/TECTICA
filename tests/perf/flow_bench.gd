@@ -108,6 +108,7 @@ func _wait_ready(done: Callable) -> Dictionary:
 	var worst := 0.0
 	var long := 0
 	var slow: Array = []
+	var pipes := _pipelines()
 	var last := Time.get_ticks_usec()
 	var start := last
 	while Time.get_ticks_usec() - start < 60_000_000:
@@ -122,12 +123,20 @@ func _wait_ready(done: Callable) -> Dictionary:
 			var t = Transition._inst
 			var stage: String = t._stage_text if t != null and is_instance_valid(t) else "-"
 			var scene: String = current_scene.name if current_scene != null else "-"
-			slow.append("%d ms @ %s / %s" % [int(ms), scene, stage])
+			slow.append("%d ms @ %s / %s  pipelines +%d" % [int(ms), scene, stage, _pipelines() - pipes])
+		pipes = _pipelines()
 		if done.call():
 			break
 	if not slow.is_empty():
 		print("[perf] slow frames: ", slow)
 	return {"worst": snappedf(worst, 0.1), "long": long}
+
+
+## Render pipelines compiled so far (every kind the engine counts): a frame that compiles many stalls.
+func _pipelines() -> int:
+	return int(Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_CANVAS) + Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_MESH)
+			+ Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_SURFACE) + Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_DRAW)
+			+ Performance.get_monitor(Performance.PIPELINE_COMPILATIONS_SPECIALIZATION))
 
 
 func _freeze_match(main) -> void:

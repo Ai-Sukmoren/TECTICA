@@ -63,12 +63,13 @@ static var _nav_cache := {}              # mode -> NavigationMesh
 
 func build() -> void:
 	for step in build_steps():
-		step.call()
+		while step.call() == false:
+			pass   # a sliced step (the grass): all of it now, no frames in between
 
 
 func build_steps() -> Array:
 	return [_build_start, _plan_and_ground, _build_camps, _build_outpost, _build_ruin_site, _build_forest,
-			_build_edges_and_mode, _build_finish]
+			_build_grass, _build_edges_and_mode, _build_finish]
 
 
 func _build_start() -> void:
@@ -998,7 +999,7 @@ func _build_forest() -> void:
 			body.add_child(cs)
 	_build_rocks_and_logs()
 	_build_bushes(bush_mat)
-	_build_grass()
+	# the grass follows as its own build step (_build_grass)
 
 
 func _multimesh(mesh: Mesh, mat: Material, items: Array, shadows: bool, vis_end: float = 0.0) -> MultiMeshInstance3D:
@@ -1139,9 +1140,22 @@ func _burn_old_grass_rng() -> void:
 		_burn_rng(6)
 
 
-func _build_grass() -> void:
+## How long one slice of grass making may take before the loading screen gets a frame (staged builds).
+const GRASS_SLICE_USEC := 8000
+var _grass_maker: GrassMaker
+
+
+## The grass, ferns and flowers. Making them takes ~0.6 s the first time in a session (then they are cached), so it
+## runs in slices: false while there is more to do, and a staged build draws the loading screen in between
+## (level.gd build_staged) instead of freezing it.
+func _build_grass() -> bool:
 	if _grass_cache.is_empty():
-		_grass_cache = _make_grass()
+		if _grass_maker == null:
+			_grass_maker = GrassMaker.new(self)
+		if not _grass_maker.step(Time.get_ticks_usec() + GRASS_SLICE_USEC):
+			return false
+		_grass_cache = _grass_maker.out
+		_grass_maker = null
 	for e in _grass_cache:
 		var node := _mm_node(e[2], e[1], false, e[3])
 		if e[4]:
@@ -1149,87 +1163,140 @@ func _build_grass() -> void:
 	# The global RNG continues from a fixed point whether or not the grass was
 	# generated this time, so everything placed later is identical either way.
 	seed(424242)
+	return true
 
 
-## Grass, ferns and flowers as cache entries (own RNG, no scene nodes).
-func _make_grass() -> Array:
+## Grass, ferns and flowers as cache entries (own RNG, no scene nodes), made a slice at a time: the same loops in
+## the same order as one pass, so the result is identical however it is sliced.
+class GrassMaker:
+	var lv
+	## [mesh, material, MultiMesh, visibility end, dense] when finished
 	var out: Array = []
-	var tufts := [Nature.grass_tuft_mesh(5), Nature.grass_tuft_mesh(6)]
-	var mat := Nature.grass_material()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
-	# growth map (1 m cells): 0 = bare (roads, creek, pads) .. 1 = open meadow.
-	# Sampling it per tuft keeps a 3x denser carpet as fast to build as before.
-	var gn := int(HALF * 2.0)
-	var grow := PackedFloat32Array()
-	grow.resize(gn * gn)
-	var pads := [Vector2(lz_south.x, lz_south.z), Vector2(lz_north.x, lz_north.z)]
-	for iz in gn:
-		for ix in gn:
-			var p := Vector2(-HALF + ix + 0.5, -HALF + iz + 0.5)
-			var g := 1.0
-			if road_dist(p) < 2.6 or _seg_dist(p, creek) < 2.8 or p.distance_to(pads[0]) < 6.4 or p.distance_to(pads[1]) < 6.4:
-				g = 0.0
-			else:
-				for c in clearings:
-					if p.distance_to(c[0]) < float(c[1]) * 0.55 and float(c[2]) > 0.5:
-						g = 0.15   # trodden camp ground
-						break
-				if g > 0.2 and tree_clearance(p) < 2.2:
-					g = 0.3        # shaded forest floor
-			grow[iz * gn + ix] = g
-	# layer 0: base cover (always shown). layer 1: dense short fill (HIGH / ULTRA).
-	for layer in 2:
-		var per_chunk := [{}, {}]
-		for i in (70000 if layer == 0 else 125000):
-			var x := rng.randf_range(-HALF, HALF)
-			var z := rng.randf_range(-HALF, HALF)
-			var g := grow[clampi(int(z + HALF), 0, gn - 1) * gn + clampi(int(x + HALF), 0, gn - 1)]
-			if rng.randf() > g:
-				continue
-			var k := i % 2
-			var ck := _cell(x, z, GRASS_CHUNK)
-			if not per_chunk[k].has(ck):
-				per_chunk[k][ck] = []
-			var sc := rng.randf_range(0.8, 1.5) if layer == 0 else rng.randf_range(0.5, 0.95)
-			var tint := Color(rng.randf_range(0.8, 1.1), rng.randf_range(0.85, 1.1), rng.randf_range(0.75, 1.0))
-			per_chunk[k][ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.75, 1.3), sc)), Vector3(x, ground_y(x, z), z)), tint])
-		for k in 2:
-			for ck in per_chunk[k]:
-				if not per_chunk[k][ck].is_empty():
-					out.append([tufts[k], mat, _mm_resource(tufts[k], per_chunk[k][ck]), 42.0 if layer == 0 else 34.0, layer == 1])
-	# ferns on the forest floor, wildflowers in the meadows
-	var fern := Nature.fern_mesh()
-	var flower := Nature.flower_mesh()
-	var flower_mat := Nature.flower_material()
-	var ferns := {}
-	var flowers := {}
-	var petal := [Color(1.0, 0.98, 0.9), Color(1.0, 0.82, 0.15), Color(0.72, 0.55, 0.95), Color(1.0, 0.98, 0.9)]
-	for i in 26000:
-		var x := rng.randf_range(-HALF, HALF)
-		var z := rng.randf_range(-HALF, HALF)
-		var g := grow[clampi(int(z + HALF), 0, gn - 1) * gn + clampi(int(x + HALF), 0, gn - 1)]
-		var ck := _cell(x, z, GRASS_CHUNK)
-		if g > 0.25 and g < 0.35 and i % 3 == 0:
-			if not ferns.has(ck):
-				ferns[ck] = []
-			var fs := rng.randf_range(0.8, 1.5)
-			ferns[ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(fs, fs, fs)), Vector3(x, ground_y(x, z), z)),
-					Color(rng.randf_range(0.7, 1.0), rng.randf_range(0.8, 1.05), rng.randf_range(0.6, 0.9))])
-		elif g > 0.9:
-			# flowers grow in drifts, not evenly
-			if sin(x * 0.31 + 1.7) * sin(z * 0.27 - 0.6) + sin((x + z) * 0.11) * 0.5 < 0.35:
-				continue
-			if not flowers.has(ck):
-				flowers[ck] = []
-			var ws := rng.randf_range(0.7, 1.3)
-			flowers[ck].append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(ws, ws, ws)), Vector3(x, ground_y(x, z), z)),
-					petal[rng.randi() % petal.size()]])
-	for ck in ferns:
-		out.append([fern, mat, _mm_resource(fern, ferns[ck]), 46.0, false])
-	for ck in flowers:
-		out.append([flower, flower_mat, _mm_resource(flower, flowers[ck]), 30.0, true])
-	return out
+	var _phase := 0
+	var _i := 0
+	var _layer := 0
+	var _tufts: Array
+	var _mat: Material
+	var _rng := RandomNumberGenerator.new()
+	var _gn := 0
+	var _grow := PackedFloat32Array()
+	var _pads: Array
+	var _per_chunk: Array
+	var _fern: Mesh
+	var _flower: Mesh
+	var _flower_mat: Material
+	var _ferns := {}
+	var _flowers := {}
+	var _petal := [Color(1.0, 0.98, 0.9), Color(1.0, 0.82, 0.15), Color(0.72, 0.55, 0.95), Color(1.0, 0.98, 0.9)]
+
+	func _init(level) -> void:
+		lv = level
+
+	## Works until Time.get_ticks_usec() reaches `deadline`; true once everything is made.
+	func step(deadline: int) -> bool:
+		var n := 0
+		while true:
+			n += 1
+			# a growth-map pass is a whole row (~1 ms): check the clock after each; candidates are tiny, every 256
+			if (_phase == 1 or n % 256 == 0) and Time.get_ticks_usec() >= deadline:
+				return false
+			match _phase:
+				0:
+					_tufts = [Nature.grass_tuft_mesh(5), Nature.grass_tuft_mesh(6)]
+					_mat = Nature.grass_material()
+					_rng.seed = 4242
+					# growth map (1 m cells): 0 = bare (roads, creek, pads) .. 1 = open meadow.
+					# Sampling it per tuft keeps a 3x denser carpet as fast to build as before.
+					_gn = int(HALF * 2.0)
+					_grow.resize(_gn * _gn)
+					_pads = [Vector2(lv.lz_south.x, lv.lz_south.z), Vector2(lv.lz_north.x, lv.lz_north.z)]
+					_phase = 1
+					_i = 0
+				1:   # one row of the growth map
+					var iz := _i
+					for ix in _gn:
+						var p := Vector2(-HALF + ix + 0.5, -HALF + iz + 0.5)
+						var g := 1.0
+						if lv.road_dist(p) < 2.6 or lv._seg_dist(p, lv.creek) < 2.8 or p.distance_to(_pads[0]) < 6.4 or p.distance_to(_pads[1]) < 6.4:
+							g = 0.0
+						else:
+							for c in lv.clearings:
+								if p.distance_to(c[0]) < float(c[1]) * 0.55 and float(c[2]) > 0.5:
+									g = 0.15   # trodden camp ground
+									break
+							if g > 0.2 and lv.tree_clearance(p) < 2.2:
+								g = 0.3        # shaded forest floor
+						_grow[iz * _gn + ix] = g
+					_i += 1
+					if _i >= _gn:
+						_phase = 2
+						_layer = 0
+						_i = 0
+						_per_chunk = [{}, {}]
+				2:   # one tuft candidate. layer 0: base cover (always shown). layer 1: dense short fill (HIGH / ULTRA).
+					var i := _i
+					_i += 1
+					if i >= (70000 if _layer == 0 else 125000):
+						for k in 2:
+							for ck in _per_chunk[k]:
+								if not _per_chunk[k][ck].is_empty():
+									out.append([_tufts[k], _mat, lv._mm_resource(_tufts[k], _per_chunk[k][ck]), 42.0 if _layer == 0 else 34.0, _layer == 1])
+						_layer += 1
+						_i = 0
+						_per_chunk = [{}, {}]
+						if _layer == 2:
+							_phase = 3
+						continue
+					var x := _rng.randf_range(-HALF, HALF)
+					var z := _rng.randf_range(-HALF, HALF)
+					var g := _grow[clampi(int(z + HALF), 0, _gn - 1) * _gn + clampi(int(x + HALF), 0, _gn - 1)]
+					if _rng.randf() > g:
+						continue
+					var k := i % 2
+					var ck = lv._cell(x, z, GRASS_CHUNK)
+					if not _per_chunk[k].has(ck):
+						_per_chunk[k][ck] = []
+					var sc := _rng.randf_range(0.8, 1.5) if _layer == 0 else _rng.randf_range(0.5, 0.95)
+					var tint := Color(_rng.randf_range(0.8, 1.1), _rng.randf_range(0.85, 1.1), _rng.randf_range(0.75, 1.0))
+					_per_chunk[k][ck].append([Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(sc, sc * _rng.randf_range(0.75, 1.3), sc)), Vector3(x, lv.ground_y(x, z), z)), tint])
+				3:   # ferns on the forest floor, wildflowers in the meadows
+					_fern = Nature.fern_mesh()
+					_flower = Nature.flower_mesh()
+					_flower_mat = Nature.flower_material()
+					_phase = 4
+					_i = 0
+				4:   # one fern / flower candidate
+					var i := _i
+					_i += 1
+					if i >= 26000:
+						for ck in _ferns:
+							out.append([_fern, _mat, lv._mm_resource(_fern, _ferns[ck]), 46.0, false])
+						for ck in _flowers:
+							out.append([_flower, _flower_mat, lv._mm_resource(_flower, _flowers[ck]), 30.0, true])
+						_phase = 5
+						return true
+					var x := _rng.randf_range(-HALF, HALF)
+					var z := _rng.randf_range(-HALF, HALF)
+					var g := _grow[clampi(int(z + HALF), 0, _gn - 1) * _gn + clampi(int(x + HALF), 0, _gn - 1)]
+					var ck = lv._cell(x, z, GRASS_CHUNK)
+					if g > 0.25 and g < 0.35 and i % 3 == 0:
+						if not _ferns.has(ck):
+							_ferns[ck] = []
+						var fs := _rng.randf_range(0.8, 1.5)
+						_ferns[ck].append([Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(fs, fs, fs)), Vector3(x, lv.ground_y(x, z), z)),
+								Color(_rng.randf_range(0.7, 1.0), _rng.randf_range(0.8, 1.05), _rng.randf_range(0.6, 0.9))])
+					elif g > 0.9:
+						# flowers grow in drifts, not evenly
+						if sin(x * 0.31 + 1.7) * sin(z * 0.27 - 0.6) + sin((x + z) * 0.11) * 0.5 < 0.35:
+							continue
+						if not _flowers.has(ck):
+							_flowers[ck] = []
+						var ws := _rng.randf_range(0.7, 1.3)
+						_flowers[ck].append([Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(ws, ws, ws)), Vector3(x, lv.ground_y(x, z), z)),
+								_petal[_rng.randi() % _petal.size()]])
+				_:
+					return true
+		return true
 
 
 ## Invisible walls at the map edge; a dense tree line beyond them.

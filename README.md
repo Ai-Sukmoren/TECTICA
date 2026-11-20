@@ -13,9 +13,17 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.47
+## 🆕 What's new in v1.48
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.47.0-beta) · [watch the animation update](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.47.0-beta/tectica-update-1.47.mp4)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.48.0-beta)
+
+- **Gunsmith without hitches:** changing an attachment went from up to 351 ms to at most 18 ms.
+- **Faster loading:** no more half-second freeze in every map load; Backrooms loads in 1.2 s instead of 4 s and Tokyo in 1.2 s instead of 3.3 s, with half the video memory.
+- **Startup** to the menu is 4.8 s instead of 6.4 s, and the loading screen no longer freezes while the forest grass is made.
+
+## What came in v1.47
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.47.0-beta) · [watch the animation update](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.47.0-beta/tectica-update-1.47.mp4)
 
 - **Classic operators back:** multicam, plate carriers, packs and NVG helmets; deathmatch bots are militia again.
 - **Reloads you can see:** the magazine change happens in view, with the gun side-on instead of pointing at the sky.

@@ -246,10 +246,7 @@ static func _glb_meshes(r: Node3D, path: String, conv: Basis, skip: String = "")
 	var held := {}
 	if not ResourceLoader.exists(path):
 		return held
-	var inst := _scene(path).instantiate()
-	var list: Array = []
-	_glb_walk(inst, Transform3D.IDENTITY, list)
-	inst.free()
+	var list := _glb_list(path)
 	for e in list:
 		var xf := Transform3D(conv, Vector3.ZERO) * (e[2] as Transform3D)
 		var mesh: Mesh = e[1]
@@ -291,6 +288,21 @@ static func _baked(mesh: Mesh, sc: Vector3) -> Mesh:
 		out.surface_set_material(s, mesh.surface_get_material(s))
 	_baked_cache[key] = out
 	return out
+
+
+## Every mesh of a model file with its transform in the model's space, as [name, mesh, transform]. The scene is
+## instantiated and walked once per file and the list kept: doing it on every build cost 20+ ms for a big model
+## (the underbarrel laser) each time a gun was built, e.g. on every gunsmith click. Callers only read the list;
+## the meshes are the file's own shared resources, as they are on any instance of it.
+static var _lists := {}
+static func _glb_list(path: String) -> Array:
+	if not _lists.has(path):
+		var inst := _scene(path).instantiate()
+		var list: Array = []
+		_glb_walk(inst, Transform3D.IDENTITY, list)
+		inst.free()
+		_lists[path] = list
+	return _lists[path]
 
 
 static func _glb_walk(n: Node, xf: Transform3D, out: Array) -> void:
@@ -472,10 +484,7 @@ const LEVER_LOOP := Vector3(0, -0.058, 0.098)
 static func _marlin(r: Node3D) -> Dictionary:
 	if not ResourceLoader.exists(MARLIN_GLB):
 		return _placeholder(r, 0.97, false)
-	var inst := (load(MARLIN_GLB) as PackedScene).instantiate()
-	var list: Array = []
-	_glb_walk(inst, Transform3D.IDENTITY, list)
-	inst.free()
+	var list := _glb_list(MARLIN_GLB)
 	# Body stays on the gun; Bolt and Lever each get a pivot node the rig moves
 	var lever: Node3D = null
 	var bolt: Node3D = null
@@ -587,10 +596,7 @@ static func _low_poly(r: Node3D, model: String, handguard: String = "standard") 
 	var path := LOW_POLY + model + ".glb"
 	if spec.is_empty() or not ResourceLoader.exists(path):
 		return _placeholder(r, float(spec.get("length", 0.8)), pistol)
-	var inst := _scene(path).instantiate()
-	var list: Array = []
-	_glb_walk(inst, Transform3D.IDENTITY, list)
-	inst.free()
+	var list := _glb_list(path)
 	var mag: Array = []
 	var bolt: Node3D = null
 	for e in list:
@@ -793,10 +799,7 @@ static func _att_model(at: Node3D, name: String) -> Node3D:
 	var path := LP_ATT + name + ".glb"
 	if not ResourceLoader.exists(path):
 		return null
-	var inst := _scene(path).instantiate()
-	var list: Array = []
-	_glb_walk(inst, Transform3D.IDENTITY, list)
-	inst.free()
+	var list := _glb_list(path)
 	var holder := Node3D.new()
 	holder.name = "Att_" + name
 	at.add_child(holder)
@@ -1033,15 +1036,15 @@ static func _optic(r: Node3D, b: Dictionary, kind: String) -> Dictionary:
 static func _seat_optic_compute(r: Node3D, mount: Node3D, optic: Node3D, rail_y: float) -> void:
 	var box := _holder_box(optic)
 	var z0 := mount.position.z
-	var faces := _faces_near(_faces_of(r, mount), z0 + box.position.z - 0.065, z0 + box.end.z + 0.065)
+	var probe := Probe.new(_faces_near(_faces_of(r, mount), z0 + box.position.z - 0.065, z0 + box.end.z + 0.065))
 	var best_dz := 0.0
-	var best_top := _top_under(faces, z0 + box.position.z, z0 + box.end.z)
+	var best_top := _top_under(probe, z0 + box.position.z, z0 + box.end.z)
 	if not is_finite(best_top):
 		return
 	if absf(best_top - rail_y) > 0.004:
 		for i in range(1, 49):
 			var dz := 0.0025 * float((i + 1) / 2) * (1.0 if i % 2 == 1 else -1.0)
-			var top := _top_under(faces, z0 + dz + box.position.z, z0 + dz + box.end.z)
+			var top := _top_under(probe, z0 + dz + box.position.z, z0 + dz + box.end.z)
 			if is_finite(top) and absf(top - rail_y) <= 0.004:
 				best_dz = dz
 				best_top = top
@@ -1051,13 +1054,64 @@ static func _seat_optic_compute(r: Node3D, mount: Node3D, optic: Node3D, rail_y:
 
 ## Highest point of the gun along the centre of its top between z0 and z1
 ## (both rail edges and the middle), or -INF over nothing.
-static func _top_under(faces: PackedVector3Array, z0: float, z1: float) -> float:
+static func _top_under(probe: Probe, z0: float, z1: float) -> float:
 	var best := -INF
 	for k in 7:
 		var z := lerpf(z0 + 0.004, z1 - 0.004, k / 6.0)
 		for x in [-0.008, 0.0, 0.008]:
-			best = maxf(best, _top_in(faces, z, x))
+			best = maxf(best, probe.top(z, x))
 	return best
+
+
+## Vertical probes into one fixed set of triangles, for fits that probe it hundreds of times (seating an optic,
+## sliding a rail adapter along the underside). For each probe line x it keeps the triangles that cross it, sorted
+## into Z_BIN slices along z, so a probe tests only its own slice of its own line instead of every triangle.
+## Each answer is still the exact ray test over every triangle the line can pass through: the same result as
+## _top_in / _bottom_in on the whole set.
+class Probe:
+	const Z_BIN := 0.005
+	var faces: PackedVector3Array
+	var _lines := {}
+
+	func _init(f: PackedVector3Array) -> void:
+		faces = f
+
+	## Highest surface the vertical line at (x, z) meets, -INF when it misses.
+	func top(z: float, x: float = 0.0) -> float:
+		var best := -INF
+		for i in _slice(x, z):
+			var hit = Geometry3D.ray_intersects_triangle(Vector3(x, 1.0, z), Vector3.DOWN, faces[i], faces[i + 1], faces[i + 2])
+			if hit != null:
+				best = maxf(best, (hit as Vector3).y)
+		return best
+
+	## Lowest surface the vertical line at (x, z) meets, INF when it misses.
+	func bottom(z: float, x: float = 0.0) -> float:
+		var best := INF
+		for i in _slice(x, z):
+			var hit = Geometry3D.ray_intersects_triangle(Vector3(x, -1.0, z), Vector3.UP, faces[i], faces[i + 1], faces[i + 2])
+			if hit != null:
+				best = minf(best, (hit as Vector3).y)
+		return best
+
+	## First-vertex indices of the triangles spanning x whose z range reaches z's slice.
+	func _slice(x: float, z: float) -> Array:
+		if not _lines.has(x):
+			var bins := {}
+			for i in range(0, faces.size(), 3):
+				var a := faces[i]
+				var b := faces[i + 1]
+				var c := faces[i + 2]
+				if minf(a.x, minf(b.x, c.x)) > x or maxf(a.x, maxf(b.x, c.x)) < x:
+					continue
+				var lo := int(floor(minf(a.z, minf(b.z, c.z)) / Z_BIN))
+				var hi := int(floor(maxf(a.z, maxf(b.z, c.z)) / Z_BIN))
+				for k in range(lo, hi + 1):
+					if not bins.has(k):
+						bins[k] = []
+					bins[k].append(i)
+			_lines[x] = bins
+		return _lines[x].get(int(floor(z / Z_BIN)), [])
 
 
 ## Lowest point of the gun's underside at `z` along the centreline (where a
@@ -1174,20 +1228,21 @@ static func _fit_rail_compute(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
 	var bar_top := _top_in(_faces_of(rail), box.get_center().z, box.get_center().x)
 	var flush := (box.end.y - bar_top) * rail.scale.y if is_finite(bar_top) else 0.0
 	var all := _faces_of(r, rail)
+	var probe := Probe.new(all)   # the slide below probes the underside many times (x = 0 throughout)
 	var half := box.size.z * 0.5
 	var need := box.size.z * RAIL_MIN_SHARE
 	var z0 := at.position.z
 	var face_y := at.position.y
-	var ends := _flat_span(all, z0, face_y, half)
+	var ends := _flat_span(probe, z0, face_y, half)
 	var moved := Vector3.ZERO
 	if float(ends[1]) - float(ends[0]) < need:
 		var d := RAIL_SLIDE_STEP
 		while d <= RAIL_SLIDE_FORWARD:
 			for zc: float in ([z0 - d, z0 + d] if d <= RAIL_SLIDE_BACK else [z0 - d]):
-				var fy := _bottom_in(_faces_near(all, zc - 0.002, zc + 0.002), zc)
+				var fy := probe.bottom(zc)
 				if not is_finite(fy):
 					continue
-				var e := _flat_span(all, zc, fy, half)
+				var e := _flat_span(probe, zc, fy, half)
 				if float(e[1]) - float(e[0]) >= need:
 					moved = Vector3(0, fy - face_y, zc - z0)
 					z0 = zc
@@ -1209,13 +1264,12 @@ static func _fit_rail_compute(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
 		mid = (float(ends[0]) + float(ends[1])) * 0.5
 		rail.position.z += mid - z0 - box.get_center().z * k
 	var half_k := box.size.z * k * 0.5
-	var faces := _faces_near(all, mid - half_k - 0.01, mid + half_k + 0.01)
 	# follow the underside's slope: handguards rise or fall toward the muzzle, and a
 	# level rail touched only at one end (the other clamp post hung in the air)
 	var zf := mid - half_k * 0.92
 	var zb := mid + half_k * 0.92
-	var yf := _bottom_in(faces, zf)
-	var yb := _bottom_in(faces, zb)
+	var yf := probe.bottom(zf)
+	var yb := probe.bottom(zb)
 	if is_finite(yf) and is_finite(yb) and absf(yf - yb) < 0.03:
 		var top := Vector3(box.get_center().x, box.end.y, box.get_center().z) * rail.scale
 		var tilt := Basis(Vector3.RIGHT, atan2(yf - yb, zb - zf))
@@ -1228,7 +1282,7 @@ static func _fit_rail_compute(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
 	# drops just clear of the lowest point over its length instead
 	var low := INF
 	for i in 7:
-		low = minf(low, _bottom_in(faces, lerpf(mid - half_k, mid + half_k, i / 6.0)))
+		low = minf(low, probe.bottom(lerpf(mid - half_k, mid + half_k, i / 6.0)))
 	var drop := maxf(face_y - low, 0.0) if is_finite(low) else 0.0
 	rail.position.y += flush - drop
 	return moved + Vector3(0, flush - drop, 0)
@@ -1236,14 +1290,13 @@ static func _fit_rail_compute(r: Node3D, at: Node3D, rail: Node3D) -> Vector3:
 
 ## The stretch [z_front, z_back] around z0 where the gun's underside stays at
 ## face_y (nothing hangs below it, it doesn't step up away), at most `half` each way.
-static func _flat_span(all: PackedVector3Array, z0: float, face_y: float, half: float) -> Array:
-	var faces := _faces_near(all, z0 - half - 0.01, z0 + half + 0.01)
+static func _flat_span(probe: Probe, z0: float, face_y: float, half: float) -> Array:
 	var ends: Array = []
 	for dir: float in [-1.0, 1.0]:
 		var reach := 0.0
 		while reach < half:
 			var z := z0 + dir * (reach + 0.002)
-			var low := _bottom_in(faces, z)
+			var low := probe.bottom(z)
 			# something hangs below the clamp face, or the underside steps up away from it
 			if low < face_y - 0.0015 or low > face_y + 0.006:
 				break

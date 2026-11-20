@@ -1,6 +1,6 @@
 extends SceneTree
 ## Cost per call of the pieces of a zombie's tick, the rig animation and the
-## HUD draw, with 28 infected hunting the player in Dead End (needs a window).
+## HUD draw, with 28 infected hunting the player on WAREHOUSE (needs a window).
 ##   godot --path . -s res://tests/perf/micro_costs.gd
 const Main = preload("res://scripts/main.gd")
 const Settings = preload("res://scripts/core/settings.gd")
@@ -25,7 +25,7 @@ func run() -> void:
 	root.size = Vector2i(1600, 900)
 	load("res://scripts/core/profile.gd").current = "lilin"
 	Main.saved_mode = "zombie"
-	Main.saved_map = "town"
+	Main.saved_map = "warehouse"
 	Main.quick_restart = true
 	Main.saved_first_person = true
 	change_scene_to_file("res://scenes/main.tscn")

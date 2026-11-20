@@ -127,6 +127,7 @@ var _torch_model: Node3D
 ## Weapon light model (local only); its origin is the rail clamp on the lens
 ## axis, lens 0.0466 m ahead of it and 0.0198 m below.
 const TORCH_GLB := "res://assets/thirdparty/low_poly_attachments/flashlight.glb"
+static var _torch_scene: PackedScene
 
 ## Set by the HUD while an in-game menu is open in multiplayer (the world keeps running).
 static var input_blocked := false
@@ -306,7 +307,9 @@ func _build_torch() -> void:
 	_torch.name = "Torch"
 	rig.weapon_anchor.add_child(_torch)
 	if ResourceLoader.exists(TORCH_GLB):
-		_torch_model = (load(TORCH_GLB) as PackedScene).instantiate() as Node3D
+		if _torch_scene == null:
+			_torch_scene = load(TORCH_GLB)   # kept for the session: every map load used to read it from disk again
+		_torch_model = _torch_scene.instantiate() as Node3D
 		_torch.add_child(_torch_model)
 		for n in _torch_model.find_children("*", "MeshInstance3D", true, false):
 			if String(n.name).begins_with("SM_Lamp"):
@@ -350,9 +353,7 @@ func _place_torch() -> void:
 		if flashlight:
 			flashlight.position = Vector3(0, -0.02, -1.05)
 		return
-	if not w.has_meta("torch_mount"):
-		w.set_meta("torch_mount", _torch_mount(w))
-	var mount: Vector3 = w.get_meta("torch_mount")
+	var mount := _torch_mount_for(w)
 	_torch.position = mount
 	_torch.scale = Vector3.ONE * (PISTOL_LIGHT if w.is_pistol() else 1.0)
 	if _torch_model != null:
@@ -376,6 +377,17 @@ func _place_torch() -> void:
 const PISTOL_LIGHT := 0.72
 
 
+## The light's mount on this gun, worked out once per configuration (gun, attachments, charm) for the whole
+## session: every map load builds new guns, and measuring each one again cost about half a second.
+static var _torch_mounts := {}
+
+func _torch_mount_for(w: Weapon) -> Vector3:
+	var key := "%s|%s|%s" % [w.id, str(w.attachments), w.charm]
+	if not _torch_mounts.has(key):
+		_torch_mounts[key] = _torch_mount(w)
+	return _torch_mounts[key]
+
+
 ## Where the light housing goes on this gun, in weapon space: hugging the
 ## right side of the handguard just ahead of the support hand (lens behind
 ## the muzzle), or tucked under a pistol's frame ahead of the trigger guard.
@@ -389,9 +401,7 @@ func _torch_mount(w: Weapon) -> Vector3:
 		var mi := n as MeshInstance3D
 		if mi.mesh == null or not mi.is_visible_in_tree():
 			continue
-		var xf := inv * mi.global_transform
-		for v in mi.mesh.get_faces():
-			verts.append(xf * v)
+		verts.append_array((inv * mi.global_transform) * mi.mesh.get_faces())   # one native transform per mesh
 	if w.is_pistol():
 		# compact light: lens just behind the muzzle, body clear of the trigger guard
 		var cz := muz.z + (0.081 + 0.008) * PISTOL_LIGHT

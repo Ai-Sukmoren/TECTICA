@@ -102,10 +102,12 @@ func _map_ready(map: String) -> bool:
 	return m != null and m.get("map_id") == map and m.get("player") != null and not Transition.is_loading()
 
 
-## Frames until `done` holds (at most 60 s): the longest single frame on the way and how many took over 100 ms.
+## Frames until `done` holds (at most 60 s): the longest single frame on the way, how many took over 100 ms, and
+## every frame over 50 ms with the loading stage on screen when it ended (where the time went).
 func _wait_ready(done: Callable) -> Dictionary:
 	var worst := 0.0
 	var long := 0
+	var slow: Array = []
 	var last := Time.get_ticks_usec()
 	var start := last
 	while Time.get_ticks_usec() - start < 60_000_000:
@@ -116,8 +118,15 @@ func _wait_ready(done: Callable) -> Dictionary:
 		worst = maxf(worst, ms)
 		if ms > 100.0:
 			long += 1
+		if ms > 50.0:
+			var t = Transition._inst
+			var stage: String = t._stage_text if t != null and is_instance_valid(t) else "-"
+			var scene: String = current_scene.name if current_scene != null else "-"
+			slow.append("%d ms @ %s / %s" % [int(ms), scene, stage])
 		if done.call():
 			break
+	if not slow.is_empty():
+		print("[perf] slow frames: ", slow)
 	return {"worst": snappedf(worst, 0.1), "long": long}
 
 

@@ -196,8 +196,9 @@ func steps(id: String, w, n: int, dt: float, state: String, checked: bool) -> vo
 				fail(id + "wristL" + state, tag + ": left wrist flexion %.0f / deviation %.0f degrees" % [l.x, l.y])
 		# both hands on the gun through the sprint (and while aiming)
 		if not w.is_melee() and state in ["sprint", "ads"] and rig.sprint_amt > 0.9 or state == "ads" and rig.aim_amt > 0.95 and not w.is_melee():
-			var gr: float = rig.hands[1].global_position.distance_to(w.palm_grip.global_position)
-			var gl: float = rig.hands[0].global_position.distance_to(w.palm_support.global_position)
+			var holds: Array = rig.hold_markers()
+			var gr: float = rig.hands[1].global_position.distance_to(holds[1].global_position)
+			var gl: float = rig.hands[0].global_position.distance_to(holds[0].global_position)
 			var gap := maxf(gr, gl)
 			if state == "sprint":
 				worst.sprint_grip = maxf(worst.sprint_grip, gap)

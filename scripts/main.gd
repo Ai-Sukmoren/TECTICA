@@ -11,6 +11,21 @@ const Layers = preload("res://scripts/core/layers.gd")
 ## 17 Nov 2026; their scripts stay (model maps build on town_level.gd).
 const MAPS := {"forest": "PINEWOOD VALLEY", "warehouse": "WAREHOUSE", "backrooms": "BACKROOMS",
 		"tokyo": "TOKYO"}
+## Maps left out of the browser / phone build (their model packs are most of the download: see the Web preset's
+## exclude_filter in export_presets.cfg). MAPS still names them, so a lobby on one can be described and refused.
+const WEB_EXCLUDED_MAPS := ["backrooms", "tokyo"]
+## Shown on the title screen until the next game starts (e.g. a phone that tried to join a map it does not have).
+static var title_notice := ""
+
+
+## Whether this build has map `id` (the browser build leaves the big model maps out).
+static func map_available(id: String) -> bool:
+	return MAPS.has(id) and not (OS.has_feature("web") and id in WEB_EXCLUDED_MAPS)
+
+
+## The maps a player can pick in this build, in menu order.
+static func playable_maps() -> Array:
+	return MAPS.keys().filter(func(id): return map_available(id))
 const TimeOfDay = preload("res://scripts/world/time_of_day.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
 const Training = preload("res://scripts/modes/training.gd")
@@ -174,7 +189,7 @@ func _ready() -> void:
 	add_child(net)
 	net.setup(self)
 
-	map_id = saved_map if mode in ["zombie", "pvp"] and MAPS.has(saved_map) else "forest"
+	map_id = saved_map if mode in ["zombie", "pvp"] and map_available(saved_map) else "forest"
 	# The map is built over several frames so the loading screen can draw real progress. Until it is complete
 	# nothing in the scene runs and no network packet is handled: everything else only ever sees a whole map.
 	_staged = Transition.is_loading()
@@ -446,6 +461,7 @@ func on_training_complete(reward: int) -> void:
 
 
 func set_mode(m: String) -> void:
+	title_notice = ""
 	if _net_reload(m):
 		return
 	saved_mode = m
@@ -1032,7 +1048,7 @@ func refresh_sides() -> void:
 
 ## Switches the Zombie / Deathmatch map and reloads into it.
 func set_map(id: String) -> void:
-	if not MAPS.has(id):
+	if not map_available(id):
 		return
 	saved_map = id
 	set_mode(mode)
@@ -1047,6 +1063,12 @@ func net_enter_world(m: String) -> void:
 	saved_bots = clampi(int(m.substr(3)), 0, 8) if vs_bots else 0
 	if vs_bots:
 		m = "pvp"
+	if parts.size() > 1 and MAPS.has(parts[1]) and not map_available(parts[1]):
+		# the host is on a map this (phone) build does not include: leave rather than load a different world
+		title_notice = "%s IS NOT IN THE PHONE VERSION  ·  ASK THE HOST FOR ANOTHER MAP" % String(MAPS[parts[1]])
+		leave_to_title()
+		return
+	title_notice = ""
 	saved_map = parts[1] if parts.size() > 1 and MAPS.has(parts[1]) else "forest"
 	saved_mode = m
 	quick_restart = true

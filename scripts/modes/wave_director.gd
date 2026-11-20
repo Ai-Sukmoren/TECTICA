@@ -112,7 +112,7 @@ func _physics_process(delta: float) -> void:
 			_begin_wave()
 		return
 
-	var max_alive := mini(6 + 2 * wave, 28)
+	var max_alive := mini(6 + 2 * wave, preload("res://scripts/core/platform.gd").max_alive())
 	var interval := maxf(0.35, 1.5 - 0.08 * wave)
 	for p in main.alive_players():
 		if p.health < 35.0:

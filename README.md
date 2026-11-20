@@ -13,9 +13,23 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.46
+## 🆕 What's new in v1.47
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.46.0-beta) · [watch the trailer (60 s)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.46.0-beta/tectica-update-1.46.mp4)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.47.0-beta) · [watch the animation update](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.47.0-beta/tectica-update-1.47.mp4)
+
+- **Classic operators back:** multicam, plate carriers, packs and NVG helmets; deathmatch bots are militia again.
+- **Reloads you can see:** the magazine change happens in view, with the gun side-on instead of pointing at the sky.
+- **Sprint, bolt actions, recoil:** a high-port sprint carry, bolts worked off the cheek, and recoil that differs by gun type.
+- **Climbing with a rifle:** both hands on the ledge, rifle slung. **Zombies** swipe one arm at a time.
+- **Phones:** lighter graphics and physics, at most 16 infected at once, and a download less than half the size (Backrooms and Tokyo are PC-only).
+
+| Reload, before and after | Sprint carry |
+|---|---|
+| ![Reload](docs/screenshots/v147-reload.jpg) | ![Sprint](docs/screenshots/v147-sprint.jpg) |
+
+## What came in v1.46
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.46.0-beta) · [watch the trailer (60 s)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.46.0-beta/tectica-update-1.46.mp4)
 
 [![Watch the 1.46 trailer](docs/screenshots/v146-devlog-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.46.0-beta/tectica-update-1.46.mp4)
 

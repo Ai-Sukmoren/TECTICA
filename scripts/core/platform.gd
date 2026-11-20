@@ -12,6 +12,16 @@ const UI_SIZE := Vector2i(1280, 720)
 const UI_SIZE_PLAY := Vector2i(1024, 576)
 static var _play_ui := false
 
+## Phones run the browser build on one CPU thread with the WebGL renderer, so they get a lighter game:
+## physics (and the AI that rides on it) at 60 Hz instead of 120, at most PHONE_PHYSICS_STEPS physics steps a frame
+## (a slow frame slows the game a little instead of snowballing into slower frames), and fewer infected alive at once.
+const PHONE_PHYSICS_HZ := 60
+const PHONE_PHYSICS_STEPS := 3
+const PHONE_MAX_ALIVE := 16
+## Distant bodies animate at a reduced rate from this fraction of the desktop distances, with at most 2 sub-steps.
+const PHONE_LOD_SCALE := 0.55
+const DESKTOP_MAX_ALIVE := 28
+
 static var _touch := -1
 static var _set_up := false
 static var _defaults_done := false
@@ -56,6 +66,11 @@ static func touch_mode() -> bool:
 	return _touch == 1
 
 
+## Most infected alive at once in Zombie Survival (a wave's total is the same; on phones it arrives in smaller groups).
+static func max_alive() -> int:
+	return PHONE_MAX_ALIVE if touch_mode() else DESKTOP_MAX_ALIVE
+
+
 ## First launch on a phone: the light map in Zombie Survival. Runs before
 ## main.gd reads the mode.
 static func first_launch_defaults(main_script) -> void:
@@ -78,10 +93,17 @@ static func setup_once() -> void:
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
 	root.content_scale_size = ui_size()
-	# lighter rendering: SAFE preset, half-resolution 3D, 60 FPS
+	# lighter rendering: SAFE preset, half-resolution 3D, no shadows or anti-aliasing, 60 FPS
 	var S = preload("res://scripts/core/settings.gd")
 	S.set_preset(S.SAFE)
 	S.v.render_scale = 0.5
+	S.v.shadows = 0
+	S.v.aa = 0
+	Engine.physics_ticks_per_second = PHONE_PHYSICS_HZ
+	Engine.max_physics_steps_per_frame = PHONE_PHYSICS_STEPS
+	var Rig = load("res://scripts/characters/soldier_rig.gd")
+	Rig.lod_scale = PHONE_LOD_SCALE
+	Rig.max_anim_steps = 2
 	S.v.max_fps = 1
 	S.v.shake = minf(float(S.v.shake), 0.6)
 	S.apply()

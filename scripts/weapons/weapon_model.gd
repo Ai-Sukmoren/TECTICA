@@ -922,8 +922,11 @@ static func _palm_sockets(root: Node3D, b: Dictionary, model: String, att: Dicti
 	var grip_slice := _faces_near(faces, right.origin.z - 0.025, right.origin.z + 0.025)
 	var pitch: float = {"mosin": -0.12, "marlin": -0.18, "l96a1": -0.24, "m700": -0.18}.get(model, right.basis.get_euler().x)
 	right.basis = Basis(Vector3.RIGHT, pitch)
-	right.origin = _palm_edge(grip_slice, right.origin, 1.0, right.basis, 0.018)
-	var openness := Vector2(0, clampf(right.origin.x * 3.0, 0.025, 0.12))
+	# How open each hand is still follows where a palm laid against the prop's side would sit (its width there).
+	var palm_side := _palm_edge(grip_slice, right.origin, 1.0, right.basis, 0.018)
+	var openness := Vector2(0, clampf(palm_side.x * 3.0, 0.025, 0.12))
+	right.origin = _wrap_hold(grip_slice, right.origin, 1.0, right.basis)
+	right = _tilt_hold(right, right * GLOVE_CHANNEL, HOLD_TILT[1])
 	if pistol:
 		# The second hand wraps the first glove on compact props.
 		left.origin = right.origin + Vector3(-0.055, -0.014, -0.01)
@@ -938,10 +941,49 @@ static func _palm_sockets(root: Node3D, b: Dictionary, model: String, att: Dicti
 			y = clampf(y, bottom + 0.008, maxf(bottom + 0.008, top - 0.006)) if vertical else bottom + minf(0.022, (top - bottom) * 0.4)
 		var roll := -0.30 if model in ["gepard", "p90"] else -0.12
 		left.basis = Basis.from_euler(Vector3(-0.14, 0, -0.08 if vertical else roll))
-		left.origin = _palm_edge(section, Vector3(-0.014, y, z), -1.0, left.basis, 0.024)
-		openness.x = clampf((absf(left.origin.x) - 0.023) * 4.5, 0.02, 0.24)
+		var palm_left := _palm_edge(section, Vector3(-0.014, y, z), -1.0, left.basis, 0.024)
+		openness.x = clampf((absf(palm_left.x) - 0.023) * 4.5, 0.02, 0.24)
+		left.origin = _wrap_hold(section, Vector3(0, y, z), -1.0, left.basis)
+	left = _tilt_hold(left, left * (GLOVE_CHANNEL * Vector3(-1, 1, 1)), HOLD_TILT[0])
 	_fit_memo[key] = [left, right, openness]
 	return _fit_memo[key]
+
+
+## The operator glove (operator_hand.gd) is a closed fist: its curled fingers form a channel about 2 cm across,
+## centred 6.8 cm in front of the heel of the palm (the knife's PALM_FROM_HANDLE measures the same channel).
+## Put the palm behind the prop so the grip or handguard runs through that channel instead of through the heel.
+const GLOVE_CHANNEL := Vector3(-0.005, 0, -0.068)
+
+## Palm socket that wraps the glove's fingers round the prop's cross-section at `at` (centred on its width there).
+static func _wrap_hold(faces: PackedVector3Array, at: Vector3, side: float, basis: Basis) -> Vector3:
+	var near := _surface_x(faces, at, side)
+	var far := _surface_x(faces, at, -side)
+	var centre := at
+	if is_finite(near) and is_finite(far):
+		centre.x = (near + far) * 0.5
+	return centre - basis * Vector3(GLOVE_CHANNEL.x * side, GLOVE_CHANNEL.y, GLOVE_CHANNEL.z)
+
+## Turns a palm socket about the prop at `pivot` (the grip in the finger channel) so the wrist can sit straighter.
+static func _tilt_hold(xf: Transform3D, pivot: Vector3, euler: Vector3) -> Transform3D:
+	var turned := xf.basis * Basis.from_euler(euler)
+	return Transform3D(turned, pivot + turned * (xf.basis.inverse() * (xf.origin - pivot)))
+
+## Tilt (radians, hand space) of each glove about the prop it wraps: [left, right]. Wrapping puts the palm 5 cm
+## further back than the old palm-side sockets; these keep the wrists inside fp_hand_pose_test's limits through the
+## sprint carry (found by sweeping each axis against that test).
+const HOLD_TILT := [Vector3(0.1, -0.06, 0.0), Vector3(0.1, 0.0, 0.0)]
+
+## The prop's outer surface seen from one side along x, at the height and depth of `at` (INF when missed).
+static func _surface_x(faces: PackedVector3Array, at: Vector3, side: float) -> float:
+	var start := Vector3(side * 0.25, at.y, at.z)
+	var best := INF
+	var x := INF
+	for i in range(0, faces.size(), 3):
+		var hit = Geometry3D.ray_intersects_triangle(start, Vector3.LEFT * side, faces[i], faces[i + 1], faces[i + 2])
+		if hit != null and start.distance_squared_to(hit) < best:
+			best = start.distance_squared_to(hit)
+			x = hit.x
+	return x
 
 
 ## The socket is the wrist. Fit the fleshy part of the palm, slightly ahead

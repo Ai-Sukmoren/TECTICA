@@ -14,47 +14,46 @@ const RARITY_COLORS := [Color(0.7, 0.72, 0.75), Color(0.3, 0.6, 1.0), Color(0.75
 
 ## id -> look. camo: 4 colours; vest/gear/helmet/gloves/boots/face: colours;
 ## glow: emissive accent colour on gear (neon outfits); headgear: helmet/cap/beanie/none.
-## visor: the colour of the Task Force kit's split visor, each outfit's own; visor_glow lights it (emission energy).
 const OUTFITS := {
-	"multicam": {"visor": Color("#eca03c"), "name": "TASK FORCE", "rarity": 0, "price": 0, "desc": "Amber visor, bone-white field shirt and graphite compression sleeves.",
-		"camo": [Color("#404e4a"), Color("#394742"), Color("#4c5a53"), Color("#353e3c")],
-		"vest": Color("#374544"), "gear": Color("#82775c"), "helmet": Color("#52605a"),
-		"face": Color("#272e30"), "gloves": Color("#333b39"), "boots": Color("#bcbcb0"), "headgear": "helmet", "facet": true},
-	"night_ops": {"visor": Color("#3fd17a"), "name": "NIGHT OPS", "rarity": 0, "price": 800, "desc": "Charcoal fatigues for after dark.",
+	"multicam": {"name": "TASK FORCE", "rarity": 0, "price": 0, "desc": "Woodland multicam, ranger-green plate carrier.",
+		"camo": [Color(0.47, 0.43, 0.32), Color(0.33, 0.35, 0.23), Color(0.58, 0.53, 0.4), Color(0.24, 0.2, 0.15)],
+		"vest": Color(0.21, 0.23, 0.17), "gear": Color(0.43, 0.36, 0.26), "helmet": Color(0.42, 0.38, 0.29),
+		"face": Color(0.16, 0.17, 0.13), "gloves": Color(0.24, 0.21, 0.16), "boots": Color(0.3, 0.24, 0.17), "headgear": "helmet", "nvg": true},
+	"night_ops": {"name": "NIGHT OPS", "rarity": 0, "price": 800, "desc": "Charcoal fatigues for after dark.",
 		"camo": [Color(0.12, 0.12, 0.13), Color(0.18, 0.18, 0.19), Color(0.08, 0.08, 0.09), Color(0.24, 0.24, 0.25)],
 		"vest": Color(0.07, 0.07, 0.08), "gear": Color(0.15, 0.15, 0.16), "helmet": Color(0.09, 0.09, 0.1),
 		"face": Color(0.05, 0.05, 0.06), "gloves": Color(0.06, 0.06, 0.06), "boots": Color(0.07, 0.07, 0.07), "headgear": "helmet", "nvg": true},
-	"desert": {"visor": Color("#d9772f"), "name": "DESERT RAIDER", "rarity": 0, "price": 1000, "desc": "Sand-and-khaki raid kit with a field cap.",
+	"desert": {"name": "DESERT RAIDER", "rarity": 0, "price": 1000, "desc": "Sand-and-khaki raid kit with a field cap.",
 		"camo": [Color(0.72, 0.62, 0.45), Color(0.58, 0.48, 0.33), Color(0.8, 0.72, 0.56), Color(0.45, 0.36, 0.25)],
 		"vest": Color(0.6, 0.52, 0.38), "gear": Color(0.5, 0.42, 0.3), "helmet": Color(0.62, 0.55, 0.4),
 		"face": Color(0.66, 0.58, 0.44), "gloves": Color(0.45, 0.37, 0.27), "boots": Color(0.5, 0.4, 0.28), "headgear": "cap"},
-	"arctic": {"visor": Color("#8fd3f4"), "name": "ARCTIC WOLF", "rarity": 1, "price": 1500, "desc": "Snow camo, white plates, frosted helmet.",
+	"arctic": {"name": "ARCTIC WOLF", "rarity": 1, "price": 1500, "desc": "Snow camo, white plates, frosted helmet.",
 		"camo": [Color(0.86, 0.88, 0.9), Color(0.68, 0.71, 0.75), Color(0.95, 0.96, 0.97), Color(0.5, 0.53, 0.58)],
 		"vest": Color(0.8, 0.82, 0.84), "gear": Color(0.55, 0.58, 0.62), "helmet": Color(0.9, 0.91, 0.93),
 		"face": Color(0.85, 0.87, 0.89), "gloves": Color(0.3, 0.32, 0.35), "boots": Color(0.25, 0.26, 0.28), "headgear": "helmet", "nvg": true},
-	"tiger": {"visor": Color("#b8d53a"), "name": "TIGER STRIPE", "rarity": 1, "price": 1800, "desc": "Jungle tiger stripes and a black beanie.",
+	"tiger": {"name": "TIGER STRIPE", "rarity": 1, "price": 1800, "desc": "Jungle tiger stripes and a black beanie.",
 		"camo": [Color(0.3, 0.4, 0.18), Color(0.06, 0.07, 0.05), Color(0.45, 0.5, 0.25), Color(0.18, 0.22, 0.1)],
 		"vest": Color(0.2, 0.26, 0.13), "gear": Color(0.12, 0.13, 0.09), "helmet": Color(0.08, 0.08, 0.07),
 		"face": Color(0.12, 0.14, 0.08), "gloves": Color(0.1, 0.1, 0.08), "boots": Color(0.12, 0.1, 0.08), "headgear": "beanie"},
-	"hazmat": {"visor": Color("#1e1e1c"), "name": "HAZMAT", "rarity": 2, "price": 3000, "desc": "Biohazard suit for the outbreak zone.",
+	"hazmat": {"name": "HAZMAT", "rarity": 2, "price": 3000, "desc": "Biohazard suit for the outbreak zone.",
 		"camo": [Color(0.92, 0.76, 0.1), Color(0.85, 0.68, 0.08), Color(0.95, 0.82, 0.2), Color(0.78, 0.6, 0.06)],
 		"vest": Color(0.1, 0.1, 0.1), "gear": Color(0.15, 0.15, 0.14), "helmet": Color(0.93, 0.78, 0.12),
 		"face": Color(0.06, 0.06, 0.06), "gloves": Color(0.08, 0.08, 0.08), "boots": Color(0.08, 0.08, 0.08), "headgear": "helmet", "goggles": true},
-	"crimson": {"visor": Color("#e0281e"), "name": "CRIMSON CELL", "rarity": 2, "price": 3500, "desc": "Black fatigues, blood-red armour.",
+	"crimson": {"name": "CRIMSON CELL", "rarity": 2, "price": 3500, "desc": "Black fatigues, blood-red armour.",
 		"camo": [Color(0.1, 0.09, 0.09), Color(0.2, 0.05, 0.05), Color(0.06, 0.06, 0.06), Color(0.3, 0.07, 0.06)],
 		"vest": Color(0.45, 0.06, 0.05), "gear": Color(0.12, 0.1, 0.1), "helmet": Color(0.5, 0.07, 0.06),
 		"face": Color(0.05, 0.05, 0.05), "gloves": Color(0.06, 0.05, 0.05), "boots": Color(0.07, 0.06, 0.06), "headgear": "helmet", "nvg": true},
-	"neon": {"visor": Color("#00d9ff"), "visor_glow": 2.4, "name": "NEON RUNNER", "rarity": 3, "price": 6000, "desc": "Street-tech armour lit in cyan and magenta.",
+	"neon": {"name": "NEON RUNNER", "rarity": 3, "price": 6000, "desc": "Street-tech armour lit in cyan and magenta.",
 		"camo": [Color(0.06, 0.06, 0.09), Color(0.1, 0.08, 0.14), Color(0.04, 0.04, 0.06), Color(0.14, 0.1, 0.2)],
 		"vest": Color(0.08, 0.08, 0.12), "gear": Color(0.0, 0.85, 1.0), "helmet": Color(0.9, 0.1, 0.75),
 		"face": Color(0.04, 0.04, 0.06), "gloves": Color(0.05, 0.05, 0.08), "boots": Color(0.06, 0.06, 0.09), "headgear": "helmet",
 		"goggles": true, "glow": Color(0.0, 0.85, 1.0), "glow_helmet": Color(0.95, 0.1, 0.8)},
-	"gilded": {"visor": Color("#ffd36a"), "name": "GILDED", "rarity": 3, "price": 9000, "desc": "Polished gold plates. Pure flex.",
+	"gilded": {"name": "GILDED", "rarity": 3, "price": 9000, "desc": "Polished gold plates. Pure flex.",
 		"camo": [Color(0.14, 0.12, 0.1), Color(0.2, 0.17, 0.12), Color(0.1, 0.09, 0.08), Color(0.26, 0.22, 0.15)],
 		"vest": Color(0.85, 0.65, 0.2), "gear": Color(0.3, 0.24, 0.12), "helmet": Color(0.9, 0.7, 0.22),
 		"face": Color(0.08, 0.07, 0.06), "gloves": Color(0.12, 0.1, 0.08), "boots": Color(0.1, 0.08, 0.06), "headgear": "helmet",
 		"goggles": true, "metal": true},
-	"carbon": {"visor": Color("#9aa6b8"), "name": "CARBON PHANTOM", "rarity": 4, "price": 0, "admin": true,
+	"carbon": {"name": "CARBON PHANTOM", "rarity": 4, "price": 0, "admin": true,
 		"desc": "All-black carbon-weave suit, lacquered carbon plates and helmet.",
 		"camo": [Color(0.05, 0.05, 0.06), Color(0.16, 0.17, 0.19), Color(0.03, 0.03, 0.035), Color(0.1, 0.1, 0.12)],
 		"vest": Color(0.08, 0.085, 0.1), "gear": Color(0.06, 0.06, 0.07), "helmet": Color(0.1, 0.105, 0.12),
@@ -63,7 +62,7 @@ const OUTFITS := {
 	# built from the operator reference art: faceted olive fatigues with rolled
 	# sleeves, tan plate carrier and pouches, black mask, tan-framed goggles,
 	# tan shemagh, olive knee pads, brown boots. Free for everyone.
-	"recon": {"visor": Color("#c9a46a"), "name": "RECON", "rarity": 0, "price": 0, "desc": "Faceted olive fatigues, tan plate carrier, mask and goggles.",
+	"recon": {"name": "RECON", "rarity": 0, "price": 0, "desc": "Faceted olive fatigues, tan plate carrier, mask and goggles.",
 		"camo": [Color(0.3, 0.31, 0.21), Color(0.22, 0.23, 0.16), Color(0.37, 0.37, 0.26), Color(0.16, 0.17, 0.12)],
 		"vest": Color(0.5, 0.42, 0.29), "gear": Color(0.56, 0.47, 0.33), "helmet": Color(0.27, 0.28, 0.19),
 		"face": Color(0.05, 0.05, 0.055), "gloves": Color(0.09, 0.09, 0.085), "boots": Color(0.27, 0.2, 0.14), "headgear": "helmet",
@@ -71,7 +70,7 @@ const OUTFITS := {
 		"pads": Color(0.27, 0.28, 0.2), "goggle_frame": Color(0.55, 0.47, 0.33)},
 	# one player only: "owners" are that player's account names (any case);
 	# nobody else, admin included, sees or wears it
-	"kitty": {"visor": Color("#ff5aa8"), "visor_glow": 2.0, "name": "MYTHIC KITTY", "rarity": 4, "price": 0, "admin": true, "owners": ["turain"],
+	"kitty": {"name": "MYTHIC KITTY", "rarity": 4, "price": 0, "admin": true, "owners": ["turain"],
 		"desc": "Pastel pink camo, pearl plates and glowing pink and red bows.",
 		"camo": [Color(1.0, 0.66, 0.8), Color(0.99, 0.86, 0.92), Color(0.97, 0.45, 0.66), Color(1.0, 0.97, 0.98)],
 		"vest": Color(0.99, 0.94, 0.96), "gear": Color(1.0, 0.4, 0.68), "helmet": Color(1.0, 0.58, 0.76),
@@ -139,14 +138,7 @@ static func palette(id: String) -> Dictionary:
 		detail = M.emissive("outfit_trim_" + id, o.trim, 0.55)
 	elif carbon:
 		detail = M.carbon_fiber("outfit_carbon_plate", true, 22.0)
-	var extra := {"task_force_kit": true}
-	if o.has("visor"):
-		extra["visor"] = M.emissive("outfit_visor_" + id, o.visor, float(o.visor_glow)) if o.has("visor_glow") \
-				else M.painted_metal("outfit_visor_" + id, o.visor)
-	if id == DEFAULT:
-		extra["shirt"] = M.matte("task_force_shirt", Color("#c5c5bb"), 0.93)
-		extra["trousers"] = M.matte("task_force_trousers", Color("#363d3e"), 0.91)
-		extra["undershirt"] = M.matte("task_force_sleeves", Color("#23292b"), 0.91)
+	var extra := {}
 	if o.has("sleeves"):
 		extra["sleeves"] = String(o.sleeves)
 	if o.has("pads"):
@@ -174,11 +166,7 @@ static func palette(id: String) -> Dictionary:
 		"goggles": bool(o.get("goggles", true)),
 		"nvg": bool(o.get("nvg", false)),
 	}
-	out["shirt"] = out.vest
-	out["trousers"] = out.camo
-	out["undershirt"] = out.skin if o.get("sleeves", "") == "rolled" else out.face
-	out["badge"] = out.gear
-	out.merge(extra, true)
+	out.merge(extra)
 	return out
 
 

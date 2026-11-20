@@ -488,7 +488,7 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 				_solo_ffa_bots = 1 + posmod(_solo_ffa_bots - 1 + step, 8)       # 1 .. 8
 		"map":
 			last_menu_index = i
-			var ids: Array = main.MAPS.keys()
+			var ids: Array = main.playable_maps()
 			main.set_map(ids[posmod(ids.find(main.map_id) + (dir if dir != 0 else 1), ids.size())])
 		"armory":
 			armory.open()
@@ -1308,6 +1308,11 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 	_text(c, Vector2(pad, vp.y - 17.0), "TAP A ROW TO OPEN IT  ·  TAP A ‹ › ROW TO CHANGE IT" if two_col else "W/S  SELECT     A/D  CHANGE     ENTER  CONFIRM     MOUSE  CLICK", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var ver := "v" + String(ProjectSettings.get_setting("application/config/version", "1.5.0-beta")).to_upper()
 	_text(c, Vector2(vp.x - 420.0, vp.y - 17.0), ver + "  ·  BETA BUILD", 11, Color(WARN, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 380.0, true)
+	if main.title_notice != "":
+		var tr := Rect2(panel_w + 40.0, vp.y - (160.0 if Settings.crash_recovered else 104.0), vp.x - panel_w - 80.0, 48.0)
+		c.draw_rect(tr, Color(0.06, 0.03, 0.0, 0.9))
+		c.draw_rect(tr, Color(WARN, 0.9), false, 1.0)
+		_text(c, Vector2(tr.position.x, tr.position.y + 29.0), main.title_notice, 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, tr.size.x, true)
 	if Settings.crash_recovered:
 		var nr := Rect2(panel_w + 40.0, vp.y - 104.0, vp.x - panel_w - 80.0, 48.0)
 		c.draw_rect(nr, Color(0.06, 0.03, 0.0, 0.9))
@@ -2765,7 +2770,7 @@ func _mp_open() -> void:
 	Net.port = int(Settings.v.get("mp_port", Net.port))
 	_mp_port_text = str(Net.port)
 	_mp_coop_mode = main.mode_token() if main.mode_token() in _mp_coop_options() else "ch1"
-	_mp_pvp_map = main.map_id if main.MAPS.has(main.map_id) else "forest"
+	_mp_pvp_map = main.map_id if main.map_available(main.map_id) else "forest"
 
 
 ## Co-op host choices: each campaign chapter, then Zombie Survival on every map
@@ -2775,7 +2780,7 @@ func _mp_coop_options() -> Array:
 	for m in MODES:
 		if m != "zombie":
 			out.append(m)
-	for id in main.MAPS.keys():
+	for id in main.playable_maps():
 		out.append("zombie" if id == "forest" else "zombie@" + String(id))
 	return out
 
@@ -2836,7 +2841,7 @@ func _mp_activate(i: int, dir: int = 0) -> void:
 				main.net_enter_world(_mp_coop_mode)
 		2:
 			if dir != 0:
-				var ids: Array = main.MAPS.keys()
+				var ids: Array = main.playable_maps()
 				_mp_pvp_map = ids[posmod(ids.find(_mp_pvp_map) + dir, ids.size())]
 				return
 			_mp_save()

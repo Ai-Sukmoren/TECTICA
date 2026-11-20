@@ -1328,11 +1328,11 @@ func _start_mantle(m: Dictionary, dir: Vector3) -> void:
 		_pad_dir = dir
 	_peek_off = Vector3.ZERO
 	rig.lean_target = 0.0
-	rig.play_vault(_vault_dur, minf(height, 1.3), m.plant)
+	rig.play_vault(_vault_dur, minf(height, 1.3), m.plant, true)
 	rig.drive_vault(0.0, 0.0)
 	Sfx.play(self, "switch", global_position + Vector3.UP, -6.0)
 	if Net.active and Net.sync:
-		Net.sync.send_event(self, "vault", [_vault_dur, minf(height, 1.3), m.plant])
+		Net.sync.send_event(self, "vault", [_vault_dur, minf(height, 1.3), m.plant, true])
 
 
 ## The climb: reach and pull up close against the face (the body only closes the gap to the wall on the way up),

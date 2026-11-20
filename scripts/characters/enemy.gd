@@ -11,9 +11,6 @@ extends "res://scripts/characters/soldier.gd"
 ## SEARCH (sweep last known position) -> back to PATROL.
 
 const Palettes = preload("res://scripts/core/palettes.gd")
-const Outfits = preload("res://scripts/skins/outfits.gd")
-## Outfits deathmatch bots wear: the ones anybody can buy (no admin or one-player outfits).
-const BOT_OUTFITS := ["multicam", "night_ops", "desert", "arctic", "tiger", "hazmat", "crimson", "neon", "gilded", "recon"]
 const Stealth = preload("res://scripts/stealth/stealth.gd")
 
 ## Awareness ladder (stealth.gd has the shared pieces):
@@ -104,12 +101,7 @@ func init_enemy(p_player, p_level, data: Dictionary, variant: int) -> void:
 	home_yaw = float(data.get("yaw", 0.0))
 	patrol = data.get("patrol", [])
 	dummy = bool(data.get("dummy", false))
-	var group := String(data.get("group", ""))
-	var look: Dictionary = Palettes.enemy(variant)
-	if group.begins_with("tdm_bot:"):
-		# operators like the players they fight beside: an outfit picked by the bot's id
-		look = Palettes.outfit(BOT_OUTFITS[posmod(int(group.split(":")[1]), BOT_OUTFITS.size())])
-	setup_soldier(look, ["akm"], Layers.ENEMY, Layers.WORLD | Layers.PLAYER | Layers.ENEMY, home_yaw)
+	setup_soldier(Palettes.enemy(variant), ["akm"], Layers.ENEMY, Layers.WORLD | Layers.PLAYER | Layers.ENEMY, home_yaw)
 	# desert / olive / dark tints so hostiles read differently from the (grey) player
 	use_character_model([Color(1.25, 1.05, 0.72), Color(0.85, 1.0, 0.7), Color(0.75, 0.72, 0.7)][posmod(variant, 3)])
 	team = 1

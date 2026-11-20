@@ -247,8 +247,9 @@ func set_loadout(specs: Array, reuse: bool = false) -> void:
 	_equip_current()
 
 
+## The weapon in hand, or null for a body that carries none (an infected, a blast's unarmed source).
 func current_weapon() -> Weapon:
-	return weapons[weapon_index]
+	return weapons[weapon_index] if weapon_index >= 0 and weapon_index < weapons.size() else null
 
 
 func _equip_current() -> void:

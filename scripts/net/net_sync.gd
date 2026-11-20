@@ -270,7 +270,7 @@ func _apply_event(node: Node, kind: String, args: Array) -> void:
 		"grenade":
 			spawn_grenade(node, args[0], args[1], args[2], true, String(args[3]) if args.size() > 3 else "frag")
 		"vault":
-			node.rig.play_vault(float(args[0]), float(args[1]), args[2])
+			node.rig.play_vault(float(args[0]), float(args[1]), args[2], args.size() > 3 and bool(args[3]))
 		"attack":
 			if node.has_method("play_attack_anim"):
 				node.play_attack_anim(float(args[0]))

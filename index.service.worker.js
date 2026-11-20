@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1795143840|5384852';
+const CACHE_VERSION = '1795154150|5294938';
 /** @type {string} */
 const CACHE_PREFIX = 'TECTICA-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;

@@ -44,7 +44,7 @@ func run() -> void:
 			var of := Model._faces_of(mount)
 			var ob := _box(of)
 			var base_y := mount.position.y + ob.position.y
-			var top := Model._top_under(Model._faces_of(r, mount), mount.position.z + ob.position.z, mount.position.z + ob.end.z)
+			var top := Model._top_under(Model.Probe.new(Model._faces_of(r, mount)), mount.position.z + ob.position.z, mount.position.z + ob.end.z)
 			check(absf(base_y - top) < 0.003, "%s %s sits on the rail (gap %+.1f mm)" % [id, o, (base_y - top) * 1000.0])
 			r.free()
 		# the add-on rail clears everything under the gun

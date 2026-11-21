@@ -37,6 +37,8 @@ func shoot(p, from: Vector3, at: Vector3) -> Dictionary:
 	w.bloom = 0.0
 	return w.fire(p, from, at, 0.0)
 
+const X0 := 12.0
+
 func run() -> void:
 	load("res://scripts/core/profile.gd").current = "lilin"
 	Main.saved_mode = "zombie"
@@ -49,10 +51,11 @@ func run() -> void:
 	p.health = 100000.0
 	main.director.timer = 9999.0
 	p.set_loadout([["hk33", {"optic": "iron"}], ["knife_combat", {}]])
-	p.global_position = Vector3(0, 0.05, 40)
-	var z = zombie(main, Vector3(0, 0.05, 34))
+	# on flat forest floor: at x = 0 the ground rises to 1.5 m between the two, and the shots ran underground
+	p.global_position = Vector3(X0, 0.05, 40)
+	var z = zombie(main, Vector3(X0, 0.05, 34))
 	await frames(30)   # let the rig settle into its lurching pose
-	var from := Vector3(0, 1.3, 40)
+	var from := Vector3(X0, 1.3, 40)
 	var hc: Vector3 = z._head_center()
 	var chest: Vector3 = z.rig.chest.global_position
 	print("    head centre y %.2f (standing-head rule threshold y %.2f)" % [hc.y - z.global_position.y, z.head_height() - 0.14])
@@ -100,7 +103,8 @@ func run() -> void:
 	await frames(10)
 	var tgt: Vector3 = z2.rig.chest.global_position
 	var line := (gap - tgt).normalized()
-	var origin := gap + line * ((40.0 - gap.z) / maxf(line.z, 0.01))
+	# 1.5 m in front of the gap: traced all the way back to z = 40 the line started under the ground
+	var origin := gap + line * (1.5 / maxf(line.z, 0.01))
 	var r2 = shoot(p, origin, tgt)
 	print("    shot through the gap hit: ", r2.hit.name if r2.hit != null else "nothing")
 	check(r2.hit == z2, "a shot through the gap flies on to the zombie behind")

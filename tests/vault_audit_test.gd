@@ -146,7 +146,8 @@ func audit(id: String) -> void:
 				on_floor_at = i
 				break
 		var dy: float = p.global_position.y - land.y
-		if on_floor_at < 0 or on_floor_at > 6 or dy < -0.25 or dy > 0.25:
+		# up to 8 frames (67 ms at 120 Hz) to touch the floor: with Jolt a ledge landing can take one tick longer
+		if on_floor_at < 0 or on_floor_at > 8 or dy < -0.25 or dy > 0.25:
 			landing.append("%s ended %.2f m off its landing, on the floor after %d frames" % [where, dy, on_floor_at])
 		else:
 			# settled: wedged if it cannot stand up or is pinned on three sides

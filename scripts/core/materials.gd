@@ -58,6 +58,20 @@ static func solid(color: Color, roughness: float = 0.8, metallic: float = 0.0) -
 	return m
 
 
+## One Shader per source: every material built from the same code shares it, so it is compiled once (each
+## Shader.new() with the same code was compiled again: 10-15 ms each in a map build) and draws with the same
+## pipelines.
+static var _shaders := {}
+
+static func shader(code: String) -> Shader:
+	var sh: Shader = _shaders.get(code)
+	if sh == null:
+		sh = Shader.new()
+		sh.code = code
+		_shaders[code] = sh
+	return sh
+
+
 static func noise_texture(colors: Array, offsets: Array, frequency: float, seed_value: int,
 		cellular: bool = false, constant: bool = false, size: int = 256) -> NoiseTexture2D:
 	var n := FastNoiseLite.new()

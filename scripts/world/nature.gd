@@ -110,8 +110,7 @@ void fragment() {
 
 
 static func ground_material(mask: Texture2D, map_size: float) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = GROUND_SHADER
+	var sh := M.shader(GROUND_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("mask", mask)
@@ -239,8 +238,7 @@ void fragment() {
 
 
 static func foliage_material(color: Color, sway: float = 0.05) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = FOLIAGE_SHADER % FADE_FUNCS
+	var sh := M.shader(FOLIAGE_SHADER % FADE_FUNCS)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("base_color", color)
@@ -265,8 +263,7 @@ static func canopy_material(color: Color, sway: float, center: Vector3, round_am
 
 ## Roofs, tents and tower tops: solid but see-through around the player.
 static func fade_material(color: Color, noise_scale: float = 1.5, roughness: float = 0.85) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = SOLID_FADE_SHADER % FADE_FUNCS
+	var sh := M.shader(SOLID_FADE_SHADER % FADE_FUNCS)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("base_color", color)
@@ -336,8 +333,7 @@ void fragment() {
 
 
 static func grass_material() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = GRASS_SHADER
+	var sh := M.shader(GRASS_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	return m
@@ -625,8 +621,7 @@ void fragment() {
 
 
 static func rock_material(color: Color = Color(0.42, 0.42, 0.39)) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = ROCK_SHADER
+	var sh := M.shader(ROCK_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("noise", _noise(0.05, 57))
@@ -873,8 +868,7 @@ static func pine_set(core_mat: Material, needle_mat: Material, seed_value: int =
 
 
 static func leaf_material(color: Color, sway: float = 0.04, tex: Texture2D = null, vary: float = 1.0) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = LEAF_SHADER % FADE_FUNCS
+	var sh := M.shader(LEAF_SHADER % FADE_FUNCS)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("base_color", color)
@@ -1140,8 +1134,7 @@ void fragment() {
 
 
 static func _face_material(code: String, color: Color, noise_seed: int) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = code % FACE_UV
+	var sh := M.shader(code % FACE_UV)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("base_color", color)
@@ -1205,8 +1198,7 @@ void fragment() {
 
 
 static func far_hills_material() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = FAR_HILLS_SHADER
+	var sh := M.shader(FAR_HILLS_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("noise", _noise(0.03, 71))
@@ -1245,8 +1237,7 @@ void fragment() {
 
 
 static func water_material() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = WATER_SHADER
+	var sh := M.shader(WATER_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("nrm", M.normal_tex(0.08, 3, 4.0))
@@ -1309,8 +1300,7 @@ void sky() {
 
 
 static func sky_material() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = SKY_SHADER
+	var sh := M.shader(SKY_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("cloud_noise", _noise(0.018, 83, 512))

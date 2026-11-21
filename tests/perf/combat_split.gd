@@ -4,6 +4,16 @@ extends "res://tests/perf/perf_suite.gd"
 ## (shots, tracers, impacts, casings). Needs a window.
 ##   godot --path . -s res://tests/perf/combat_split.gd -- [zombies]
 
+## Zombie body shadows off / back to what each part had.
+func _shadows(z, on: bool) -> void:
+	for m in z.rig.find_children("*", "MeshInstance3D", true, false):
+		if on:
+			m.cast_shadow = m.get_meta("cs", m.cast_shadow)
+		else:
+			m.set_meta("cs", m.cast_shadow)
+			m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 func measure_split(main, n: int = 480) -> Array:
 	await frames(40)
 	var t0 := Time.get_ticks_usec()
@@ -44,6 +54,7 @@ func run() -> void:
 	var tests := {
 		"not firing": func(on): (Input.action_press("fire") if on else Input.action_release("fire")),
 		"zombie bodies hidden": func(on): for z in zs: z.rig.visible = on,
+		"zombie shadows off": func(on): for z in zs: _shadows(z, on),
 		"zombie animation off": func(on): for z in zs: z.rig.set_process(on),
 		"zombie AI+move off": func(on): for z in zs: z.set_physics_process(on),
 		"hud overlay hidden": func(on): main.hud.overlay.visible = on,

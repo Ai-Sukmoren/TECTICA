@@ -169,6 +169,10 @@ func _merge_exclude() -> Array:
 	return _rage_marks   # their material swaps when enraged
 
 
+func _bake_body() -> bool:
+	return true
+
+
 func hear_noise(_pos: Vector3, _radius: float) -> void:
 	pass
 

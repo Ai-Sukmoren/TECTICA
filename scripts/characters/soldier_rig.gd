@@ -853,6 +853,236 @@ func merge_static_parts(exclude: Array = []) -> int:
 	return removed
 
 
+## ---- skinned body ------------------------------------------------------------------------------------------------
+## A crowd body as one skinned mesh (two: shadow-casting parts and the rest), one surface per material. The rig keeps
+## animating its bone nodes exactly as before; after each pose the skeleton copies them. The renderer then moves one
+## skeleton per body instead of ~80 mesh instances (each a transform pushed to the rendering server every frame).
+## The original parts are kept, out of the tree, so a severed limb still flies off as its real meshes.
+var _skel: Skeleton3D
+var _skel_nodes: Array[Node3D] = []
+var _skel_hidden := {}         # bone index -> true: severed, drawn at zero scale
+var _baked_parts := {}         # bone node -> [MeshInstance3D] taken out of the tree
+static var _bake_cache := {}   # geometry signature -> [Skin, shadow mesh, no-shadow mesh]
+## At most one new body is built per frame (a few ms each); others wait a frame, drawn as their parts meanwhile.
+static var _bake_frame := -1
+var _bake_pending := false
+var _bake_exclude: Array = []
+
+func bake_skinned(exclude: Array = []) -> int:
+	if _skel != null:
+		return 0
+	_bake_exclude = exclude
+	_bake_pending = false
+	var parts: Array[MeshInstance3D] = []
+	for n in pivot.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi in exclude or _is_gear(mi) or mi.get_child_count() > 0 or not mi.visible or mi.mesh == null:
+			continue
+		if mi.material_override == null or mi.material_overlay != null or mi.skin != null or mi.get_blend_shape_count() > 0:
+			continue
+		parts.append(mi)
+	if parts.size() < 4:
+		return 0
+	var bones: Array[Node3D] = []
+	var bone_of := {}
+	var sig := ""
+	for mi in parts:
+		var b := mi.get_parent() as Node3D
+		if not bone_of.has(b):
+			bone_of[b] = bones.size()
+			bones.append(b)
+		sig += "%d|%d|%d|%d|%s;" % [bone_of[b], mi.mesh.get_instance_id(), mi.material_override.get_instance_id(),
+				mi.cast_shadow, mi.transform]
+	var key := sig.hash()
+	var built: Array = _bake_cache.get(key, [])
+	if built.is_empty():
+		if _bake_frame == Engine.get_process_frames():
+			_bake_pending = true   # another body was built this frame: try again next frame
+			return 0
+		_bake_frame = Engine.get_process_frames()
+		built = _bake(parts, bone_of)
+		if _bake_cache.size() > 200:
+			_bake_cache.clear()
+		_bake_cache[key] = built
+	_skel = Skeleton3D.new()
+	_skel.name = "BodySkeleton"
+	add_child(_skel)
+	for i in bones.size():
+		_skel.add_bone("b%d" % i)
+	_skel_nodes = bones
+	for k in 2:
+		var mesh: ArrayMesh = built[1 + k]
+		if mesh == null:
+			continue
+		var bi := MeshInstance3D.new()
+		bi.name = "Body" if k == 0 else "BodyNoShadow"
+		bi.mesh = mesh
+		bi.skin = built[0]
+		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if k == 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bi.extra_cull_margin = 0.6
+		_skel.add_child(bi)
+		bi.skeleton = NodePath("..")
+	update_skinned()
+	for mi in parts:
+		var b: Node3D = mi.get_parent()
+		if not _baked_parts.has(b):
+			_baked_parts[b] = []
+		_baked_parts[b].append(mi)
+		b.remove_child(mi)
+	return parts.size()
+
+
+## A part's surface as plain arrays [vertices, normals, uvs, colours or null, indices], read once per mesh: reading
+## them back from the rendering server is most of a bake's cost.
+static var _part_arrays := {}
+
+static func _surface_arrays(mesh: Mesh, s: int) -> Array:
+	var key := "%d:%d" % [mesh.get_instance_id(), s]
+	if _part_arrays.has(key):
+		return _part_arrays[key]
+	var a: Array = mesh.surface_get_arrays(s)
+	var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL] if a[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+	if pn.size() != pv.size():
+		pn.resize(pv.size())
+		pn.fill(Vector3.UP)
+	var pu: PackedVector2Array = a[Mesh.ARRAY_TEX_UV] if a[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+	if pu.size() != pv.size():
+		pu.resize(pv.size())
+		pu.fill(Vector2.ZERO)
+	var pc = a[Mesh.ARRAY_COLOR]
+	if pc != null and (pc as PackedColorArray).size() != pv.size():
+		pc = null
+	var pidx: PackedInt32Array = a[Mesh.ARRAY_INDEX] if a[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	if pidx.is_empty():
+		pidx.resize(pv.size())
+		for j in pv.size():
+			pidx[j] = j
+	var out := [pv, pn, pu, pc, pidx]
+	if _part_arrays.size() > 4000:
+		_part_arrays.clear()
+	_part_arrays[key] = out
+	return out
+
+
+## `unit` repeated n times, by doubling (no per-element script loop).
+static func _repeat_i(unit: PackedInt32Array, n: int) -> PackedInt32Array:
+	var out := unit.duplicate()
+	while out.size() < unit.size() * n:
+		out.append_array(out)
+	out.resize(unit.size() * n)
+	return out
+
+
+static func _repeat_f(unit: PackedFloat32Array, n: int) -> PackedFloat32Array:
+	var out := unit.duplicate()
+	while out.size() < unit.size() * n:
+		out.append_array(out)
+	out.resize(unit.size() * n)
+	return out
+
+
+## [Skin, mesh of the shadow-casting parts, mesh of the others]: every vertex in its bone's space, weight 1 on it.
+static func _bake(parts: Array[MeshInstance3D], bone_of: Dictionary) -> Array:
+	var groups := [{}, {}]   # [shadow, no shadow]: material -> parts
+	for mi in parts:
+		var g: Dictionary = groups[0 if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else 1]
+		if not g.has(mi.material_override):
+			g[mi.material_override] = []
+		g[mi.material_override].append(mi)
+	var skin := Skin.new()
+	for i in bone_of.size():
+		skin.add_bind(i, Transform3D.IDENTITY)
+	var weight_unit := PackedFloat32Array([1.0, 0.0, 0.0, 0.0])
+	var out: Array = [skin, null, null]
+	for k in 2:
+		if groups[k].is_empty():
+			continue
+		var mesh := ArrayMesh.new()
+		for mat in groups[k]:
+			var surfaces := []   # [part, surface arrays]
+			var any_col := false
+			for mi in groups[k][mat]:
+				for s in (mi as MeshInstance3D).mesh.get_surface_count():
+					if mi.mesh is ArrayMesh and (mi.mesh as ArrayMesh).surface_get_primitive_type(s) != Mesh.PRIMITIVE_TRIANGLES:
+						continue
+					var sa := _surface_arrays(mi.mesh, s)
+					surfaces.append([mi, sa])
+					if sa[3] != null:
+						any_col = true
+			var v := PackedVector3Array()
+			var nrm := PackedVector3Array()
+			var uv := PackedVector2Array()
+			var col := PackedColorArray()
+			var idx := PackedInt32Array()
+			var bn := PackedInt32Array()
+			var wt := PackedFloat32Array()
+			for e in surfaces:
+				var mi := e[0] as MeshInstance3D
+				var sa: Array = e[1]
+				var xf: Transform3D = mi.transform   # in its bone's space: the bone is its parent
+				var pv: PackedVector3Array = sa[0]
+				var n := pv.size()
+				var base := v.size()
+				v.append_array(xf * pv)
+				nrm.append_array(Transform3D(xf.basis.inverse().transposed(), Vector3.ZERO) * (sa[1] as PackedVector3Array))
+				uv.append_array(sa[2])
+				if any_col:
+					if sa[3] != null:
+						col.append_array(sa[3])
+					else:
+						var white := PackedColorArray()
+						white.resize(n)
+						white.fill(Color.WHITE)
+						col.append_array(white)
+				bn.append_array(_repeat_i(PackedInt32Array([bone_of[mi.get_parent()], 0, 0, 0]), n))
+				wt.append_array(_repeat_f(weight_unit, n))
+				var pidx: PackedInt32Array = sa[4]
+				if base == 0:
+					idx.append_array(pidx)
+				else:
+					var start := idx.size()
+					idx.append_array(pidx)
+					for t in range(start, idx.size()):
+						idx[t] += base
+			var arrays := []
+			arrays.resize(Mesh.ARRAY_MAX)
+			arrays[Mesh.ARRAY_VERTEX] = v
+			arrays[Mesh.ARRAY_NORMAL] = nrm
+			arrays[Mesh.ARRAY_TEX_UV] = uv
+			if any_col:
+				arrays[Mesh.ARRAY_COLOR] = col
+			arrays[Mesh.ARRAY_INDEX] = idx
+			arrays[Mesh.ARRAY_BONES] = bn
+			arrays[Mesh.ARRAY_WEIGHTS] = wt
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			mesh.surface_set_material(mesh.get_surface_count() - 1, mat)
+		out[1 + k] = mesh
+	return out
+
+
+## The parts taken out of the tree for the skinned body are not freed with it.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for b in _baked_parts:
+			for mi in _baked_parts[b]:
+				if is_instance_valid(mi) and not (mi as Node).is_inside_tree():
+					(mi as Node).free()
+		_baked_parts.clear()
+
+
+## Copies the bone nodes' current pose into the body skeleton (after each animation step).
+func update_skinned() -> void:
+	if _skel == null:
+		return
+	var inv := _skel.global_transform.affine_inverse()
+	for i in _skel_nodes.size():
+		var xf := inv * _skel_nodes[i].global_transform
+		if _skel_hidden.has(i):
+			xf = xf.scaled_local(Vector3.ONE * 0.001)
+		_skel.set_bone_pose(i, xf)
+
+
 ## Guns, the hand magazine and the grenade are not part of the body.
 func _is_gear(n: Node) -> bool:
 	if n == _grenade_mesh:
@@ -936,11 +1166,20 @@ func sever(bone: Node3D, dir: Vector3) -> void:
 	if bone == null or not is_inside_tree() or bone.has_meta("severed"):
 		return
 	bone.set_meta("severed", true)
-	var meshes: Array = bone.find_children("*", "MeshInstance3D", true, false)
-	if meshes.is_empty():
-		return
 	var xf := bone.global_transform
 	var inv := xf.affine_inverse()
+	# [mesh instance, its global transform]: parts still in the tree, and parts baked into the skinned body
+	var meshes: Array = []
+	for n in bone.find_children("*", "MeshInstance3D", true, false):
+		meshes.append([n, (n as MeshInstance3D).global_transform])
+	for b in _baked_parts:
+		if b == bone or bone.is_ancestor_of(b):
+			_skel_hidden[_skel_nodes.find(b)] = true
+			for mi in _baked_parts[b]:
+				meshes.append([mi, (b as Node3D).global_transform * (mi as MeshInstance3D).transform])
+	update_skinned()
+	if meshes.is_empty():
+		return
 	var body := RigidBody3D.new()
 	body.collision_layer = Layers.DEBRIS
 	body.collision_mask = Layers.WORLD | Layers.DEBRIS
@@ -949,9 +1188,10 @@ func sever(bone: Node3D, dir: Vector3) -> void:
 	body.linear_damp = 0.4
 	var box := AABB()
 	var first := true
-	for n in meshes:
-		var mi := n as MeshInstance3D
-		if (not mi.visible and model_skin == null) or mi.mesh == null:   # under a model skin the limb is hidden, not gone
+	for entry in meshes:
+		var mi := entry[0] as MeshInstance3D
+		var baked := not mi.is_inside_tree()
+		if (not mi.visible and model_skin == null and not baked) or mi.mesh == null:   # under a model skin the limb is hidden, not gone
 			continue
 		var copy := MeshInstance3D.new()
 		copy.mesh = mi.mesh
@@ -960,7 +1200,7 @@ func sever(bone: Node3D, dir: Vector3) -> void:
 			copy.set_surface_override_material(surface, mi.get_surface_override_material(surface))
 		for shape in mi.get_blend_shape_count():
 			copy.set_blend_shape_value(shape, mi.get_blend_shape_value(shape))
-		copy.transform = inv * mi.global_transform
+		copy.transform = inv * (entry[1] as Transform3D)
 		body.add_child(copy)
 		var a: AABB = copy.transform * mi.mesh.get_aabb()
 		box = a if first else box.merge(a)
@@ -1327,6 +1567,8 @@ func _process(delta: float) -> void:
 	global_transform = body.get_global_transform_interpolated().scaled_local(_render_scale)
 	if hips == null:
 		return
+	if _bake_pending:
+		bake_skinned(_bake_exclude)
 	if lod_enabled:
 		_lod_acc += delta
 		var every := _lod_interval()
@@ -1343,6 +1585,7 @@ func _process(delta: float) -> void:
 	var steps := clampi(int(ceil(elapsed * 60.0)), 1, max_anim_steps)
 	for step in steps:
 		_animate(elapsed / steps)
+	update_skinned()
 
 
 func _animate(delta: float) -> void:

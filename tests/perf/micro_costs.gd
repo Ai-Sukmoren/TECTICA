@@ -59,6 +59,8 @@ func run() -> void:
 	res["  _pick_target"] = t_us(func(): z._pick_target(), 400)
 	res["rig _animate (near)"] = t_us(func(): z.rig._animate(1.0 / 120.0), 200)
 	res["  _update_legs"] = t_us(func(): z.rig._update_legs(1.0 / 120.0), 200)
+	if z.rig.model_skin != null:
+		res["model_skin _retarget"] = t_us(func(): z.rig.model_skin._retarget(), 200)
 	res["  _update_arms"] = t_us(func(): z.rig._update_arms(1.0 / 120.0), 200)
 	res["  _update_body"] = t_us(func(): z.rig._update_body(1.0 / 120.0), 200)
 	res["  _update_weapon_pose"] = t_us(func(): z.rig._update_weapon_pose(1.0 / 120.0), 200)

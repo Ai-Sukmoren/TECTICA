@@ -198,8 +198,15 @@ func optimize_detail() -> void:
 	# then fuse the parts that ride on the same bone (≈100 meshes -> ≈35)
 	if rig.visible:
 		rig.merge_static_parts(_merge_exclude())
+		if _bake_body():
+			rig.bake_skinned(_merge_exclude())
 	_flash_meshes.clear()
 	rig.lod_enabled = true
+
+
+## Crowd bodies (the infected) draw as one skinned mesh: see SoldierRig.bake_skinned.
+func _bake_body() -> bool:
+	return false
 
 
 ## Meshes a subclass still changes after spawn (kept out of the merge).

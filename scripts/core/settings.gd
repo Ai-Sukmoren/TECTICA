@@ -39,6 +39,7 @@ const ROWS := {
 		["damage_numbers", "DAMAGE NUMBERS", null],
 		["killcam", "KILL CAM", null],
 		["cutscenes", "STORY CUTSCENES", null],
+		["auto_vault", "AUTO VAULT WHEN SPRINTING", null],
 		["crosshair", "CROSSHAIR STYLE", CROSSHAIRS],
 		["crosshair_color", "CROSSHAIR COLOR", CROSSHAIR_COLORS],
 		["crosshair_size", "CROSSHAIR SIZE", 0.5, 2.0, 0.1],
@@ -89,7 +90,7 @@ const PRESET_VALUES := {
 
 static var v := {
 	"sensitivity": 1.0, "fov": 86.0, "master_volume": 0.9, "music_volume": 0.7, "sfx_volume": 0.9,
-	"shake": 1.0, "show_fps": false, "damage_numbers": true, "killcam": true, "cutscenes": true,
+	"shake": 1.0, "show_fps": false, "damage_numbers": true, "killcam": true, "cutscenes": true, "auto_vault": true,
 	"crosshair": 0, "crosshair_color": 0, "crosshair_size": 1.0, "crosshair_alpha": 0.92,
 	"crosshair_outline": true, "crosshair_spread": true, "film_grain": true, "vsync": true,
 	"preset": 2, "tactical_fov": 44.0, "render_scale": 1.0, "aa": 2, "shadows": 2,

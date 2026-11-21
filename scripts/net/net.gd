@@ -98,7 +98,10 @@ static func is_ws_address(a: String) -> bool:
 static func funnel_start() -> void:
 	funnel_url = ""
 	funnel_error = ""
-	_funnel_join()
+	# the startup cleanup may still be running: let it finish first, or the two Tailscale config changes collide
+	# (the host failed with FUNNEL FAILED, or the cleanup removed the mapping just added)
+	if _funnel_thread != null and _funnel_thread.is_started():
+		_funnel_thread.wait_to_finish()
 	_funnel_thread = Thread.new()
 	_funnel_thread.start(_funnel_job)
 
@@ -106,7 +109,13 @@ static func funnel_start() -> void:
 static func _funnel_job() -> void:
 	var cli := tailscale_cli()
 	var out: Array = []
-	var code := OS.execute(cli, ["funnel", "--bg", "--https=%d" % FUNNEL_PORT, "http://127.0.0.1:%d" % WS_PORT], out, true)
+	var args := ["funnel", "--bg", "--https=%d" % FUNNEL_PORT, "http://127.0.0.1:%d" % WS_PORT]
+	var code := OS.execute(cli, args, out, true)
+	if code > 0 and "\n".join(out).find("login.tailscale.com") < 0:
+		# another change to Tailscale's config can land at the same moment: try once more
+		OS.delay_msec(800)
+		out.clear()
+		code = OS.execute(cli, args, out, true)
 	var text := "\n".join(out)
 	if code != 0:
 		if text.find("login.tailscale.com") >= 0:

@@ -77,17 +77,15 @@ const POSES := {
 
 ## First-person weapon poses relative to the eye camera.
 ## "sprint": high port across the body, muzzle up and to the left, stock down out of the view (rifle), or
-## tucked muzzle-up in front of the chest (pistol). "reload": see _weapon_pose.
+## tucked muzzle-up in front of the chest (pistol).
 const FP_POSES := {
 	"rifle": {"hip": [Vector3(0.16, -0.2, -0.34), Vector3(0.04, 0.06, 0.04)], "aim": [Vector3(0.0, -0.15, -0.19), Vector3.ZERO],
-			"sprint": [Vector3(0.11, -0.22, -0.32), Vector3(0.35, 0.65, 0.8)],
-			"reload": [Vector3(0.14, -0.12, -0.38), Vector3(0.2, 0.85, -0.9)]},
+			"sprint": [Vector3(0.11, -0.22, -0.32), Vector3(0.35, 0.65, 0.8)]},
 	# knife: low on the right, blade angled forward and in with its flat to the view (wrist inside FP_HANDS limits)
 	"knife": {"hip": [Vector3(0.2, -0.235, -0.34), Vector3(-0.45, 0.4, 0.36)], "aim": [Vector3(0.2, -0.235, -0.34), Vector3(-0.45, 0.4, 0.36)],
 			"sprint": [Vector3(0.19, -0.27, -0.28), Vector3(-0.45, 0.25, 0.1)]},
 	"pistol": {"hip": [Vector3(0.13, -0.15, -0.36), Vector3(0.03, 0.05, 0.0)], "aim": [Vector3(0.0, -0.077, -0.4), Vector3.ZERO],
-			"sprint": [Vector3(0.08, -0.19, -0.3), Vector3(0.5, 0.15, 0.3)],
-			"reload": [Vector3(0.08, -0.1, -0.34), Vector3(0.35, 0.6, -0.7)]},
+			"sprint": [Vector3(0.08, -0.19, -0.3), Vector3(0.5, 0.15, 0.3)]},
 }
 ## First-person wrist comfort range the arm solve keeps each gripping hand in
 ## (degrees, glove space): [flexion min, max, deviation min, max] for [left, right].
@@ -99,8 +97,6 @@ const FP_WRIST := [[-45.0, 30.0, -12.0, 32.0], [-40.0, 12.0, -8.0, 28.0]]
 ## How far (m) a first-person shoulder (off-screen) may slide off its eye anchor so a
 ## forearm can run into its hand in line.
 const FP_SHOULDER_SLIDE := 0.16
-## First person: where (eye space) the support hand fetches a fresh magazine, just below the view.
-const FP_RELOAD_POUCH := Vector3(-0.1, -0.4, -0.32)
 ## Upper arms and elbows stay this many degrees outside the edge of the view.
 const FP_VIEW_MARGIN := 3.0
 ## How quickly (1/s) those arm corrections ease to a new setting, and the elbow's
@@ -1598,9 +1594,6 @@ func _weapon_pose(kind: String, pose_name: String) -> Transform3D:
 	if not fp_mode:
 		return _pose(kind, pose_name)
 	var fp: Dictionary = FP_POSES[kind]
-	if pose_name == "reload" and fp.has("reload"):
-		# its own eye-space pose: the chest pose tips the gun up and out of view, and the magazine change with it
-		return Transform3D(Basis.from_euler(fp.reload[1]), fp.reload[0])
 	var hip := Transform3D(Basis.from_euler(fp.hip[1]), fp.hip[0])
 	return hip * _pose(kind, "ready").affine_inverse() * _pose(kind, pose_name)
 
@@ -2719,7 +2712,6 @@ func _update_reload_events() -> void:
 		mag.visible = true
 		hand_mag.visible = false
 		Sfx.play(self, "mag_in", mag.global_position, -6.0)
-		_reload_jolt(RELOAD_JOLT_MAG)
 	# empty: the support hand racks the charging handle / slide back and lets it go
 	if _reload_empty and weapon.bolt_action.is_empty() and weapon.bolt != null and _reload_ev.bolt < 1.0:
 		var rk: Vector2 = _rack_times()
@@ -2729,7 +2721,6 @@ func _update_reload_events() -> void:
 		_reload_ev.bolt = 9.0
 		weapon.release_action()
 		Sfx.play(self, "bolt", weapon.charge.global_position, -4.0)
-		_reload_jolt(RELOAD_JOLT_BOLT)
 	# turn-bolt: open (lift, draw back) before the rounds go in, close at the end
 	if _reload_ev.has("open"):
 		var s := 2.0 * smoothstep(0.05, 0.17, t) * (1.0 - smoothstep(0.8, 0.94, t))
@@ -2740,16 +2731,6 @@ func _update_reload_events() -> void:
 		if t >= _reload_ev.close:
 			_reload_ev.close = 9.0
 			Sfx.play(self, "bolt", weapon.charge.global_position, -3.0)
-
-
-## Visual jolts through the gun (the weapon's recoil springs: [push, pitch]) when a magazine seats and when the
-## action slams home on an empty reload. Purely visual: the view and the reload timing are untouched.
-const RELOAD_JOLT_MAG := Vector2(0.25, 2.5)
-const RELOAD_JOLT_BOLT := Vector2(0.4, 3.5)
-
-func _reload_jolt(j: Vector2) -> void:
-	_recoil_pos_v += j.x
-	_recoil_rot_v += j.y
 
 
 ## Reload fractions where the support hand takes the charging handle and where
@@ -2772,9 +2753,6 @@ func _set_bolt(s: float) -> void:
 func _reload_left_target(t: float, hg: Vector3) -> Vector3:
 	var well: Vector3 = weapon.mag_well.global_position
 	var pouch := chest.global_transform * Vector3(-0.07, -0.02, -0.25)
-	if fp_mode:
-		# first person: the hand dips just out of the bottom of the view to the pouch and comes straight back
-		pouch = fp_eye * FP_RELOAD_POUCH
 	var charge: Vector3 = weapon.charge.global_position
 	if fp_mode and fp_arm_rig != null:
 		var wb := weapon.global_transform.basis.orthonormalized()

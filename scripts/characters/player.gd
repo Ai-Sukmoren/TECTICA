@@ -357,20 +357,18 @@ func _place_torch() -> void:
 	_torch.position = mount
 	_torch.scale = Vector3.ONE * (PISTOL_LIGHT if w.is_pistol() else 1.0)
 	if _torch_model != null:
-		# the X300U clamps to the gun: under a pistol's frame (clamp up), on the
-		# right of a rifle's handguard (turned so the clamp faces the gun), with
-		# its lens where the built-in housing's lens was
-		var lens_z := -0.081 + 0.0466
-		if w.is_pistol():
-			_torch_model.rotation = Vector3.ZERO
-			_torch_model.position = Vector3(0.0136, 0.017 + 0.0014, lens_z)   # body centred under the frame (the switch paddle sits to one side)
-		else:
-			_torch_model.rotation = Vector3(0, 0, PI * 0.5)
-			_torch_model.position = Vector3(-0.017, 0, lens_z)
+		place_torch_model(_torch_model)
 	if flashlight:
 		# the beam starts just ahead of the muzzle, in line with the lens
 		var mz: float = (w.global_transform.affine_inverse() * w.muzzle.global_position).z if w.muzzle else mount.z - 0.3
 		flashlight.position = Vector3(mount.x, mount.y, minf(mz, mount.z - 0.081) - 0.12)
+
+
+## The X300U clamps up under the gun, upright, its lens where the built-in housing's lens was. Upright on every
+## gun: its rear switch sticks out on one side only, so turned on its side it hung down and the light looked tilted.
+static func place_torch_model(model: Node3D) -> void:
+	model.rotation = Vector3.ZERO
+	model.position = Vector3(0.0136, 0.017 + 0.0014, -0.081 + 0.0466)   # body centred (the switch paddle sits to one side)
 
 
 ## Pistol lights are compact: the housing is drawn at this scale.
@@ -388,50 +386,79 @@ func _torch_mount_for(w: Weapon) -> Vector3:
 	return _torch_mounts[key]
 
 
-## Where the light housing goes on this gun, in weapon space: hugging the
-## right side of the handguard just ahead of the support hand (lens behind
-## the muzzle), or tucked under a pistol's frame ahead of the trigger guard.
+## Where the light housing goes on this gun, in weapon space: under the front of a long gun's handguard, ahead of
+## the support hand (lens behind the muzzle), or tucked under a pistol's frame ahead of the trigger guard.
 func _torch_mount(w: Weapon) -> Vector3:
 	const R := 0.017      # housing radius
 	const HALF := 0.055   # half the housing length; the lens is 0.081 ahead of its centre
 	var inv := w.global_transform.affine_inverse()
-	var muz: Vector3 = inv * w.muzzle.global_position if w.muzzle else Vector3(0, 0.03, -0.5)
+	# the bare barrel's end: a suppressor or muzzle device is not part of the gun the light clamps to
+	var bare := w.find_child("MuzzleAt", true, false) as Node3D
+	var muz_node: Node3D = bare if bare != null else w.muzzle
+	var muz: Vector3 = inv * muz_node.global_position if muz_node else Vector3(0, 0.03, -0.5)
 	var verts := PackedVector3Array()
 	for n in w.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null or not mi.is_visible_in_tree():
 			continue
 		verts.append_array((inv * mi.global_transform) * mi.mesh.get_faces())   # one native transform per mesh
+	# the gun's underside, found by casting rays straight up through its geometry (only triangles that can be hit)
+	var floor_y := muz.y - 0.12
+	var tris := PackedVector3Array()
+	for t in range(0, verts.size() - 2, 3):
+		var a := verts[t]
+		var b := verts[t + 1]
+		var c := verts[t + 2]
+		if minf(a.x, minf(b.x, c.x)) <= 0.0 and maxf(a.x, maxf(b.x, c.x)) >= 0.0 				and maxf(a.y, maxf(b.y, c.y)) >= floor_y and minf(a.y, minf(b.y, c.y)) <= muz.y:
+			tris.append(a)
+			tris.append(b)
+			tris.append(c)
+	# the lowest surface over the centre line at z (INF when nothing is there below the bore)
+	var underside := func(z: float) -> float:
+		var from := Vector3(0.0, floor_y, z)
+		var best := INF
+		for t in range(0, tris.size(), 3):
+			var hit = Geometry3D.ray_intersects_triangle(from, Vector3.UP, tris[t], tris[t + 1], tris[t + 2])
+			if hit != null and hit.y < best:
+				best = hit.y
+		return best if best <= muz.y else INF
+	# the light's top against the gun where its underside is highest over [z0, z1] (-INF: nothing there)
+	var seat := func(z0: float, z1: float) -> float:
+		var top := -INF
+		var z := z0
+		while z <= z1:
+			top = maxf(top, underside.call(z))
+			z += 0.01
+		return top
 	if w.is_pistol():
-		# compact light: lens just behind the muzzle, body clear of the trigger guard
+		# compact light under the dust cover, lens just behind the barrel's end, against the frame over the light's
+		# front half (behind that is the trigger guard)
 		var cz := muz.z + (0.081 + 0.008) * PISTOL_LIGHT
-		var lo := INF
-		for v in verts:
-			# the dust cover: underside of the frame's front few centimetres
-			if v.z > muz.z and v.z < muz.z + 0.05 and absf(v.x) < 0.03 and v.y < muz.y:
-				lo = minf(lo, v.y)
-		if lo == INF:
+		var lo: float = seat.call(cz - HALF * PISTOL_LIGHT + 0.004, cz)
+		if lo == -INF or lo == INF:
 			return Vector3(0.0, -0.05, -0.17)
-		return Vector3(0.0, lo - R * PISTOL_LIGHT - 0.001, cz)
+		return Vector3(0.0, lo - R * PISTOL_LIGHT, cz)
 	var sup: Vector3 = inv * w.support.global_position if w.support else muz * 0.6
-	# ahead of the support hand, but the lens stays behind the muzzle
-	var cz2 := maxf(sup.z - 0.1, muz.z + 0.081 + 0.03)
-	var top := muz.y + 0.035      # skip optics / rails above the bore
-	var bottom := muz.y - 0.07    # and magazines / bipods / grips below
-	var right := -INF
-	for v in verts:
-		if absf(v.z - cz2) < HALF and v.y < top and v.y > bottom:
-			right = maxf(right, v.x)
-	if right == -INF:
-		return Vector3(0.034, 0.005, -0.4)
-	var ys := 0.0
-	var count := 0
-	for v in verts:
-		if absf(v.z - cz2) < HALF and v.y < top and v.y > bottom and v.x > right - 0.006:
-			ys += v.y
-			count += 1
-	var y := ys / count if count > 0 else muz.y - 0.01
-	return Vector3(right + R + 0.001, y, cz2)
+	# under the handguard, parallel to the bore, its whole length against the gun: it starts just ahead of the
+	# support hand's fingers and slides forward while the handguard is still there (a bare barrel or a muzzle
+	# device is too thin to carry it), never past the muzzle
+	var carries := func(c: float) -> bool:
+		var z := c - HALF + 0.005
+		while z <= c + HALF - 0.005:
+			if underside.call(z) > muz.y - 0.016:
+				return false
+			z += 0.02
+		return true
+	var cz2 := sup.z - 0.075 - HALF
+	# a short handguard ends close to the hand: come back onto it, up to the fingertips
+	while not carries.call(cz2) and cz2 + 0.01 <= sup.z - 0.035 - HALF:
+		cz2 += 0.01
+	while carries.call(cz2 - 0.01) and cz2 - 0.01 - 0.081 > muz.z + 0.01:
+		cz2 -= 0.01
+	var lo2: float = seat.call(cz2 - HALF + 0.005, cz2 + HALF - 0.005)
+	if lo2 == -INF or lo2 == INF:
+		return Vector3(0.0, muz.y - 0.05, -0.4)
+	return Vector3(0.0, lo2 - R - 0.0014, cz2)
 
 
 func _update_torch_lens() -> void:
@@ -788,11 +815,12 @@ func _physics_process(delta: float) -> void:
 		_sync_rig()
 		return
 
-	# ---- vault over low obstacles (Space / A, or automatically while sprinting)
+	# ---- vault over low obstacles (Space / A, or automatically while sprinting unless turned off in the menu)
 	if Input.is_action_just_pressed("vault"):
 		_vault_buffer = 0.3
 	_vault_buffer = maxf(_vault_buffer - delta, 0.0)
-	if not sliding and _vault_cooldown <= 0.0 and (_vault_buffer > 0.0 or (sprinting and wish.length() > 0.5)):
+	var auto_vault := sprinting and wish.length() > 0.5 and bool(Settings.v.auto_vault)
+	if not sliding and _vault_cooldown <= 0.0 and (_vault_buffer > 0.0 or auto_vault):
 		var vdir := wish.normalized() if wish.length() > 0.2 else Vector3(-sin(aim_yaw), 0, -cos(aim_yaw))
 		var v = _find_vault(vdir)
 		if v != null:

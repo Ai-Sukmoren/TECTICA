@@ -494,8 +494,9 @@ func start_reload() -> void:
 
 
 func switch_to(i: int) -> void:
-	if i == weapon_index or i < 0 or i >= weapons.size() or not can_act():
+	if i == weapon_index or i < 0 or i >= weapons.size() or is_dead or switch_timer > 0.0 or throwing > 0.0:
 		return
+	_cancel_reload()   # switching weapons drops a reload in progress (the magazine is not refilled)
 	_switch_target = i
 	_switch_swapped = false
 	switch_timer = SWITCH_TIME
@@ -508,11 +509,20 @@ func switch_to(i: int) -> void:
 func net_switch(i: int) -> void:
 	if i < 0 or i >= weapons.size():
 		return
+	_cancel_reload()
 	_switch_target = i
 	_switch_swapped = false
 	switch_timer = SWITCH_TIME
 	rig.play_switch(SWITCH_TIME)
 	Sfx.play(self, "switch", global_position + Vector3.UP, -10.0)
+
+
+## Stops a reload part-way: no ammo is added and the hands let go of the magazine.
+func _cancel_reload() -> void:
+	if reload_timer <= 0.0:
+		return
+	reload_timer = 0.0
+	rig.cancel_reload()
 
 
 func _tick_actions(delta: float) -> void:

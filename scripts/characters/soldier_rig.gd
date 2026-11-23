@@ -864,8 +864,10 @@ var _skel_hidden := {}         # bone index -> true: severed, drawn at zero scal
 var _baked_parts := {}         # bone node -> [MeshInstance3D] taken out of the tree
 static var _bake_cache := {}   # geometry signature -> [Skin, shadow mesh, no-shadow mesh]
 ## At most one new body is built per frame (a few ms each); others wait a frame, drawn as their parts meanwhile.
+## `bake_now` skips that limit: the loading-screen warm-up builds them all at once (zombie_warmup.gd).
 static var _bake_frame := -1
 var _bake_pending := false
+var bake_now := false
 var _bake_exclude: Array = []
 
 func bake_skinned(exclude: Array = []) -> int:
@@ -896,7 +898,7 @@ func bake_skinned(exclude: Array = []) -> int:
 	var key := sig.hash()
 	var built: Array = _bake_cache.get(key, [])
 	if built.is_empty():
-		if _bake_frame == Engine.get_process_frames():
+		if _bake_frame == Engine.get_process_frames() and not bake_now:
 			_bake_pending = true   # another body was built this frame: try again next frame
 			return 0
 		_bake_frame = Engine.get_process_frames()

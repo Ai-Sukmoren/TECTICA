@@ -208,8 +208,11 @@ func run() -> void:
 	var t0: float = dir.timer
 	for i in 30: await physics_frame
 	check(dir.timer == t0, "solo: break clock stops while shopping")
-	main.hud._close_shop()
-	check(not main.hud.shop_open, "shop panel closes")
+	check(Player.input_blocked, "the open shop blocks operator input")
+	dir._begin_wave()
+	main.hud._process(0.0)
+	check(not main.hud.shop_open and not dir.shop_open, "starting a wave closes the shop")
+	check(not Player.input_blocked, "closing the shop on wave start restores input in the same HUD update")
 
 	# --- other modes are untouched
 	check(not Player.zombie_specs.is_empty(), "zombie specs set during the run")

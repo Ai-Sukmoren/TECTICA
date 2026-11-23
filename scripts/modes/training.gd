@@ -24,7 +24,7 @@ const STEPS := [
 	{"id": "look", "text": "LOOK AROUND", "how": "MOVE THE MOUSE", "pad": "RIGHT STICK"},
 	{"id": "walk", "text": "WALK TO THE MARKER", "how": "{move_forward} {move_left} {move_back} {move_right} TO MOVE", "pad": "LEFT STICK TO MOVE"},
 	{"id": "sprint", "text": "SPRINT TO THE NEXT MARKER", "how": "HOLD {sprint} WHILE MOVING", "pad": "CLICK L3 WHILE MOVING"},
-	{"id": "vault", "text": "VAULT OVER THE WALL", "how": "{vault} AT THE WALL, OR SPRINT INTO IT", "pad": "A AT THE WALL, OR SPRINT INTO IT"},
+	{"id": "vault", "text": "VAULT OVER THE WALL", "how": "{vault} AT THE WALL", "pad": "A AT THE WALL"},
 	{"id": "crouch", "text": "CROUCH", "how": "{crouch} TO CROUCH  ·  PRESS AGAIN TO STAND", "pad": "B TO CROUCH"},
 	{"id": "slide", "text": "SLIDE", "how": "SPRINT, THEN {crouch}", "pad": "SPRINT (L3), THEN B"},
 	{"id": "range", "text": "GO TO THE FIRING LINE", "how": "THE MARKER ON THE RADAR SHOWS THE WAY", "pad": "THE MARKER ON THE RADAR SHOWS THE WAY"},
@@ -35,7 +35,7 @@ const STEPS := [
 	{"id": "switch", "text": "SWITCH WEAPONS", "how": "{weapon_1} {weapon_2} {weapon_3} {weapon_4}  OR  {switch_weapon} / MOUSE WHEEL", "pad": "Y TO SWITCH WEAPONS"},
 	{"id": "grenade", "text": "THROW A GRENADE BEHIND THE SANDBAGS", "how": "AIM AT THE SANDBAGS  ·  {grenade} TO THROW", "pad": "AIM AT THE SANDBAGS  ·  D-PAD DOWN"},
 	{"id": "kick", "text": "DROPKICK", "how": "SPRINT, THEN {kick}", "pad": "SPRINT (L3), THEN D-PAD RIGHT"},
-	{"id": "bullet", "text": "BULLET TIME: JUMP THE WALL, AIM IN THE AIR", "how": "SPRINT INTO THE WALL  ·  HOLD {aim} MID-AIR  ·  KILLS REFILL FOCUS", "pad": "SPRINT INTO THE WALL  ·  HOLD LT MID-AIR"},
+	{"id": "bullet", "text": "BULLET TIME: VAULT THE WALL AND AIM", "how": "{vault} AT THE WALL  ·  HOLD {aim} MID-VAULT  ·  KILLS REFILL FOCUS", "pad": "A AT THE WALL  ·  HOLD LT MID-VAULT"},
 	{"id": "live", "text": "LIVE FIRE: CLEAR THE KILL HOUSE", "how": "THESE ONES SHOOT BACK  ·  USE COVER, PEEK AND RELOAD", "pad": "THESE ONES SHOOT BACK  ·  USE COVER, PEEK AND RELOAD"},
 ]
 
@@ -118,9 +118,11 @@ func how_text() -> String:
 	if finished:
 		return ""
 	var s := current()
+	var how := String(s.pad if main.player.using_pad else s.how)
+	if s.id == "vault" and Settings.v.auto_vault:
+		how += ", OR SPRINT INTO IT"
 	if main.player.using_pad:
-		return String(s.pad)
-	var how := String(s.how)
+		return how
 	for b in Settings.Controls.BINDABLE:
 		var tag := "{%s}" % b[0]
 		if how.contains(tag):

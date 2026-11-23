@@ -81,9 +81,12 @@ func audit(id: String) -> void:
 	var took_cover := false
 	var crouched := false
 	var peeked := false
-	var shot := false
+	var fired_from_cover := [false]
+	e.fired.connect(func(_soldier, _weapon, _result):
+		if e.cover != null and e.phase == Enemy.Phase.PEEKING:
+			fired_from_cover[0] = true)
 	for c in spots:
-		if tried >= 6 or took_cover and peeked:
+		if tried >= 6 or (took_cover and crouched and peeked and fired_from_cover[0]):
 			break
 		var cp: Vector3 = c.pos
 		# the operator 9-12 m out past the obstacle, standing on the navigation mesh, in sight of the peek spot
@@ -113,7 +116,6 @@ func audit(id: String) -> void:
 		e.cover = null
 		e.set("_cover_timer", 0.0)
 		e.set("_flank_check", 999.0)
-		var ammo0: int = e.current_weapon().ammo
 		var reached := false
 		for f in 720:   # 6 s at 120 Hz, under fire all along
 			e.set("_flank_check", 999.0)
@@ -131,21 +133,31 @@ func audit(id: String) -> void:
 				var want: Vector3 = at + (e.cover.get("peek", Vector3.ZERO) as Vector3)
 				if Vector2(e.global_position.x - want.x, e.global_position.z - want.z).length() < 0.35:
 					peeked = true
-			if e.current_weapon().ammo < ammo0:
-				shot = true
+			if reached and crouched and peeked and fired_from_cover[0]:
+				break
 		took_cover = took_cover or reached
-	print("    took cover %s · crouched %s · peeked %s · fired %s (%d setups)" % [took_cover, crouched, peeked, shot, tried])
-	# quiet again (and a full magazine): the deathmatch bot comes out of cover to fight
-	e.current_weapon().ammo = int(e.current_weapon().stats.mag)
-	var left := false
-	for f in 600:
-		await physics_frame
-		p.health = p.max_health
-		if e.cover == null and e.phase != Enemy.Phase.HIDDEN:
-			left = true
-			break
-	check(left, "once it is quiet again the deathmatch bot leaves cover to fight")
+	print("    took cover %s · crouched %s · peeked %s · fired %s (%d setups)" % [took_cover, crouched, peeked, fired_from_cover[0], tried])
 	check(took_cover, "a bot under fire runs to a cover spot")
 	check(crouched, "and crouches behind it")
 	check(peeked, "then comes up or steps out past the corner to fire")
-	check(shot, "and fires from cover")
+	check(fired_from_cover[0], "and fires from cover")
+
+	# Hold ammo steady while recent damage wears off. The AI treats a low
+	# magazine or a reload as a separate reason to stay in cover.
+	check(e.cover != null, "the bot begins the quiet phase in cover")
+	if e.cover == null:
+		return
+	e._cancel_reload()
+	var left := false
+	for f in 600:
+		var weapon = e.current_weapon()
+		weapon.ammo = int(weapon.stats.mag)
+		await physics_frame
+		p.health = p.max_health
+		if e.cover == null and e.phase == Enemy.Phase.OPEN and e.state == Enemy.State.COMBAT:
+			left = true
+			break
+	if not left:
+		print("    quiet phase ended: state=%s phase=%s since_damage=%.2f reload=%.2f ammo=%d" %
+				[e.state, e.phase, e.since_damage, e.reload_timer, e.current_weapon().ammo])
+	check(left, "once it is quiet again the deathmatch bot leaves cover to fight")

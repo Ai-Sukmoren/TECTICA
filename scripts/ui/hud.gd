@@ -678,10 +678,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	_update_time_scale()
-	PlayerScript.input_blocked = (Net.active and (mp_pause or settings_open)) or shop_open or is_instance_valid(cutscene)
 	_shop_msg_t = maxf(_shop_msg_t - delta, 0.0)
 	if shop_open and not _shop_available():
 		_close_shop()   # the next wave started (or the operator went down)
+	PlayerScript.input_blocked = (Net.active and (mp_pause or settings_open)) or shop_open or is_instance_valid(cutscene)
 	hit_marker = maxf(hit_marker - delta, 0.0)
 	_flash_t = maxf(_flash_t - delta, 0.0)
 	for n in _dmg_nums:
@@ -2296,8 +2296,10 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.02, 0.025, 0.03, 0.97))   # nothing of the HUD shows through
 	_text(c, Vector2(70, 70), "ARCADE SHOP  //  SUPPLIES", 26, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	_text(c, Vector2(0, 70), "%d PTS" % d.shop.points, 26, WARN, HORIZONTAL_ALIGNMENT_RIGHT, vp.x - 70.0, true)
-	var sub := "NEXT WAVE IN %d" % int(ceil(d.timer))
-	if not Net.active:
+	var sub := "NEXT WAVE IN %d S" % maxi(0, ceili(d.timer))
+	if Net.active:
+		sub += "  ·  SHOP CLOSES AT WAVE START"
+	else:
 		sub += "  ·  CLOCK STOPPED WHILE SHOPPING"
 	_text(c, Vector2(70, 96), sub, 13, DIM)
 

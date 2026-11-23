@@ -10,6 +10,7 @@ const Main = preload("res://scripts/main.gd")
 const Layers = preload("res://scripts/core/layers.gd")
 const Collection = preload("res://scripts/skins/collection.gd")
 const Campaign = preload("res://scripts/modes/campaign.gd")
+const Settings = preload("res://scripts/core/settings.gd")
 var failures := 0
 var main
 var tr
@@ -69,6 +70,11 @@ func look_at_point(at: Vector3) -> void:
 	var d := at - eye
 	p().aim_yaw = atan2(-d.x, -d.z)
 	p().fp_pitch = atan2(d.y, Vector2(d.x, d.z).length())
+
+
+func vault_at_wall() -> void:
+	if not Input.is_action_pressed("vault") and p()._find_vault(Vector3.FORWARD) != null:
+		Input.action_press("vault")
 
 
 func step_name() -> String:
@@ -137,7 +143,23 @@ func run() -> void:
 	expect_step("sprint")
 	check(await hold_until_next(["move_forward", "sprint"], 8.0), "sprinting to the next marker finishes SPRINT")
 	expect_step("vault")
-	check(await hold_until_next(["move_forward", "sprint"], 8.0, func(): p().aim_yaw = 0.0), "sprinting into the wall vaults it and finishes VAULT")
+	var saved_auto_vault: bool = Settings.v.auto_vault
+	var vault_key := InputEventKey.new()
+	vault_key.physical_keycode = KEY_K
+	Settings.Controls._set_kbm("vault", [vault_key])
+	Settings.v.auto_vault = false
+	check(tr.how_text() == "[K] AT THE WALL", "manual vault hint uses the remapped key")
+	pl.using_pad = true
+	check(tr.how_text() == "A AT THE WALL", "manual vault hint uses A on gamepad")
+	Settings.v.auto_vault = true
+	check(tr.how_text() == "A AT THE WALL, OR SPRINT INTO IT", "gamepad hint offers sprint vault with Auto Vault on")
+	pl.using_pad = false
+	check(tr.how_text() == "[K] AT THE WALL, OR SPRINT INTO IT", "keyboard hint offers sprint vault with Auto Vault on")
+	Settings.v.auto_vault = not OS.get_cmdline_user_args().has("manual-vault")
+	check(await hold_until_next(["move_forward", "sprint"], 8.0, func():
+		p().aim_yaw = 0.0
+		if not Settings.v.auto_vault:
+			vault_at_wall()), "crossing the first wall finishes VAULT")
 	for i in 30:
 		await physics_frame
 	expect_step("crouch")
@@ -206,6 +228,9 @@ func run() -> void:
 	for i in 60:
 		await physics_frame
 	expect_step("bullet")
+	Settings.v.auto_vault = false
+	check(tr.how_text().begins_with("[K] AT THE WALL") and tr.how_text().contains("MID-VAULT"),
+			"bullet time hint teaches a manual vault followed by aiming")
 	p().global_position = Vector3(0, 0.05, main.level.bullet_z + 6.0)
 	p().velocity = Vector3.ZERO
 	p().aim_yaw = 0.0
@@ -217,7 +242,10 @@ func run() -> void:
 		p().aim_yaw = 0.0
 		if p().vaulting:
 			Input.action_press("aim")
-		saw_bt[0] = saw_bt[0] or p().bullet_time), "sprinting into the second wall and aiming mid-vault finishes BULLET TIME")
+		else:
+			vault_at_wall()
+		saw_bt[0] = saw_bt[0] or p().bullet_time), "manually vaulting the second wall and aiming finishes BULLET TIME")
+	Settings.v.auto_vault = saved_auto_vault
 	check(saw_bt[0], "bullet time actually started during it")
 	expect_step("live")
 	for i in 30:

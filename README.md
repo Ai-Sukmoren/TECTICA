@@ -13,9 +13,17 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.49
+## 🆕 What's new in v1.50
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.49.0-beta) · [watch before / after](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.49.0-beta/tectica-light-reload-1.49.mp4)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.50.0-beta)
+
+- **Big infected fights run much faster:** 28 infected 118 -> 185 fps; 45 infected no longer drop to 15 fps (now a steady 60 with the cap on).
+- **New physics engine (Jolt):** movement and hits feel the same, at less than half the cost per infected.
+- **Faster loading:** Forest loads in 2.27 s (was 2.53 s), the game boots in 4.5 s (was 5.0 s).
+
+## What came in v1.49
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.49.0-beta) · [watch before / after](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.49.0-beta/tectica-light-reload-1.49.mp4)
 
 - **Weapon light fits every gun:** straight under the handguard or frame, ahead of the hand, never floating or tilted.
 - **Reloads:** back to the v1.46 motion, and switching weapons cancels a reload.

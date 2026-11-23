@@ -133,6 +133,10 @@ func _warm_cover() -> void:
 		await get_tree().physics_frame
 		if not is_inside_tree() or _cover_validated:
 			return
+		# During staged loading the navigation map can be ready before the
+		# level's colliders are active. Don't cache cover from an empty world.
+		if get_parent().process_mode == Node.PROCESS_MODE_DISABLED:
+			continue
 		var map := get_world_3d().navigation_map
 		if NavigationServer3D.map_get_iteration_id(map) == 0:
 			continue   # (a query before the first sync is an error)

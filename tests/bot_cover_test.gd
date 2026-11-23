@@ -9,6 +9,7 @@ const Main = preload("res://scripts/main.gd")
 const Net = preload("res://scripts/net/net.gd")
 const Enemy = preload("res://scripts/characters/enemy.gd")
 const ModelLevel = preload("res://scripts/world/model_level.gd")
+const Transition = preload("res://scripts/ui/transition.gd")
 var failures := 0
 
 
@@ -44,10 +45,18 @@ func audit(id: String) -> void:
 	Main.saved_bots = 1
 	Main.saved_quality = 0
 	Main.quick_restart = true
-	change_scene_to_file("res://scenes/main.tscn")
-	for i in 90:
+	change_scene_to_file("res://scenes/loading.tscn")
+	var deadline := Time.get_ticks_msec() + 20000
+	var main
+	while Time.get_ticks_msec() < deadline:
 		await process_frame
-	var main = current_scene
+		var loaded = current_scene
+		if loaded != null and loaded.get_script() == Main and loaded.get("_deployed") and not Transition.is_loading():
+			main = loaded
+			break
+	check(main != null, "the match deploys through the loading screen")
+	if main == null:
+		return
 	var lv = main.level
 	var p = main.player
 	p.health = 100000.0

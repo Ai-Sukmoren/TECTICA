@@ -171,6 +171,9 @@ var attack_t := -1.0
 var _attack_lead := -1.0
 var _attack_dur := 0.8
 var fp_pitch := 0.0
+## Third person: how far up (+) or down (-) the body aims, in radians, shared by the spine and chest so the gun points
+## where the shots go (a remote player's view pitch); 0 for everyone else.
+var tp_aim_pitch := 0.0
 ## Eye camera transform for first person (world space, physics frame).
 var fp_eye := Transform3D.IDENTITY
 var _eye_smooth := Vector3(0, 1.66, -0.09)
@@ -1806,10 +1809,11 @@ func _update_body(delta: float) -> void:
 	# peek: roll around the aim axis (in lower-body space)
 	var aim_fwd_axis := Basis(Vector3.UP, twist) * Vector3.BACK
 	var breath := sin(_time * 1.6) * 0.018 * (1.0 - m * 0.7)
-	spine.basis = Basis(aim_fwd_axis, -lean_amt * 0.36) * Basis.from_euler(Vector3(pitch * 0.5, 0, roll * 0.5)) \
+	var elev := 0.0 if fp_mode else clampf(tp_aim_pitch, -1.0, 1.0)
+	spine.basis = Basis(aim_fwd_axis, -lean_amt * 0.36) * Basis.from_euler(Vector3(pitch * 0.5 + elev * 0.4, 0, roll * 0.5)) \
 			* Basis(Vector3.UP, twist * 0.45)
 	chest.basis = Basis(Vector3.BACK, -lean_amt * 0.24) \
-			* Basis.from_euler(Vector3(pitch * 0.5 + breath * steady, 0, roll * 0.5 - sin(phase) * 0.03 * m * steady)) \
+			* Basis.from_euler(Vector3(pitch * 0.5 + elev * 0.6 + breath * steady, 0, roll * 0.5 - sin(phase) * 0.03 * m * steady)) \
 			* Basis(Vector3.UP, twist * 0.55 - gait_yaw)
 	chest.position.y = 0.22 + breath * 0.15
 	# the eyes lead a turn (the gun lags it) and wander a little when standing easy

@@ -3,7 +3,8 @@ extends SceneTree
 ##   godot --headless --path . -s res://tests/multiplayer_test.gd -- host coop
 ##   godot --headless --path . -s res://tests/multiplayer_test.gd -- client coop
 ## Checks joining, movement sync, client damage on host AI (coop) and
-## host damage on the client's operator (pvp: use "pvp" on both).
+## host damage on the client's operator (pvp: use "pvp" on both), and that the host's first-person view pitch
+## shows on its body on the client (the gun points where the shots go).
 ## Optional 3rd arg: host "ws" (local WebSocket) / "funnel" (Tailscale Funnel);
 ## client <address> e.g. ws://127.0.0.1:7778 or wss://<pc>.<tailnet>.ts.net:10000
 const Net = preload("res://scripts/net/net.gd")
@@ -78,6 +79,11 @@ func _physics_process(_d: float) -> bool:
 				target_name = String(best.name)
 				print("[client] shooting puppet ", target_name, " puppet=", best.puppet, " hp=", best.health)
 				best.apply_damage(400.0, best.global_position + Vector3(0, 1.0, 0), Vector3.FORWARD, m.player)
+		if r == 300 and m.players.has(1):
+			# the host looks up in first person (below): its body on this client aims up with it
+			var hp = m.players[1]
+			var ok := absf(float(hp.rig.tp_aim_pitch) - 0.5) < 0.05
+			print("[client] host aim pitch on its puppet %.2f (sent 0.50) %s" % [float(hp.rig.tp_aim_pitch), "ok" if ok else "FAIL"])
 		if r == 360 and target_name != "":
 			var e = m.get_node_or_null(target_name)
 			print("[client] ", target_name, " dead on client=", e.is_dead if e else "missing")
@@ -88,6 +94,10 @@ func _physics_process(_d: float) -> bool:
 		var pup = m.players[others[0]]
 		if r == 30:
 			start_pos = pup.global_position
+		if r >= 120 and r <= 400:
+			if not m.player.first_person:
+				m.player.set_first_person(true)
+			m.player.fp_pitch = 0.5
 		if r == 240:
 			print("[host] client puppet %s moved %.2f m on host, puppet=%s tag=%s" % [pup.name, pup.global_position.distance_to(start_pos), pup.puppet, pup.display_name])
 		if r == 260 and kind == "pvp":

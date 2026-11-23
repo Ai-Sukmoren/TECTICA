@@ -159,6 +159,11 @@ var body_candidate: Node3D = null
 var _stealth_scan := 0.0
 var decoy_cd := 0.0
 var _net_flags := 0
+var _net_pitch := 0.0
+## A remote player who just fired: their body brings the gun up to aim for a moment, so a hip-fired shot leaves a
+## raised barrel instead of the lowered ready pose (the tracer starts at the muzzle).
+const NET_FIRE_RAISE := 0.6
+var _net_fire_t := 0.0
 var _net_weapon := 0
 var _net_lean := 0.0
 var _net_inspecting := false
@@ -256,13 +261,20 @@ func _build_rig_extras() -> void:
 func net_pack() -> Array:
 	var f := (1 if crouching else 0) | (2 if aiming else 0) | (4 if sprinting else 0) 			| (8 if sliding else 0) | (16 if flashlight_on else 0) | (32 if vaulting else 0)
 	f |= 64 if rig.inspect_t >= 0.0 else 0
-	return [global_position, velocity, aim_yaw, fp_pitch, f, weapon_index, rig.lean_target, health, _peek_off]
+	# view pitch only in first person (top-down aims level)
+	return [global_position, velocity, aim_yaw, fp_pitch if first_person else 0.0, f, weapon_index, rig.lean_target, health, _peek_off]
+
+
+func net_shot(ends: Array) -> void:
+	super(ends)
+	_net_fire_t = NET_FIRE_RAISE
 
 
 func net_apply(p: Array) -> void:
 	if p.size() < 9:
 		return
 	_net_set(p[0], p[1], float(p[2]))
+	_net_pitch = float(p[3])
 	_net_flags = int(p[4])
 	_net_weapon = int(p[5])
 	_net_lean = float(p[6])
@@ -288,6 +300,11 @@ func _puppet_physics(delta: float) -> void:
 		weapon_index = _net_weapon
 		_equip_current()
 	_sync_rig()
+	_net_fire_t = maxf(_net_fire_t - delta, 0.0)
+	if _net_fire_t > 0.0 and not sprinting:
+		rig.aim_target = 1.0
+	# the body and gun follow the remote player's view pitch, so the gun points where the shots go
+	rig.tp_aim_pitch = lerpf(rig.tp_aim_pitch, _net_pitch, 1.0 - exp(-15.0 * delta))
 	rig.lean_target = _net_lean
 	rig.slide_target = 1.0 if sliding else 0.0
 	if (f & 64) != 0:

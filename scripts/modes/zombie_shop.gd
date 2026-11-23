@@ -127,13 +127,16 @@ func _primary_spec(id: String) -> Array:
 ## Shop rows for the HUD: {id, section, label, desc, price, ok, note}.
 func items(p) -> Array:
 	var out: Array = []
+	var carried := guns(p)
 	# supplies
-	out.append(_row("ammo", "SUPPLIES", "AMMO REFILL", "EVERY GUN TO FULL RESERVE", 300, true))
+	var needs_ammo := carried.any(func(w): return w.ammo < int(w.stats.mag) or w.reserve < int(w.stats.reserve))
+	var refill_desc := "REFILLS MAGAZINES AND RESERVES" if needs_ammo else "ALL GUNS HAVE FULL AMMO"
+	out.append(_row("ammo", "SUPPLIES", "AMMO REFILL", refill_desc, 300, needs_ammo, "" if needs_ammo else "FULL"))
 	out.append(_row("heal", "SUPPLIES", "MEDKIT", "HEAL TO FULL", 400, p != null and p.health < p.max_health - 0.5))
 	out.append(_row("frag", "SUPPLIES", "FRAG GRENADES x2", "CARRY UP TO 5", 350, p != null and p.grenades < 5))
 	out.append(_row("flash", "SUPPLIES", "FLASHBANG", "CARRY UP TO 3", 250, p != null and p.flashbangs < 3))
 	# upgrades: one row for every gun carried ("upgrade:<id>")
-	for g in guns(p):
+	for g in carried:
 		var lv := int(upgrades.get(String(g.id), 0))
 		if lv < MAX_UPGRADE:
 			out.append(_row("upgrade:" + String(g.id), "UPGRADE", "UPGRADE %s TO MK %s" % [String(g.stats.name), _roman(lv + 1)],
@@ -143,7 +146,7 @@ func items(p) -> Array:
 	# attachments for the gun picked in the FIT TO row
 	var fit = fit_gun(p)
 	if fit != null:
-		var n := guns(p).size()
+		var n := carried.size()
 		out.append(_row("fit_to", "ATTACHMENTS", "FIT TO  ◀  %s  ▶" % String(fit.stats.name) if n > 1 else "FIT TO  %s" % String(fit.stats.name),
 				"A / D OR CLICK: THE GUN THESE ATTACHMENTS GO ON  ·  %d GUNS CARRIED" % n, 0, n > 1, "PICK" if n > 1 else "ONLY GUN"))
 		out += _attachment_rows(fit)

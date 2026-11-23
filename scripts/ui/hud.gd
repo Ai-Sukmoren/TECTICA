@@ -47,6 +47,8 @@ var help_timer := 0.0
 var blend_trail: Array = []
 var title := true
 var menu_index := 0
+var _mode_picker_index := -1
+var _mode_picker_rects: Array[Rect2] = []
 var briefing_t := -1.0
 var settings_open := false
 var settings_row := 0
@@ -493,18 +495,12 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 		"armory":
 			armory.open()
 		"mode":
-			last_menu_index = i
 			var choices := _play_choices()
-			var kind := _play_kind()
-			var next: String = choices[posmod(choices.find(main.mode if kind in ["campaign", "zombie"] else kind) + (dir if dir != 0 else 1), choices.size())]
-			if next in ["tdm", "ffa"]:
-				vs_ai = next
-				if main.mode != "zombie":
-					main.set_mode("zombie")   # load a map backdrop to pick from
+			var selected := maxi(0, choices.find(main.mode if vs_ai == "" else vs_ai))
+			if dir == 0:
+				_mode_picker_index = selected
 			else:
-				vs_ai = ""
-				if next != main.mode:
-					main.set_mode(next)
+				_select_mode(choices[posmod(selected + dir, choices.size())])
 		"loadout":
 			if dir == 0:
 				gunsmith.open()
@@ -524,6 +520,43 @@ func _menu_activate(i: int, dir: int = 0) -> void:
 			print("[quit] title menu QUIT (menu_index=%d)" % menu_index)
 			Settings.mark_clean_exit()
 			get_tree().quit()
+
+
+func _select_mode(mode: String) -> void:
+	last_menu_index = _menu_index_of("mode")
+	if mode in ["tdm", "ffa"]:
+		vs_ai = mode
+		if main.mode != "zombie":
+			main.set_mode("zombie")   # load a map backdrop to pick from
+	else:
+		vs_ai = ""
+		if mode != main.mode:
+			main.set_mode(mode)
+
+
+func _mode_picker_input(event: InputEvent) -> void:
+	var choices := _play_choices()
+	var rows := choices.size() + 1   # Back
+	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause"):
+		_mode_picker_index = -1
+	elif event.is_action_pressed("ui_up") or event.is_action_pressed("move_forward"):
+		_mode_picker_index = posmod(_mode_picker_index - 1, rows)
+	elif event.is_action_pressed("ui_down") or event.is_action_pressed("move_back"):
+		_mode_picker_index = posmod(_mode_picker_index + 1, rows)
+	elif event.is_action_pressed("ui_accept") or event.is_action_pressed("vault"):
+		var selected := _mode_picker_index
+		_mode_picker_index = -1
+		if selected < choices.size():
+			_select_mode(choices[selected])
+	elif event is InputEventMouse:
+		for i in _mode_picker_rects.size():
+			if _mode_picker_rects[i].has_point(event.position):
+				_mode_picker_index = i
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+					_mode_picker_index = -1
+					if i < choices.size():
+						_select_mode(choices[i])
+				break
 
 
 ## Cinematic title-screen camera (freed on deploy).
@@ -557,7 +590,7 @@ func _deploy(allow_cutscene: bool = true) -> void:
 func _finish_deploy(after_cutscene: bool = false) -> void:
 	cutscene = null
 	briefing_t = -1.0 if after_cutscene else 0.0   # the cutscene was the briefing
-	help_timer = 0.0 if main.training != null else 18.0
+	help_timer = 0.0 if main.training != null or main.is_zombie_mode() else 18.0
 	get_tree().paused = false
 	player.set_first_person(main.start_first_person)
 	if not main.start_first_person:
@@ -589,6 +622,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if title and mp_open:
 		_mp_input(event)
+		return
+	if title and _mode_picker_index >= 0:
+		_mode_picker_input(event)
 		return
 	if title and admin_dash.is_open:
 		if admin_dash.handle(event):
@@ -1200,6 +1236,39 @@ func _draw_title(c: Control, vp: Vector2) -> void:
 		admin_dash.draw(c, vp)
 		return
 	_draw_main_menu(c, vp)
+	if _mode_picker_index >= 0:
+		_draw_mode_picker(c, vp)
+
+
+func _draw_mode_picker(c: Control, vp: Vector2) -> void:
+	var choices := _play_choices()
+	var rows := choices.size() + 1
+	var width := minf(vp.x - 64.0, 520.0)
+	var row_h := minf(48.0, (vp.y - 128.0) / rows)
+	var panel_size := Vector2(width, 72.0 + row_h * rows)
+	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0, 0.0, 0.0, 0.68))
+	c.draw_rect(panel, Color(0.02, 0.025, 0.03, 0.98))
+	_brackets(c, panel, 12.0, RED, 2.0)
+	_text(c, panel.position + Vector2(22.0, 37.0), "SELECT MODE", 24, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_mode_picker_rects.clear()
+	for i in rows:
+		var rect := Rect2(panel.position + Vector2(16.0, 54.0 + row_h * i), Vector2(width - 32.0, row_h - 4.0))
+		_mode_picker_rects.append(rect)
+		var selected := i == _mode_picker_index
+		if selected:
+			c.draw_rect(rect, Color(RED, 0.28))
+			c.draw_rect(Rect2(rect.position, Vector2(3.0, rect.size.y)), RED)
+		var mode: String = choices[i] if i < choices.size() else ""
+		var label := "BACK"
+		if mode == "tdm":
+			label = "TEAM DEATHMATCH  ·  VS AI"
+		elif mode == "ffa":
+			label = "FREE FOR ALL  ·  VS AI"
+		elif mode != "":
+			label = _mode_label(mode)
+		_text(c, rect.position + Vector2(14.0, rect.size.y * 0.5 + 6.0), label, 16,
+				TEXT if selected else Color(TEXT, 0.76), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 28.0, true)
 
 
 ## Title screen: command panel on the left (logo + grouped menu), mission and
@@ -1469,15 +1538,9 @@ func _draw_letterbox(c: Control, vp: Vector2) -> void:
 func _draw_briefing(c: Control, vp: Vector2) -> void:
 	var t := briefing_t
 	var a := clampf(t / 0.3, 0.0, 1.0) * clampf((6.0 - t) / 0.8, 0.0, 1.0)
-	var lines := [
-		["TECTICA  //  ZOMBIE SURVIVAL", RED, 20],
-		[String({"warehouse": "LOCATION   WAREHOUSE - LOADING FLOOR, OVERRUN", "backrooms": "LOCATION   THE BACKROOMS - LEVEL 0, NO EXIT", "tokyo": "LOCATION   TOKYO - CANAL STREET BY THE RAIL LINE, WALLED IN"}.get(main.map_id, "LOCATION   PINEWOOD VALLEY - LOGGING CAMP, OVERRUN")), TEXT, 14],
-		[String({"warehouse": "SITREP     CLOSE QUARTERS BETWEEN THE CRATES. WATCH EVERY AISLE", "backrooms": "SITREP     THE LIGHTS HUM. SOMETHING WALKS THE YELLOW HALLS", "tokyo": "SITREP     THEY COME OVER THE BRIDGE AND DOWN THE TRACKS. HOLD THE STREET"}.get(main.map_id, "SITREP     NIGHT IS FALLING. THEY COME OUT OF THE TREES IN WAVES")), TEXT, 14],
-		["OBJECTIVE  SURVIVE AS LONG AS POSSIBLE", TEXT, 14],
-		["INTEL      PISTOL ONLY - KILLS EARN POINTS - [" + Settings.Controls.short("interact") + "] SHOP AT THE ARCADE BETWEEN WAVES  -  [" + Settings.Controls.short("flashlight") + "] FLASHLIGHT", TEXT, 14],
-		["ROE        KILL EVERYTHING THAT MOVES", ACCENT, 14],
-	] if main.is_zombie_mode() else (_pvp_briefing() if main.mode == "pvp" else (_training_briefing() if main.training != null else _campaign_briefing()))
-	var chars := int(t * 75.0)
+	var survival: bool = main.is_zombie_mode()
+	var lines := _survival_briefing() if survival else (_pvp_briefing() if main.mode == "pvp" else (_training_briefing() if main.training != null else _campaign_briefing()))
+	var chars := 1000 if survival else int(t * 75.0)
 	var y := vp.y * 0.36
 	for line in lines:
 		var s: String = line[0]
@@ -1488,8 +1551,22 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 		var lc: Color = line[1]
 		_text(c, Vector2(70, y), shown, line[2], Color(lc, a * lc.a), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		y += 30.0 if line[2] > 16 else 22.0
-	if int(_time * 3.0) % 2 == 0:
+	if not survival and int(_time * 3.0) % 2 == 0:
 		c.draw_rect(Rect2(62, vp.y * 0.36 - 18, 3, 20), Color(RED, a))
+
+
+func _survival_briefing() -> Array:
+	var controls := "[%s] FIRE  ·  [%s] RELOAD  ·  [%s] LIGHT" % [
+		Settings.Controls.short("fire"), Settings.Controls.short("reload"), Settings.Controls.short("flashlight")]
+	if touch != null:
+		controls = "USE THE AIM STICK OR FIRE BUTTON  ·  TAP RELOAD"
+	elif player.using_pad:
+		controls = "RT FIRE  ·  X RELOAD  ·  BACK LIGHT"
+	return [
+		["ZOMBIE SURVIVAL", RED, 20],
+		[controls, TEXT, 14],
+		["EARN POINTS FROM INFECTED. SPEND THEM AT THE ARCADE BETWEEN WAVES.", TEXT, 14],
+	]
 
 
 func _pvp_briefing() -> Array:
@@ -1693,9 +1770,9 @@ func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
 		else:
 			c.draw_circle(sh[0], sh[2], sh[1])
 	c.draw_set_transform_matrix(Transform2D.IDENTITY)
-	var obj = main.objectives()
-	if obj != null and obj.objective_pos() != null:
-		var lo: Vector3 = inv * ((obj.objective_pos() as Vector3) - ppos)
+	var target = _radar_objective_pos()
+	if target != null:
+		var lo: Vector3 = inv * ((target as Vector3) - ppos)
 		var op := center + Vector2(lo.x, lo.z) * sc
 		if op.distance_to(center) > radius - 6.0:
 			op = center + (op - center).normalized() * (radius - 6.0)
@@ -2158,14 +2235,27 @@ func _shop_available() -> bool:
 	return d != null and not d.active and _deployed_hud() and player != null and not player.is_dead and not main.game_over 			and main.arcade != null and main.arcade.in_reach(player)
 
 
+func _radar_objective_pos():
+	var obj = main.objectives()
+	if obj != null:
+		return obj.objective_pos()
+	var arcade = main.arcade
+	if main.director != null and not main.director.active and arcade != null and arcade.placed:
+		return arcade.global_position
+	return null
+
+
 ## Where the shop is: the key when the arcade is in reach, its distance otherwise.
 func _arcade_hint() -> String:
 	var a = main.arcade
 	if a == null or not a.placed or player == null:
 		return "SHOP AT THE ARCADE"
 	if a.in_reach(player):
-		return "[%s] OPEN SHOP" % Settings.Controls.short("interact")
-	return "ARCADE SHOP  %d M" % int(round(player.global_position.distance_to(a.global_position)))
+		if touch != null:
+			return "TAP SHOP"
+		var key := "X" if player.using_pad else Settings.Controls.short("interact")
+		return "[%s] OPEN SHOP" % key
+	return "ARCADE SHOP  ◇  %d M" % int(round(player.global_position.distance_to(a.global_position)))
 
 
 func _deployed_hud() -> bool:
@@ -2217,7 +2307,10 @@ func _shop_activate(i: int) -> void:
 		return
 	var msg: String = main.director.shop.buy(String(r.id), player)
 	if msg == "":
-		_shop_msg = "ALREADY OWNED" if String(r.note) != "" else ("NOT ENOUGH POINTS" if not bool(r.afford) else "NOT NEEDED RIGHT NOW")
+		if r.note == "FULL":
+			_shop_msg = "AMMO ALREADY FULL"
+		else:
+			_shop_msg = "ALREADY OWNED" if String(r.note) != "" else ("NOT ENOUGH POINTS" if not bool(r.afford) else "NOT NEEDED RIGHT NOW")
 		_shop_msg_t = 1.6
 		Sfx.play(player, "dry", player.global_position, -6.0, 0.0)
 		return
@@ -2378,9 +2471,12 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 			pcol = DIM
 		elif bool(r2.ok):
 			price = "%d PTS  ·  [ENTER] OR CLICK TO BUY" % int(r2.price)
-		else:
+		elif not bool(r2.afford):
 			price = "%d PTS  ·  NOT ENOUGH POINTS" % int(r2.price)
 			pcol = DANGER
+		else:
+			price = "NOT NEEDED RIGHT NOW"
+			pcol = DIM
 		_text(c, pr.position + Vector2(18, 78), price, 12, pcol, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	_text(c, Vector2(pr.position.x + 18, pr.end.y - 14), "Drag to rotate  ·  Wheel to zoom  ·  [%s] reset view" % Settings.Controls.short("reload"), 12, DIM)
 	var held = g[2]

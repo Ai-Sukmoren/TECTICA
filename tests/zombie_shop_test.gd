@@ -47,8 +47,12 @@ func run() -> void:
 	check(absf(arcade.global_position.y - p.global_position.y) < 0.8, "the arcade stands on the operator's floor")
 	p.global_position = arcade.global_position + Vector3(30, 0, 0)
 	check(not main.hud._shop_available(), "no shop away from the arcade")
+	check(main.hud._radar_objective_pos() == arcade.global_position, "radar marks the arcade between waves")
 	p.global_position = arcade.global_position + arcade.global_transform.basis.z * 1.4
 	check(main.hud._shop_available(), "shop available at the arcade before the first wave")
+	p.using_pad = true
+	check(main.hud._arcade_hint() == "[X] OPEN SHOP", "prompt shows the gamepad shop button")
+	p.using_pad = false
 	check(p._interact_context(), "at the arcade F opens the shop, not the camera view / a reload")
 	var away: Vector3 = p.global_position
 	p.global_position = arcade.global_position + Vector3(30, 0, 0)
@@ -56,6 +60,7 @@ func run() -> void:
 	p.global_position = away
 	dir.active = true
 	check(not main.hud._shop_available(), "no shop during a wave")
+	check(main.hud._radar_objective_pos() == null, "radar clears the arcade marker during a wave")
 	check(not p._interact_context(), "during a wave F is the view toggle again")
 	dir.active = false
 
@@ -117,9 +122,15 @@ func run() -> void:
 	check(int(p.weapons[0].stats.reserve) == int(round(res0 * 1.6)), "bandolier does not stack on re-apply")
 
 	# --- supplies
+	for gun in shop.guns(p):
+		gun.ammo = int(gun.stats.mag)
+		gun.reserve = int(gun.stats.reserve)
+	var points_full_ammo: int = shop.points
+	check(shop.buy("ammo", p) == "" and shop.points == points_full_ammo, "full ammo cannot spend points on a refill")
+	p.weapons[0].ammo -= 1
+	check(shop.buy("ammo", p) != "" and p.weapons[0].ammo == int(p.weapons[0].stats.mag), "refill tops off a partly empty magazine")
 	p.weapons[0].reserve = 0
-	shop.buy("ammo", p)
-	check(p.weapons[0].reserve >= int(p.weapons[0].stats.reserve), "ammo refill")
+	check(shop.buy("ammo", p) != "" and p.weapons[0].reserve == int(p.weapons[0].stats.reserve), "refill restores missing reserve ammo")
 	p.grenades = 4
 	shop.buy("frag", p)
 	check(p.grenades == 5, "frags cap at 5")
@@ -190,8 +201,12 @@ func run() -> void:
 	# --- wave end pays out, and the operator keeps everything after respawning
 	var pts: int = shop.points
 	dir.wave = 2
+	p.health = p.max_health - 12.0
 	dir.apply_wave_end()
 	check(shop.points == pts + 200, "wave 2 cleared pays 200 points")
+	check(main.hud._banner_sub.contains("+12 HP") and p.health == p.max_health, "wave clear shows health actually restored")
+	dir.apply_wave_end()
+	check(not main.hud._banner_sub.contains("HP"), "wave clear omits healing at full health")
 	main.respawn_local(p.global_position, 0.0)
 	await process_frame
 	var p2 = main.player

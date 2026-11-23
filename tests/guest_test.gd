@@ -64,9 +64,37 @@ func run() -> void:
 	check(not ids.has("graphics") and not ids.has("music") and ids.has("settings"), "GRAPHICS and MUSIC moved into SETTINGS")
 	var acc: Dictionary = hud._menu_entries()[ids.find("account")]
 	check(String(acc.label) == "CREATE ACCOUNT", "the guest's menu offers CREATE ACCOUNT instead of SIGN OUT")
+	# A guest can skip directly to Survival from the Mode picker.
+	hud.menu_index = hud._menu_index_of("mode")
+	var input := InputEventAction.new()
+	input.pressed = true
+	input.action = "ui_accept"
+	hud._unhandled_input(input)
+	check(hud._mode_picker_index >= 0 and Main.saved_mode == "training", "opening Mode leaves Training loaded")
+	input.action = "ui_cancel"
+	hud._unhandled_input(input)
+	check(hud._mode_picker_index == -1 and Main.saved_mode == "training", "cancel closes the picker and keeps the mode")
+	input.action = "ui_accept"
+	hud._unhandled_input(input)
+	input.action = "ui_down"
+	for i in hud._play_choices().find("zombie"):
+		hud._unhandled_input(input)
+	check(Main.saved_mode == "training", "browsing modes does not load other chapters")
+	input.action = "ui_accept"
+	before = current_scene
+	hud._unhandled_input(input)
+	check(Main.saved_mode == "zombie", "confirm selects Zombie Survival directly")
+	for i in 600:
+		await process_frame
+		if current_scene != before and current_scene != null and current_scene.get("hud") != null:
+			break
+	await settle()
+	hud = current_scene.hud
+	check(current_scene.mode == "zombie" and hud.title, "the picker arrives at the Survival title menu")
+
 	# CREATE ACCOUNT: back to the sign-in screen with an empty name and the hand-over note
 	before = current_scene
-	hud._menu_activate(ids.find("account"))
+	hud._menu_activate(hud._menu_index_of("account"))
 	for i in 600:   # until the map has reloaded signed out (the transition takes a moment)
 		await process_frame
 		if current_scene != before and current_scene != null and current_scene.get("hud") != null:

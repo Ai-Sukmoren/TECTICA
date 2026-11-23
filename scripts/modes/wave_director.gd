@@ -182,7 +182,9 @@ func apply_wave_end() -> void:
 	if p.is_dead and Net.active:
 		main.respawn_near_team()
 		p = main.player
+	var health_before := ceili(p.health)
 	p.health = minf(p.health + 35.0, p.max_health)
+	var restored := ceili(p.health) - health_before
 	# a basic top-up only: full ammo is sold in the shop
 	for w in p.weapons:
 		if not w.is_melee():
@@ -193,9 +195,11 @@ func apply_wave_end() -> void:
 	var cr := 20 * wave
 	preload("res://scripts/skins/collection.gd").add_credits(cr)
 	preload("res://scripts/core/progression.gd").on_wave_cleared(wave, String(main.get("map_id")) if main.get("map_id") != null else "forest")
-	main.hud.add_feed("WAVE %d CLEARED  ·  +35 HP  ·  +%d PTS  ·  +%d CR" % [wave, pts, cr], Color(0.55, 1.0, 0.6))
-	main.hud.add_feed("[%s] SHOP  ·  %d PTS TO SPEND" % [preload("res://scripts/core/settings.gd").Controls.short("shop"), shop.points], Color(1.0, 0.82, 0.35))
-	main.hud.wave_banner("WAVE %d CLEARED" % wave, "+35 HP   ·   +%d PTS   ·   +%d CR   ·   SHOP OPEN" % [pts, cr])
+	var reward := "+%d PTS  ·  +%d CR" % [pts, cr]
+	if restored > 0:
+		reward = "+%d HP  ·  " % restored + reward
+	main.hud.add_feed("WAVE %d CLEARED  ·  " % wave + reward, Color(0.55, 1.0, 0.6))
+	main.hud.wave_banner("WAVE %d CLEARED" % wave, reward + "  ·  ARCADE SHOP OPEN")
 	Sfx.play(main, "mag_in", p.global_position, 0.0)
 
 

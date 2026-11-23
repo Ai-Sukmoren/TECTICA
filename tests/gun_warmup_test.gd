@@ -23,6 +23,11 @@ func run() -> void:
 	var t0 := Time.get_ticks_usec()
 	var w := Warmup.new()
 	get_root().add_child(w)
+	# The standalone warm-up builds across frames, as it does in staged loading.
+	var deadline := Time.get_ticks_msec() + 10000
+	while not w.done and Time.get_ticks_msec() < deadline:
+		await process_frame
+	check(w.done, "the sliced warm-up finishes")
 	var built_ms := (Time.get_ticks_usec() - t0) / 1000.0
 	print("  warm-up build: %.0f ms for %d models" % [built_ms, w.get_child_count()])
 	check(w.get_child_count() >= (Data.PRIMARIES + Data.SMGS + Data.SECONDARIES).size(), "every gun is built")

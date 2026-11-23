@@ -300,18 +300,25 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self)
 	await _stage(95.0, "WARMING UP WEAPONS")
-	process_mode = Node.PROCESS_MODE_INHERIT
-	get_tree().multiplayer_poll = true
 	# every gun and attachment built and drawn once under the loading screen,
-	# so switching guns mid-match does not stall to load and compile them
+	# so switching guns mid-match does not stall to load and compile them; a few
+	# per frame, with the match still paused and the loading screen moving
 	var warm := GunWarmup.new()
 	warm.name = "GunWarmup"
 	add_child(warm)
-	if director != null:   # and every zombie kind, before the first wave
-		var zwarm := ZombieWarmup.new()
+	var zwarm = null
+	if director != null:   # and every zombie kind with its body, before the first wave
+		zwarm = ZombieWarmup.new()
 		zwarm.name = "ZombieWarmup"
 		zwarm.skin_id = director.skin_for_map()
 		add_child(zwarm)
+	# (each frees itself a few frames after it is done)
+	while (is_instance_valid(warm) and not warm.done) or (is_instance_valid(zwarm) and not zwarm.done):
+		if _staged and is_instance_valid(warm):
+			Transition.stage(get_tree(), lerpf(95.0, 99.0, warm.progress), "WARMING UP WEAPONS")
+		await get_tree().process_frame
+	process_mode = Node.PROCESS_MODE_INHERIT
+	get_tree().multiplayer_poll = true
 	Transition.reveal(get_tree())   # fade in once the new map has rendered
 
 

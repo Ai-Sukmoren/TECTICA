@@ -15,6 +15,12 @@ const FRAMES := 4
 ## Looks cycle with the spawn number (Palettes.zombie: skin x3, camo x2, headgear x4).
 const WALKER_LOOKS := 12
 const SCALE := 0.002
+## Stand-ins built per frame (each ~3 ms plus ~10 ms for its body): main.gd waits for `done` under the loading
+## screen, which keeps moving instead of freezing for one long frame.
+const PER_FRAME := 2
+
+## Every stand-in is built with its body (they are still drawn for FRAMES more frames before the node frees itself).
+var done := false
 
 var skin_id := ""
 
@@ -43,7 +49,10 @@ func _ready() -> void:
 		for g in ["enemies", "zombies", "bosses"]:
 			z.remove_from_group(g)
 		z.rig.bake_now = true   # its deferred optimize_detail() builds the body now, not one per frame
+		if i % PER_FRAME == PER_FRAME - 1:
+			await get_tree().process_frame
 	await get_tree().process_frame   # optimize_detail() runs: parts merged, bodies built
+	done = true
 	visible = true
 	for i in FRAMES:
 		_follow_camera()

@@ -21,6 +21,8 @@ const PER_FRAME := 2
 
 ## Every stand-in is built with its body (they are still drawn for FRAMES more frames before the node frees itself).
 var done := false
+## Build every stand-in in the first frame (no loading screen to keep moving: a scene opened directly).
+var all_at_once := false
 
 var skin_id := ""
 
@@ -49,7 +51,7 @@ func _ready() -> void:
 		for g in ["enemies", "zombies", "bosses"]:
 			z.remove_from_group(g)
 		z.rig.bake_now = true   # its deferred optimize_detail() builds the body now, not one per frame
-		if i % PER_FRAME == PER_FRAME - 1:
+		if not all_at_once and i % PER_FRAME == PER_FRAME - 1:
 			await get_tree().process_frame
 	await get_tree().process_frame   # optimize_detail() runs: parts merged, bodies built
 	done = true

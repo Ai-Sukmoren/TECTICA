@@ -300,25 +300,31 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self)
 	await _stage(95.0, "WARMING UP WEAPONS")
+	# the map is whole: the scene runs from here (physics bodies active, so the
+	# level's cover scan on the next physics frames sees the map; a scan while
+	# paused found nothing and was cached for the whole match)
+	process_mode = Node.PROCESS_MODE_INHERIT
+	get_tree().multiplayer_poll = true
 	# every gun and attachment built and drawn once under the loading screen,
-	# so switching guns mid-match does not stall to load and compile them; a few
-	# per frame, with the match still paused and the loading screen moving
+	# so switching guns mid-match does not stall to load and compile them. Under
+	# the loading screen a few per frame, so it keeps moving; opened directly
+	# (tests) all in the first frame, as before
 	var warm := GunWarmup.new()
 	warm.name = "GunWarmup"
+	warm.all_at_once = not _staged
 	add_child(warm)
 	var zwarm = null
 	if director != null:   # and every zombie kind with its body, before the first wave
 		zwarm = ZombieWarmup.new()
 		zwarm.name = "ZombieWarmup"
 		zwarm.skin_id = director.skin_for_map()
+		zwarm.all_at_once = not _staged
 		add_child(zwarm)
 	# (each frees itself a few frames after it is done)
-	while (is_instance_valid(warm) and not warm.done) or (is_instance_valid(zwarm) and not zwarm.done):
-		if _staged and is_instance_valid(warm):
+	while _staged and ((is_instance_valid(warm) and not warm.done) or (is_instance_valid(zwarm) and not zwarm.done)):
+		if is_instance_valid(warm):
 			Transition.stage(get_tree(), lerpf(95.0, 99.0, warm.progress), "WARMING UP WEAPONS")
 		await get_tree().process_frame
-	process_mode = Node.PROCESS_MODE_INHERIT
-	get_tree().multiplayer_poll = true
 	Transition.reveal(get_tree())   # fade in once the new map has rendered
 
 

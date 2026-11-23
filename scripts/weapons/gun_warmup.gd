@@ -23,6 +23,8 @@ var _models: Array[Node3D] = []
 var done := false
 ## Share of the models built so far, 0..1.
 var progress := 0.0
+## Build every model in the first frame (no loading screen to keep moving: a scene opened directly).
+var all_at_once := false
 
 
 func _ready() -> void:
@@ -45,7 +47,7 @@ func _ready() -> void:
 		while next < jobs.size():
 			_add(jobs[next][0], jobs[next][1])
 			next += 1
-			if Time.get_ticks_usec() - t0 > BUDGET_MS * 1000.0:
+			if not all_at_once and Time.get_ticks_usec() - t0 > BUDGET_MS * 1000.0:
 				break
 		progress = float(next) / jobs.size()
 		_follow_camera()

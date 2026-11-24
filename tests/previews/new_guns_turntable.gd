@@ -1,6 +1,7 @@
 extends SceneTree
 ## Movie-writer clip: each gun on a slow turntable in a studio, SECONDS each, then the next.
-## An id written as id+kit is fitted with what it accepts of the side-rail laser, the angled foregrip and a suppressor.
+## An id written as id+kit is fitted with what it accepts of the side-rail laser, the angled foregrip and a suppressor;
+## id+vfg with the side-rail laser and the vertical foregrip.
 ## Prints "GUN <id> <first frame>" so captions can be timed.
 ##   godot --path . --fixed-fps 60 --resolution 1280x720 --write-movie guns.avi -s res://tests/previews/new_guns_turntable.gd -- <ids...>
 const Weapon = preload("res://scripts/weapons/weapon.gd")
@@ -44,10 +45,12 @@ func run() -> void:
 		scene.add_child(pivot)
 		var w = Weapon.new()
 		pivot.add_child(w)
-		var gid := String(id).trim_suffix("+kit")
+		var gid := String(id).trim_suffix("+kit").trim_suffix("+vfg")
 		var att := {}
 		if String(id).ends_with("+kit"):
 			att = Data.sanitize(gid, {"side": "laser", "underbarrel": "afg", "muzzle": "suppressor"})
+		elif String(id).ends_with("+vfg"):
+			att = Data.sanitize(gid, {"side": "laser", "underbarrel": "vfg"})
 		w.setup(gid, att)
 		w.set_process(false)
 		# the laser beam is aimed every frame by the weapon's own update, which is off here

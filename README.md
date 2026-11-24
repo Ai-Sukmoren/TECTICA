@@ -13,9 +13,19 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.50
+## 🆕 What's new in v1.51
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.50.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.51.0-beta)
+
+- **No first-wave hitches:** every first-wave infected body is built under the loading screen (worst arrival frame 42 -> 15 ms in wave 1).
+- **Smoother loading screen:** weapon and infected warm-ups are built a few per frame instead of in one freeze.
+- **Multiplayer:** a teammate's gun now points where they aim, up and down, including hip fire.
+- **Zombie Survival opening:** pick the mode on one loading screen, arcade map marker, controller prompts, no ammo refill when full, controls shown earlier.
+- **Range:** vault hints, and a clean handoff out of the wave shop.
+
+## What came in v1.50
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.50.0-beta)
 
 - **Big infected fights run much faster:** 28 infected 118 -> 185 fps; 45 infected no longer drop to 15 fps (now a steady 60 with the cap on).
 - **New physics engine (Jolt):** movement and hits feel the same, at less than half the cost per infected.

@@ -366,12 +366,13 @@ func _place_torch() -> void:
 	if _torch_model != null:
 		_torch_model.visible = not w.is_melee()
 	if w.is_melee():
-		_torch.position = Vector3(0.0, -0.035, 0.03)   # knives: a small light by the grip
+		_torch.transform = Transform3D(Basis(), Vector3(0.0, -0.035, 0.03))   # knives: a small light by the grip
 		if flashlight:
 			flashlight.position = Vector3(0, -0.02, -1.05)
 		return
-	var mount := _torch_mount_for(w)
-	_torch.position = mount
+	var mount_t := _torch_mount_for(w)
+	var mount := mount_t.origin
+	_torch.transform = mount_t
 	_torch.scale = Vector3.ONE * (PISTOL_LIGHT if w.is_pistol() else 1.0)
 	if _torch_model != null:
 		place_torch_model(_torch_model)
@@ -381,11 +382,14 @@ func _place_torch() -> void:
 		flashlight.position = Vector3(mount.x, mount.y, minf(mz, mount.z - 0.081) - 0.12)
 
 
-## The X300U clamps up under the gun, upright, its lens where the built-in housing's lens was. Upright on every
-## gun: its rear switch sticks out on one side only, so turned on its side it hung down and the light looked tilted.
+## The X300U clamps up under the gun, upright, its lens where the built-in housing's lens was. The model file has
+## the light turned 20 degrees sideways (measured along its body), so it is turned back here to lie straight along
+## the bore, lens centred on the housing's axis.
+const TORCH_MODEL_YAW := 19.95   # degrees
+
 static func place_torch_model(model: Node3D) -> void:
-	model.rotation = Vector3.ZERO
-	model.position = Vector3(0.0136, 0.017 + 0.0014, -0.081 + 0.0466)   # body centred (the switch paddle sits to one side)
+	model.rotation = Vector3(0.0, deg_to_rad(TORCH_MODEL_YAW), 0.0)
+	model.position = Vector3(0.0128, 0.017 + 0.0014, -0.081 + 0.0407)   # lens centred, its front 0.081 ahead
 
 
 ## Pistol lights are compact: the housing is drawn at this scale.
@@ -396,7 +400,7 @@ const PISTOL_LIGHT := 0.72
 ## session: every map load builds new guns, and measuring each one again cost about half a second.
 static var _torch_mounts := {}
 
-func _torch_mount_for(w: Weapon) -> Vector3:
+func _torch_mount_for(w: Weapon) -> Transform3D:
 	var key := "%s|%s|%s" % [w.id, str(w.attachments), w.charm]
 	if not _torch_mounts.has(key):
 		_torch_mounts[key] = _torch_mount(w)
@@ -404,8 +408,10 @@ func _torch_mount_for(w: Weapon) -> Vector3:
 
 
 ## Where the light housing goes on this gun, in weapon space: under the front of a long gun's handguard, ahead of
-## the support hand (lens behind the muzzle), or tucked under a pistol's frame ahead of the trigger guard.
-func _torch_mount(w: Weapon) -> Vector3:
+## the support hand (lens behind the muzzle), or tucked under a pistol's frame ahead of the trigger guard. A gun
+## with no handguard ahead of the hand (P90, MGP7: the hand wraps the front) carries it on the right side rail,
+## where the player can see it, rolled so its clamp faces the gun.
+func _torch_mount(w: Weapon) -> Transform3D:
 	const R := 0.017      # housing radius
 	const HALF := 0.055   # half the housing length; the lens is 0.081 ahead of its centre
 	var inv := w.global_transform.affine_inverse()
@@ -453,8 +459,8 @@ func _torch_mount(w: Weapon) -> Vector3:
 		var cz := muz.z + (0.081 + 0.008) * PISTOL_LIGHT
 		var lo: float = seat.call(cz - HALF * PISTOL_LIGHT + 0.004, cz)
 		if lo == -INF or lo == INF:
-			return Vector3(0.0, -0.05, -0.17)
-		return Vector3(0.0, lo - R * PISTOL_LIGHT, cz)
+			return Transform3D(Basis(), Vector3(0.0, -0.05, -0.17))
+		return Transform3D(Basis(), Vector3(0.0, lo - R * PISTOL_LIGHT, cz))
 	var sup: Vector3 = inv * w.support.global_position if w.support else muz * 0.6
 	# under the handguard, parallel to the bore, its whole length against the gun: it starts just ahead of the
 	# support hand's fingers and slides forward while the handguard is still there (a bare barrel or a muzzle
@@ -473,9 +479,22 @@ func _torch_mount(w: Weapon) -> Vector3:
 	while carries.call(cz2 - 0.01) and cz2 - 0.01 - 0.081 > muz.z + 0.01:
 		cz2 -= 0.01
 	var lo2: float = seat.call(cz2 - HALF + 0.005, cz2 + HALF - 0.005)
-	if lo2 == -INF or lo2 == INF:
-		return Vector3(0.0, muz.y - 0.05, -0.4)
-	return Vector3(0.0, lo2 - R - 0.0014, cz2)
+	if lo2 != -INF and lo2 != INF:
+		return Transform3D(Basis(), Vector3(0.0, lo2 - R - 0.0014, cz2))
+	# side rail: at bore height, lens just behind the muzzle, against the outermost surface along its length
+	var cz3 := muz.z + 0.081 + 0.008
+	var cy := muz.y - 0.006
+	var side := -INF
+	for t in range(0, verts.size() - 2, 3):
+		var z := cz3 - HALF
+		while z <= cz3 + HALF:
+			var hit = Geometry3D.ray_intersects_triangle(Vector3(0.5, cy, z), Vector3.LEFT, verts[t], verts[t + 1], verts[t + 2])
+			if hit != null:
+				side = maxf(side, hit.x)
+			z += 0.02
+	if side == -INF:
+		return Transform3D(Basis(), Vector3(0.0, muz.y - 0.05, muz.z + 0.12))
+	return Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(side + R + 0.0014, cy, cz3))
 
 
 func _update_torch_lens() -> void:

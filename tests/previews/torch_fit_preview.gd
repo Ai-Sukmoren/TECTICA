@@ -64,8 +64,9 @@ func run() -> void:
 		rig.weapon_anchor.add_child(torch)
 		var model: Node3D = glb.instantiate()
 		torch.add_child(model)
-		var m: Vector3 = mount._torch_mount(w)
-		torch.position = m
+		var mt: Transform3D = mount._torch_mount(w)
+		var m: Vector3 = mt.origin
+		torch.transform = mt
 		torch.scale = Vector3.ONE * (Player.PISTOL_LIGHT if w.is_pistol() else 1.0)
 		Player.place_torch_model(model)
 		var t: Transform3D = w.global_transform

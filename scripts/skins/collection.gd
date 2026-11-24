@@ -44,6 +44,12 @@ static func ensure() -> void:
 		owned = cfg.get_value("armory", "owned", {})
 		equipped = cfg.get_value("armory", "equipped", {})
 		equipped_parts = cfg.get_value("armory", "equipped_parts", {})
+		if int(cfg.get_value("armory", "part_slots_v", 1)) < 2:
+			# The underbarrel finish used to paint both the laser and the launcher.
+			for id in equipped_parts:
+				var parts = equipped_parts[id]
+				if parts is Dictionary and parts.has("underbarrel") and not parts.has("side"):
+						parts.side = parts.underbarrel
 		packs_opened = int(cfg.get_value("armory", "packs_opened", 0))
 		stickers = cfg.get_value("armory", "stickers", {})
 		if int(cfg.get_value("armory", "stickers_v", 1)) < 3:
@@ -59,6 +65,7 @@ static func save() -> void:
 	cfg.set_value("armory", "owned", owned)
 	cfg.set_value("armory", "equipped", equipped)
 	cfg.set_value("armory", "equipped_parts", equipped_parts)
+	cfg.set_value("armory", "part_slots_v", 2)
 	cfg.set_value("armory", "packs_opened", packs_opened)
 	cfg.set_value("armory", "stickers", stickers)
 	cfg.set_value("armory", "stickers_v", 3)

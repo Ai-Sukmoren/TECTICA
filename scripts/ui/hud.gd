@@ -1023,7 +1023,7 @@ func _draw_overlay(c: Control) -> void:
 				c.draw_rect(Rect2(x, 96, pip_w - 2.0, 6), TEXT if i < w.ammo else Color(DIM, 0.25))
 		var mode := ("AUTO" if bool(w.stats.auto) else ("BOLT" if w.stats.cycle == "bolt" else ("PUMP" if w.stats.cycle == "pump" else ("LEVER" if w.stats.cycle == "lever" else "SEMI"))))
 		var att: Dictionary = w.attachments
-		for slot in ["optic", "muzzle", "underbarrel"]:
+		for slot in ["optic", "muzzle", "side", "underbarrel"]:
 			if att.get(slot, "none") not in ["none", "iron", "integral"]:
 				mode += "  ·  " + String(WData.ATTACHMENTS[slot][att[slot]].name).to_upper()
 		if bool(w.stats.suppressed) and att.get("muzzle") != "suppressor":

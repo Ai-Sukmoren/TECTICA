@@ -45,13 +45,17 @@ func run() -> void:
 			var ob := _box(of)
 			var base_y := mount.position.y + ob.position.y
 			var top := Model._top_under(Model.Probe.new(Model._faces_of(r, mount)), mount.position.z + ob.position.z, mount.position.z + ob.end.z)
-			check(absf(base_y - top) < 0.003, "%s %s sits on the rail (gap %+.1f mm)" % [id, o, (base_y - top) * 1000.0])
+			# a gun's own sight from its model (the MCX's EOTech) clamps round the rail: its jaws reach down the
+			# rail's sides, so its lowest point may sit up to 12 mm below the rail's top, never above it
+			var factory := mount.find_children("*", "Node3D", true, false).any(func(n): return n.has_meta("factory_part"))
+			var ok := (base_y - top) < 0.003 and (base_y - top) > -0.012 if factory else absf(base_y - top) < 0.003
+			check(ok, "%s %s sits on the rail (gap %+.1f mm)" % [id, o, (base_y - top) * 1000.0])
 			r.free()
 		# the add-on rail clears everything under the gun
 		var with_rail: bool = "rail" in w.options.rail
-		var takes_under: bool = w.options.underbarrel.size() > 1
-		if takes_under:
-			var r2: Node3D = Model.build(model, Data.sanitize(id, {"underbarrel": "laser"})).root
+		if with_rail or w.options.underbarrel.size() > 1:
+			var bottom: String = w.options.underbarrel[-1]
+			var r2: Node3D = Model.build(model, Data.sanitize(id, {"rail": "rail", "underbarrel": bottom})).root
 			var rail: Node3D = r2.find_child("Att_rail", true, false)
 			check((rail != null) == with_rail, "%s %s add-on rail" % [id, "gets the" if with_rail else "keeps its own rail: no"])
 			if rail != null:

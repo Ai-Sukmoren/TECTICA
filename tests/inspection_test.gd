@@ -23,7 +23,7 @@ func _run() -> void:
 	rig.build(Palettes.player())
 	rig.set_process(false)
 	var cases := 0
-	for id in Data.PRIMARIES + Data.SECONDARIES:
+	for id in Data.PRIMARIES + Data.SMGS + Data.SECONDARIES:
 		var weapon = Weapon.new()
 		weapon.setup(id)
 		if weapon.grip == null or weapon.support == null:

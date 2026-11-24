@@ -13,9 +13,19 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.51
+## 🆕 What's new in v1.52
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.51.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.0-beta)
+
+- **Seven new guns:** AUG A4, CZ Bren 2, SCAR-SC, Q Honey Badger, SIG MCX Spear, HK MP7 A1 and Magpul PDR-C, in the loadout and the Zombie Survival shop.
+- **Side-rail laser:** the laser clamps to the side rail in its own slot, so it works together with an underbarrel part; saved lasers move over automatically.
+- **Two foregrips:** angled and vertical, fitted to each gun's handguard, less recoil, take any finish.
+- **Laser fix:** a holstered gun no longer draws a second laser beam.
+- **Weapon light** lies straight on every gun and sits on the side rail of the P90 and MGP7.
+
+## What came in v1.51
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.51.0-beta)
 
 - **No first-wave hitches:** every first-wave infected body is built under the loading screen (worst arrival frame 42 -> 15 ms in wave 1).
 - **Smoother loading screen:** weapon and infected warm-ups are built a few per frame instead of in one freeze.
@@ -647,15 +657,17 @@ multi-computer multiplayer session still needs manual playtesting.
 - Characters: Quaternius — Ultimate Modular Characters / Universal Base Characters (CC0).
 - Gunshots: *The Free Firearm Sound Library*, Still North Media (CC0); reload foley: *Gun reload sounds*, Joaken (CC0).
   Both via OpenGameArt; details in `assets/audio/sfx/CREDITS.md`.
-- MGP7 SMG, ZC57 pistol, M67 grenade, sandbags, fuel barrels, ammo cans, med kits, radios and other props:
+- MGP7 SMG, ZC57 pistol, vertical foregrip, M67 grenade, sandbags, fuel barrels, ammo cans, med kits, radios and other props:
   **Alstra Infinite** — PPS Shooter Essentials (alstrainfinite.itch.io/pps-shooter-essentials),
   used under the Alstra Infinite license (alstrainfinite.com/fal).
 
 - **Licence not yet verified** — these came as Sketchfab-style downloads without a licence file. Check each model's
   page and add its author and licence here before a public release (all are kept outside the repository):
-  - Guns: low-poly HK33, AUG A1, UAR-10, AS VAL, Gepard SMG, Glock 17 Gen 6, B&T VP9, Marlin 1895, FN P90, FN SCAR-H, L96A1, Mosin-Nagant 91/30, Remington 700.
+  - Guns: low-poly HK33, AUG A1, UAR-10, AS VAL, Gepard SMG, Glock 17 Gen 6, B&T VP9, Marlin 1895, FN P90, FN SCAR-H, L96A1, Mosin-Nagant 91/30, Remington 700,
+    AUG A4, CZ Bren 2, HK MP7 A1, Magpul PDR-C, Q Honey Badger, FN SCAR-SC, SIG MCX Spear Assaulter.
   - Attachments: low-poly collimator set (Aimpoint Comp M4, EOTech EXPS3, Holosun 403R, Holosun 510C, Vortex AMG UH-1),
-    AN/PEQ-2, muzzle device set, AK hexagon handguard (hex tube and rail), GP-25 launcher and VOG-25 round, SureFire X300U.
+    AN/PEQ-2, muzzle device set, AK hexagon handguard (hex tube and rail), GP-25 launcher and VOG-25 round, SureFire X300U,
+    iron sight set (Magpul MBUS 3 used on the PDR-C and MCX), kitbash hex-cut angled foregrip (AFG).
   - Knives: karambit, PS1-style butterfly knife.
   - First-person arms: Low Poly Arm Rig (rigged arms, `assets/thirdparty/fps_arms/`).
   - Vehicles and props: Panzer I Ausf. A, Toyota Corolla E80, Tequila Zombie Café, "Everything Must Go" sign, low-poly UFO scene,

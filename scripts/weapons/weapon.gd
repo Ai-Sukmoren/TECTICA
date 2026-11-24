@@ -30,6 +30,7 @@ var cycle_pending := 0.0
 var skin := ""
 ## attachment slot -> its own finish or Skins.FACTORY (see apply_skin)
 var part_skins: Dictionary = {}
+var _legacy_laser := false
 var _model_root: Node3D
 var _base_skin_overrides: Dictionary = {}
 var _skin_base_saved := false
@@ -77,6 +78,7 @@ var _beam_dot: MeshInstance3D
 func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) -> void:
 	id = weapon_id
 	name = weapon_id
+	_legacy_laser = not att.has("side") and att.get("underbarrel") == "laser"
 	stats = Data.compute(weapon_id, att)
 	attachments = stats.attachments
 	ammo = int(stats.mag)
@@ -126,6 +128,8 @@ func apply_skin(finish: String, parts: Dictionary = {}) -> void:
 	if finish != "" and not Skins.FINISHES.has(finish):
 		finish = ""
 	parts = Skins.sanitize_parts(parts)
+	if _legacy_laser and parts.has("underbarrel") and not parts.has("side"):
+		parts.side = parts.underbarrel
 	if finish == skin and parts == part_skins:
 		return
 	if not _skin_base_saved:
@@ -364,7 +368,15 @@ func _process(delta: float) -> void:
 	bloom = move_toward(bloom, 0.0, float(stats.bloom_recover) * delta)
 	_update_blowback(delta)
 	if laser != null and is_inside_tree():
-		_update_laser()
+		# only the gun in hand shines its laser: a holstered one carried on the back drew a second beam
+		# pointing wherever the back faced
+		var body := _owner_body()
+		var held: bool = body == null or not body.has_method("current_weapon") or body.current_weapon() == self
+		_beam.visible = held
+		if held:
+			_update_laser()
+		else:
+			_beam_dot.visible = false
 
 
 ## Starts the slide / bolt stroke for a shot (semi and full auto; manual
@@ -600,7 +612,7 @@ func _build_laser() -> void:
 
 func _update_laser() -> void:
 	var from := laser.global_position
-	var dir := -laser.global_transform.basis.z
+	var dir := (-laser.global_transform.basis.z).normalized()   # the laser housing is drawn scaled down
 	var to := from + dir * 40.0
 	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.SHOTS)
 	var owner_body := _owner_body()

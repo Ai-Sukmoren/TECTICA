@@ -142,10 +142,9 @@ static func cycle_attachment(slot: String, att_slot: String, dir: int) -> void:
 	e.att[att_slot] = opts[posmod(idx + dir, opts.size())]
 	# underbarrel parts sit on the rail: taking the rail off takes them off too,
 	# and fitting one puts the rail on
-	if att_slot == "rail" and e.att.rail == "none":
+	if att_slot == "rail" and "rail" in opts and e.att.rail == "none":
 		e.att.underbarrel = "none"
-	elif att_slot == "underbarrel" and e.att.underbarrel != "none":
-		e.att.rail = "rail"
+	e.att = Data.sanitize(e.id, e.att)
 
 
 static func reset_class() -> void:

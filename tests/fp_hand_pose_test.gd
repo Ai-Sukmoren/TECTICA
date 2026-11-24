@@ -82,8 +82,13 @@ func run() -> void:
 				variants.append({"handguard": "hex", "underbarrel": "gp25"})
 		if "rail" in Data.WEAPONS[id].options.rail:
 			variants.append({"rail": "rail"})
-		if "laser" in Data.WEAPONS[id].options.underbarrel:
-			variants.append({"underbarrel": "laser"})
+		if "laser" in Data.WEAPONS[id].options.side:
+			variants.append({"side": "laser"})
+		if "afg" in Data.WEAPONS[id].options.underbarrel:
+			variants.append({"underbarrel": "afg"})
+			variants.append({"side": "laser", "underbarrel": "afg"})
+		if "vfg" in Data.WEAPONS[id].options.underbarrel:
+			variants.append({"underbarrel": "vfg"})
 		for att in variants:
 			var w = Weapon.new()
 			w.setup(String(id), att)

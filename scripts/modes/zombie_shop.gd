@@ -24,12 +24,13 @@ const MAX_UPGRADE := 3
 ## Rifles for sale (the primary slot), cheapest first.
 const GUNS := [
 	["marlin", 1500], ["mosin", 1600], ["hk33", 1700], ["aug_a1", 1900],
-	["as_val", 2000], ["scar_h", 2200], ["m700", 2300], ["uar10", 2400], ["l96a1", 2600],
+	["bren_2", 1900], ["aug_a4", 1950], ["as_val", 2000], ["scar_sc", 2050], ["honey_badger", 2100],
+	["scar_h", 2200], ["mcx_spear", 2250], ["m700", 2300], ["uar10", 2400], ["l96a1", 2600],
 ]
 ## Attachment prices by slot (the rail comes free with an underbarrel part).
-const ATT_PRICES := {"optic": 600, "muzzle": 500, "handguard": 350, "underbarrel": 550, "magazine": 450, "stock": 400}
+const ATT_PRICES := {"optic": 600, "muzzle": 500, "handguard": 350, "side": 550, "underbarrel": 550, "magazine": 450, "stock": 400}
 ## SMGs for sale (their own slot, carried alongside the rifle).
-const SMG_GUNS := [["mgp7", 1100], ["gepard", 1300], ["p90", 1500]]
+const SMG_GUNS := [["mgp7", 1100], ["mp7_a1", 1250], ["gepard", 1300], ["pdr_c", 1450], ["p90", 1500]]
 ## id -> [name, price, description]
 const PERKS := {
 	"tough": ["JUGGERNAUT VEST", 2500, "+50 MAX HEALTH, FASTER REGEN"],
@@ -215,6 +216,10 @@ func _attachment_rows(w) -> Array:
 			continue
 		for opt in st.options[slot]:
 			if opt == st.defaults[slot]:
+				if slot in ["side", "underbarrel"] and on[slot] != opt:
+					var name: String = Data.ATTACHMENTS[slot][on[slot]].name
+					out.append(_row("att_%s:%s:%s" % [wid, slot, opt], "ATTACHMENTS", "REMOVE " + name.to_upper(),
+							"RESTORE STANDARD FIT", 0, true))
 				continue
 			var fitted := String(on[slot]) == String(opt)
 			var label := "%s  ·  %s" % [String(Data.SLOT_NAMES[slot]), String(Data.ATTACHMENTS[slot][opt].name).to_upper()]
@@ -235,6 +240,8 @@ static func _roman(n: int) -> String:
 
 ## Buys one row for operator p. Returns a feed line ("" = nothing happened).
 func buy(id: String, p) -> String:
+	if id.begins_with("att_") and id.ends_with(":underbarrel:laser"):
+		id = id.trim_suffix(":underbarrel:laser") + ":side:laser"
 	var row: Dictionary = {}
 	for r in items(p):
 		if r.id == id:

@@ -39,7 +39,7 @@ func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var output := args[0] if args.size() else OS.get_user_data_dir().path_join("weapon-review")
 	DirAccess.make_dir_recursive_absolute(output)
-	for id in Data.PRIMARIES + Data.SECONDARIES:
+	for id in Data.PRIMARIES + Data.SMGS + Data.SECONDARIES:
 		for variant in ["factory", "custom"]:
 			var att: Dictionary = Data.WEAPONS[id].defaults.duplicate()
 			if variant == "custom":

@@ -88,7 +88,7 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 		"marlin":
 			b = _marlin(root)
 		_:
-			b = _low_poly(root, model, String(att.get("handguard", "standard")))
+			b = _low_poly(root, model, att)
 
 	var parts := {"root": root, "blowback": float(b.get("blowback", 0.022 if b.get("pistol", false) else 0.045)), "grip": b.grip, "support": b.support, "charge": b.charge, "eject": b.eject,
 			"bolt_action": b.get("bolt_action", []),
@@ -106,13 +106,21 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 	_tag_new(root, seen, "magazine")
 	# muzzle device
 	var mz := String(att.get("muzzle", "none"))
-	if mz == "suppressor" and b.has("glb_suppressor") and _glb_suppressor(b.muzzle_at, String(b.glb_suppressor)):
+	if mz == "suppressor" and b.has("factory_suppressor"):
+		var silencer := _factory_part(root, "Att_suppressor", b.factory_suppressor)
+		var tip: Vector3 = b.muzzle_at.position
+		tip.z = _holder_box(silencer).position.z
+		parts.muzzle = _marker(root, "Muzzle", tip)
+	elif mz == "suppressor" and b.has("glb_suppressor") and _glb_suppressor(b.muzzle_at, String(b.glb_suppressor)):
 		parts.muzzle = _marker(b.muzzle_at, "Muzzle", Vector3(0, 0, -float(b.glb_suppressor_len)))
 	else:
 		parts.muzzle = _muzzle(b.muzzle_at, mz, b.get("pistol", false))
 	_tag_new(root, seen, "muzzle")
 	# underbarrel
 	var ub_kind := String(att.get("underbarrel", "none"))
+	var side_kind := String(att.get("side", "laser" if ub_kind == "laser" else "none"))
+	if ub_kind == "laser":
+		ub_kind = "none"
 	var ub_at: Node3D = b.under_at
 	var small := float(LP_PISTOL_UNDER_SCALE if b.get("pistol", false) else 1.0)
 	# the rail slot: an adapter under the handguard (or frame) that underbarrel parts clamp to
@@ -122,13 +130,16 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 			rail.scale = Vector3.ONE * small
 			var moved := _fit_rail(root, ub_at, rail)
 			ub_at = _marker(ub_at, "RailFace", Vector3(0, -LP_RAIL_DROP * small, 0) + moved)
+			if ub_kind == "afg":
+				# Follow the adapter's actual centre and tilt after fitting a sloped handguard.
+				ub_at.transform = Transform3D(rail.basis.orthonormalized(), rail.position) * Transform3D(Basis.IDENTITY, Vector3.DOWN * LP_RAIL_DROP * small)
 	_tag_new(root, seen, "rail")
-	var ub := _underbarrel(ub_at, ub_kind, small)
+	var ub := _underbarrel(ub_at, ub_kind)
+	if ub_kind in ["afg", "vfg"] and ub.has("housing"):
+		_seat_grip(root, ub.housing, ub_kind, "seat|%s|%s|%s" % [model, att.get("handguard", ""), ub_kind])
 	_tag_new(root, seen, "underbarrel")
 	if ub.has("support"):
 		parts.support = ub.support
-	if ub.has("laser"):
-		parts.laser = ub.laser
 	parts.launcher = ub.get("launcher")
 	var holds := _palm_sockets(root, b, model, att, ub_at, ub.get("housing"))
 	parts.palm_grip = _marker(root, "PalmGrip", Vector3.ZERO)
@@ -139,6 +150,9 @@ static func build(model: String, att: Dictionary) -> Dictionary:
 	# optic
 	parts.sight = _optic(root, b, String(att.get("optic", "iron")))
 	_tag_new(root, seen, "optic")
+	if side_kind == "laser":
+		parts.laser = _side_laser(root, b, model, String(att.get("handguard", "standard")))
+		_tag_new(root, seen, "side")
 	_signature_details(root, model, b)
 	_tag_tree(parts.mag, "magazine")   # details added on the magazine ride with it
 	return parts
@@ -582,6 +596,36 @@ const LP_GUNS := {
 	"vp9": {"length": 0.27, "pistol": true, "grip": Vector2(-0.823, -0.33), "mag": Vector2(-0.77, -0.15),
 			"muzzle": Vector2(1.424, 0.0), "eject": Vector2(-0.6, 0.1), "charge": Vector2(-1.35, 0.0), "under": Vector2(0.3, -0.15),
 			"sight": Vector2(-1.053, 0.19)},
+	# the v1.52 additions (assets-source/_tools/gun_specs/<id>.json). Points measured on gridded side renders of the
+	# sources; "mag" is the top of the magazine in its well (the extended mag stretches down from it).
+	# AUG A3/A4: the A1's receiver, so grip, mag, port and charging handle match it; railed handguard, flip-up irons
+	"aug_a4": {"length": 0.7, "grip": Vector2(-0.767, -0.304), "support": Vector2(1.7, -0.05), "mag": Vector2(-1.81, -0.1),
+			"muzzle": Vector2(3.06, 0.215), "eject": Vector2(-1.5, 0.2), "charge": Vector2(0.95, 0.3), "under": Vector2(2.2, -0.1),
+			"sight": Vector2(-1.18, 1.0), "rail": Vector2(-0.4, 0.63), "relief": 0.1},
+	"bren_2": {"length": 0.76, "grip": Vector2(-1.38, -0.75), "support": Vector2(1.35, -0.12), "mag": Vector2(-0.14, -0.22),
+			"muzzle": Vector2(3.65, 0.02), "eject": Vector2(-0.6, 0.15), "charge": Vector2(0.6, 0.35), "under": Vector2(1.8, -0.2),
+			"sight": Vector2(-1.5, 0.89), "rail": Vector2(-0.6, 0.5)},
+	# MP7A1: the magazine sits in the pistol grip; the support hand takes the folded foregrip under the front.
+	# Its suppressor is the glb's Suppressor part, already seated over the flash hider.
+	"mp7_a1": {"length": 0.42, "grip": Vector2(-0.56, -0.22), "support": Vector2(0.9, -0.05), "mag": Vector2(-0.5, 0.04),
+			"muzzle": Vector2(2.08, 0.305), "eject": Vector2(0.1, 0.35), "charge": Vector2(-1.85, 0.66), "under": Vector2(1.0, -0.16),
+			"sight": Vector2(-1.405, 0.95), "rail": Vector2(-0.3, 0.8), "relief": 0.2},
+	# PDR-C: bullpup, the support hand on its built-in vertical front grip; irons are the glb's Iron part (MBUS 3)
+	"pdr_c": {"length": 0.46, "grip": Vector2(0.58, -0.47), "support": Vector2(1.82, -0.4), "mag": Vector2(-0.6, -0.03),
+			"muzzle": Vector2(2.28, 0.265), "eject": Vector2(0.5, 0.3), "charge": Vector2(1.7, 0.22), "under": Vector2(1.6, 0.0),
+			"sight": Vector2(-0.05, 0.94), "rail": Vector2(0.8, 0.615), "relief": 0.1},
+	# Honey Badger: integral suppressor (the muzzle is its front cap)
+	"honey_badger": {"length": 0.81, "grip": Vector2(-1.62, -0.62), "support": Vector2(1.3, 0.0), "mag": Vector2(-0.37, -0.02),
+			"muzzle": Vector2(3.71, 0.22), "eject": Vector2(-0.5, 0.3), "charge": Vector2(-1.8, 0.45), "under": Vector2(2.2, 0.0),
+			"sight": Vector2(-1.47, 0.9), "rail": Vector2(-0.6, 0.54)},
+	# SCAR-SC: the SCAR-H's receiver and sights on a short barrel and handguard
+	"scar_sc": {"length": 0.52, "grip": Vector2(-1.78, -0.7), "support": Vector2(0.6, -0.05), "mag": Vector2(-0.43, -0.04),
+			"muzzle": Vector2(2.03, 0.23), "eject": Vector2(-0.3, 0.45), "charge": Vector2(0.3, 0.3), "under": Vector2(0.85, -0.1),
+			"sight": Vector2(-1.88, 1.12), "rail": Vector2(-0.6, 0.7)},
+	# MCX Spear: the EOTech XPS2 is the glb's Optic part; irons are its Iron part (MBUS 3 behind and ahead of it)
+	"mcx_spear": {"length": 0.81, "grip": Vector2(-1.1, -0.62), "support": Vector2(1.6, 0.0), "mag": Vector2(0.15, -0.02),
+			"muzzle": Vector2(3.78, 0.245), "eject": Vector2(0.2, 0.3), "charge": Vector2(-1.65, 0.65), "under": Vector2(2.4, 0.0),
+			"sight": Vector2(-1.2, 1.06), "rail": Vector2(0.66, 0.74)},
 }
 
 
@@ -590,17 +634,24 @@ static func _lp(v: Vector2, g: Vector2, side: float = 0.0) -> Vector3:
 	return Vector3(side, (v.y - g.y) * 0.1, -(v.x - g.x) * 0.1)
 
 
-static func _low_poly(r: Node3D, model: String, handguard: String = "standard") -> Dictionary:
+static func _low_poly(r: Node3D, model: String, att: Dictionary = {}) -> Dictionary:
 	var spec: Dictionary = LP_GUNS.get(model, {})
+	var handguard := String(att.get("handguard", "standard"))
 	var pistol := bool(spec.get("pistol", false))
 	var path := LOW_POLY + model + ".glb"
 	if spec.is_empty() or not ResourceLoader.exists(path):
 		return _placeholder(r, float(spec.get("length", 0.8)), pistol)
 	var list := _glb_list(path)
+	var factory_parts := {}
 	var mag: Array = []
 	var bolt: Node3D = null
 	for e in list:
 		var part := String(e[0])
+		if part.begins_with("Optic") or part.begins_with("Suppressor"):
+			factory_parts["factory_optic" if part.begins_with("Optic") else "factory_suppressor"] = e
+			continue
+		if part.begins_with("Iron") and att.get("optic", "iron") != "iron":
+			continue
 		if part.begins_with("Mag"):
 			mag = [e[1], e[2]]
 			continue
@@ -660,7 +711,21 @@ static func _low_poly(r: Node3D, model: String, handguard: String = "standard") 
 		out.mini = true
 	else:
 		out.support = _marker(r, "Support", _lp(spec.support, g, -0.005), Vector3(0, 0, -0.5))
+	out.merge(factory_parts)
 	return out
+
+
+## Optional parts exported in the same grip-centred coordinates as the body.
+static func _factory_part(root: Node3D, part_name: String, entry: Array) -> Node3D:
+	var holder := _marker(root, part_name, Vector3.ZERO)
+	holder.set_meta("factory_part", true)   # drawn where the gun's own model put it (tests know it clamps on)
+	var mi := MeshInstance3D.new()
+	mi.mesh = entry[1]
+	mi.transform = entry[2]
+	mi.set_meta("pack4", true)
+	_clear_glass(mi)
+	holder.add_child(mi)
+	return holder
 
 
 ## Turn-bolt rifles: the bolt pivot moves onto the bolt body's own axis (the
@@ -784,13 +849,17 @@ const LP_ATT := "res://assets/thirdparty/low_poly_attachments/"
 ## base, and how far behind the mount centre the rear of the window sits.
 const LP_OPTICS := {"reddot": [0.0561, 0.062, 0.16], "holo": [0.0561, 0.024, 0.24],
 		"micro_dot": [0.045, 0.03, 0.18], "reflex": [0.038, 0.035, 0.18], "uh1_holo": [0.042, 0.04, 0.22]}
-## The PEQ-2 is drawn at this scale (full size swamps slim handguards like the
-## AS VAL's), and where its beam leaves it, from its mount (it hangs under the handguard).
-const LP_LASER_SCALE := 0.6
+## The PEQ asset's origin is on its inward-facing clamp. The smaller front aperture
+## and the angled grip's finger contact were measured in the converted meshes.
+const PEQ_EMITTER := Vector3(0.01703, -0.0177, -0.0285)
+const AFG_CONTACT := Vector3(0, -0.027, 0)
+## The angled foregrip is drawn at this share of its 12 cm: full length overran the short handguards (SCAR-SC,
+## SCAR-H) onto the barrel. Where the vertical grip's palm sits on it (its middle, 4 cm below the rail).
+const AFG_LENGTH := 0.8
+const VFG_CONTACT := Vector3(0, -0.04, 0)
 ## The rail adapter's depth: an underbarrel part hangs this far below the gun.
 const LP_RAIL_DROP := 0.0126
-const LP_LASER_AT := Vector3(0, -0.053, -0.051) * LP_LASER_SCALE
-## Rail and laser are drawn smaller still on a pistol's short dust cover.
+## Compact bottom adapter for pistols.
 const LP_PISTOL_UNDER_SCALE := 0.6
 
 
@@ -881,18 +950,102 @@ static func _muzzle(at: Node3D, kind: String, pistol: bool) -> Node3D:
 	return _marker(at, "Muzzle", Vector3.ZERO)
 
 
-static func _underbarrel(at: Node3D, kind: String, small: float = 1.0) -> Dictionary:
+static func _underbarrel(at: Node3D, kind: String) -> Dictionary:
 	if kind == "gp25":
 		var g := _att_model(at, "gp25")
 		if g != null:
 			return {"launcher": _marker(at, "Launcher", _bore_front(g)), "housing": g}
 		return {"launcher": _marker(at, "Launcher", Vector3(0, -0.045, -0.16))}
-	if kind == "laser":
-		var m := _att_model(at, "laser")
-		if m != null:
-			m.scale = Vector3.ONE * LP_LASER_SCALE * small
-			return {"laser": _marker(at, "Laser", LP_LASER_AT * small), "housing": m}
+	if kind == "afg":
+		var grip := _att_model(at, "afg")
+		if grip != null:
+			# the hand on the grip's ramp keeps the handguard hold's roll: tilting it 30 degrees along the ramp
+			# bent the left wrist 55-75 degrees in the high-port sprint (fp_hand_pose_test)
+			return {"housing": grip, "support": _marker(grip, "AFGSupport", AFG_CONTACT, Vector3(0.0, 0, -0.5))}
+	if kind == "vfg":
+		var grip := _att_model(at, "vfg")
+		if grip != null:
+			# the hand round the post keeps the handguard hold's roll, like the angled grip: the AUG A1's
+			# upright hand passed the high-port sprint 1 degree past the left wrist's range (fp_hand_pose_test)
+			return {"housing": grip, "support": _marker(grip, "VFGSupport", VFG_CONTACT, Vector3(0.0, 0, -0.5))}
 	return {}
+
+
+## A bottom-rail grip (angled or vertical) seated on this gun: shortened (the angled one), slid back until it
+## ends before the handguard does (the gun's underside rising more than 12 mm ahead of it is the barrel), and
+## raised or lowered so its top meets the lowest point of the underside over its length and width: never floating under
+## a suppressor or sunk into a sloped handguard. Worked out once per gun and handguard.
+static func _seat_grip(root: Node3D, grip: Node3D, kind: String, key: String) -> void:
+	if kind == "afg":
+		grip.scale = Vector3(grip.scale.x, grip.scale.y, grip.scale.z * AFG_LENGTH)
+	if not _fit_memo.has(key):
+		var to_root := Transform3D.IDENTITY   # the grip's parent in root space
+		var p := grip.get_parent()
+		while p != null and p != root:
+			to_root = (p as Node3D).transform * to_root
+			p = p.get_parent()
+		var box: AABB = to_root * _holder_box(grip)
+		var probe := Probe.new(_faces_of(root, grip))
+		var rear := box.end.z
+		var base := probe.bottom(rear - 0.004)
+		var shift := Vector3.ZERO
+		if is_finite(base):
+			# walk forward from the grip's rear while the handguard's underside carries on
+			var front_ok := rear
+			var z := rear - 0.004
+			while z > box.position.z - 0.08:
+				var b := probe.bottom(z)
+				if not is_finite(b) or b > base + 0.012:
+					break
+				front_ok = z
+				z -= 0.004
+			if box.position.z < front_ok + 0.003:
+				shift.z = front_ok + 0.003 - box.position.z
+			# the top meets the lowest point of the underside over its (moved) length
+			var low := INF
+			for k in 7:
+				var zz := lerpf(box.position.z + shift.z + 0.004, box.end.z + shift.z - 0.004, k / 6.0)
+				for x in [-0.008, 0.0, 0.008]:   # either side too: a slotted handguard (MCX) has gaps on the centre line
+					low = minf(low, probe.bottom(zz, x))
+			if is_finite(low):
+				shift.y = low - box.end.y
+		_fit_memo[key] = to_root.basis.inverse() * shift
+	grip.position += _fit_memo[key]
+
+
+## Compact guns with their torch on the right use the opposite cheek. Each gun's
+## clamp seats against its own mesh at the selected handguard station.
+static func _side_laser(root: Node3D, b: Dictionary, model: String, handguard: String) -> Node3D:
+	var housing := _att_model(root, "peq2")
+	if housing == null:
+		return null
+	var key := "peq|%s|%s" % [model, handguard]
+	if not _fit_memo.has(key):
+		var side := -1.0 if model in ["p90", "mgp7", "mp7_a1", "pdr_c"] else 1.0
+		var compact := bool(b.get("pistol", false))
+		var size := 0.46 if compact else (0.68 if model in ["mp7_a1", "pdr_c", "gepard", "p90", "mgp7"] else 0.84)
+		var muzzle: Vector3 = b.muzzle_at.position
+		var centre: Vector3 = b.under_at.position
+		centre.y = muzzle.y - (0.016 if compact else 0.004)
+		if model == "p90":
+			centre.z = muzzle.z + 0.073
+			centre.y += 0.018
+		# Restrict the probe to the barrel and receiver. An installed launcher, optic
+		# or detachable magazine cannot change how far the side mount stands off.
+		var faces := PackedVector3Array()
+		for child in root.get_children():
+			if child is MeshInstance3D and not child.has_meta("skin_part"):
+				faces.append_array(child.transform * _mesh_faces(child.mesh))
+		var width := -INF
+		for dz: float in [-0.018, 0.0, 0.018]:
+			var hit := _surface_x(faces, centre + Vector3.BACK * dz * size, side)
+			if is_finite(hit):
+				width = maxf(width, hit * side)
+		centre.x = side * (width if is_finite(width) else 0.018)
+		var roll := PI if side < 0.0 else 0.0
+		_fit_memo[key] = Transform3D(Basis(Vector3.BACK, roll).scaled(Vector3.ONE * size), centre)
+	housing.transform = _fit_memo[key]
+	return _marker(housing, "Laser", PEQ_EMITTER)
 
 
 ## Fit the glove to the rendered prop in model space. Only the contact geometry
@@ -909,6 +1062,7 @@ static func _palm_sockets(root: Node3D, b: Dictionary, model: String, att: Dicti
 	var pistol := bool(b.get("pistol", false))
 	var z := left.origin.z
 	var under := String(att.get("underbarrel", "none"))
+	var post_y := NAN   # a vertical grip's middle: the hand closes round it there
 	if housing != null and not pistol:
 		var mount_xf := mount.transform
 		var parent := mount.get_parent() as Node3D
@@ -919,9 +1073,12 @@ static func _palm_sockets(root: Node3D, b: Dictionary, model: String, att: Dicti
 		if under == "gp25":
 			# Use the reachable end when an adapter sits unusually far forward.
 			z = clampf(left.origin.z, bounds.position.z + 0.025, bounds.end.z - 0.025)
+		elif under == "vfg":
+			z = bounds.get_center().z   # the hand round the vertical grip's post
+			post_y = bounds.get_center().y
 		elif z >= bounds.position.z - 0.025 and z <= bounds.end.z + 0.035:
 			z = minf(bounds.end.z + 0.036, lerpf(left.origin.z, right.origin.z, 0.35))
-	var vertical := model == "aug_a1" and under != "gp25"
+	var vertical := (model == "aug_a1" and under != "gp25") or under == "vfg"
 	var grip_slice := _faces_near(faces, right.origin.z - 0.025, right.origin.z + 0.025)
 	var pitch: float = {"mosin": -0.12, "marlin": -0.18, "l96a1": -0.24, "m700": -0.18}.get(model, right.basis.get_euler().x)
 	right.basis = Basis(Vector3.RIGHT, pitch)
@@ -939,7 +1096,7 @@ static func _palm_sockets(root: Node3D, b: Dictionary, model: String, att: Dicti
 		var section := _faces_near(faces, z - 0.012, z + 0.012)
 		var bottom := _bottom_in(section, z)
 		var top := _top_in(section, z, 0.004)
-		var y := left.origin.y
+		var y := left.origin.y if is_nan(post_y) else post_y
 		if is_finite(bottom) and is_finite(top):
 			y = clampf(y, bottom + 0.008, maxf(bottom + 0.008, top - 0.006)) if vertical else bottom + minf(0.022, (top - bottom) * 0.4)
 		var roll := -0.30 if model in ["gepard", "p90"] else -0.12
@@ -1008,6 +1165,14 @@ static func _palm_edge(faces: PackedVector3Array, center: Vector3, side: float, 
 
 ## The optic on the rail, or the gun's own sights.
 static func _optic(r: Node3D, b: Dictionary, kind: String) -> Dictionary:
+	if kind == "holo" and b.has("factory_optic"):
+		var mount := _marker(r, "OpticMount", Vector3.ZERO)
+		var sight := _factory_part(mount, "Att_holo", b.factory_optic)
+		var dot := _reticle_centre(sight)
+		if dot != Vector3.INF:
+			sight.position.x = -dot.x
+			return {"y": dot.y, "rear_z": dot.z + 0.02, "relief": float(LP_OPTICS.holo[2])}
+		mount.free()
 	if LP_OPTICS.has(kind):
 		var mount := Node3D.new()
 		mount.name = "OpticMount"

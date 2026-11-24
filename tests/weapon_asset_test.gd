@@ -10,7 +10,7 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	for id in Data.PRIMARIES + Data.SECONDARIES:
+	for id in Data.PRIMARIES + Data.SMGS + Data.SECONDARIES:
 		var defaults: Dictionary = Data.WEAPONS[id].defaults
 		for slot in Data.SLOTS:
 			for option in Data.WEAPONS[id].options[slot]:

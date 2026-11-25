@@ -121,9 +121,10 @@ func setup(weapon_id: String, att: Dictionary = {}, reserve_override: int = -1) 
 		_build_laser()
 
 
-## Applies a weapon skin finish (see skins.gd) to the built model. `parts` gives
-## attachment slots / the magazine their own finish (or Skins.FACTORY); a part not
-## listed wears the gun's finish. Unknown slots or finishes are ignored.
+## Applies a weapon skin finish (see skins.gd) to the built model: the finish paints
+## the gun's body (Skins.BODY). `parts` gives attachment slots / the magazine their own
+## finish (or Skins.FACTORY); a part not listed keeps its factory look. Unknown slots
+## or finishes are ignored.
 func apply_skin(finish: String, parts: Dictionary = {}) -> void:
 	if finish != "" and not Skins.FINISHES.has(finish):
 		finish = ""
@@ -149,7 +150,7 @@ func apply_skin(finish: String, parts: Dictionary = {}) -> void:
 				(node as MeshInstance3D).set_surface_override_material(s, base[1][s])
 	skin = finish
 	part_skins = parts
-	Skins.apply(_model_root, finish, [Model._black, Model._worn], parts)
+	Skins.apply(_model_root, finish, [Model._black, Model._worn], parts, id)
 
 
 ## Places a sticker per `cfg` (see sticker.gd): the one cfg.id names (admins put the

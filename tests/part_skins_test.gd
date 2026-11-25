@@ -68,7 +68,9 @@ func run() -> void:
 	check(not paintable(w, "magazine", "neon_tide").is_empty(), "magazine wears its own finish")
 	check(paintable(w, "magazine", "gilded_royale").is_empty(), "magazine not painted with the gun finish")
 	check(paintable(w, "underbarrel", "gilded_royale").is_empty(), "factory part keeps its look")
-	check(not paintable(w, "handguard", "gilded_royale").is_empty(), "unlisted part follows the gun finish")
+	check(paintable(w, "handguard", "gilded_royale").is_empty(), "unlisted part keeps its factory look (the skin is the body's)")
+	w.apply_skin("gilded_royale", {"handguard": "carbon_weave"})
+	check(not paintable(w, "handguard", "carbon_weave").is_empty(), "a part given its own finish still wears it")
 	# 3. gun back to factory while the magazine keeps its skin
 	w.apply_skin("", {"magazine": "neon_tide"})
 	check(not body.any(func(m): return painted(m, "gilded_royale")), "body back to factory")

@@ -13,9 +13,17 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.52
+## 🆕 What's new in v1.52.1
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.0-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.1-beta)
+
+- **Skins sit on the gun's body:** the receiver, upper and rail housing take the skin; plastic and wood furniture, bare steel, the magazine and every attachment keep their factory look (your own part skins still apply).
+
+![Every gun in the sticker bomb skin](docs/screenshots/v1521-skins.jpg)
+
+## What came in v1.52
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.0-beta)
 
 - **Seven new guns:** AUG A4, CZ Bren 2, SCAR-SC, Q Honey Badger, SIG MCX Spear, HK MP7 A1 and Magpul PDR-C, in the loadout and the Zombie Survival shop.
 - **Side-rail laser:** the laser clamps to the side rail in its own slot, so it works together with an underbarrel part; saved lasers move over automatically.

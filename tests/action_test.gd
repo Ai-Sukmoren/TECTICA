@@ -42,13 +42,22 @@ func _initialize() -> void:
 			w._update_blowback(0.01)
 			check(absf(w.bolt.position.z) < 0.001, "%s slide closes after a reload" % id)
 		w.free()
-	# skins: attachments take the finish, glass and reticles keep their own look
+	# skins: the gun's skin leaves the attachments alone; an attachment given its own finish takes it,
+	# and glass and reticles keep their own look
 	var Skins = load("res://scripts/skins/skins.gd")
 	var finish: String = Skins.FINISHES.keys()[1]
 	var sk = Weapon.new()
 	root.add_child(sk)
 	sk.setup("as_val", {"optic": "reddot", "underbarrel": "laser"})
 	Skins.apply(sk._model_root, finish, [])
+	var untouched := true
+	for n in sk.find_children("*", "MeshInstance3D", true, false):
+		if String((n as MeshInstance3D).get_parent().name).begins_with("Att_"):
+			for s2 in (n as MeshInstance3D).mesh.get_surface_count():
+				var cur2 = (n as MeshInstance3D).get_surface_override_material(s2)
+				untouched = untouched and not (cur2 is ShaderMaterial and (cur2 as ShaderMaterial).shader == Skins.finish_shader())
+	check(untouched, "the gun's skin leaves the attachments in their factory look")
+	Skins.apply(sk._model_root, finish, [], {"optic": finish, "underbarrel": finish, "side": finish})
 	var painted := 0
 	var glass_kept := 0
 	var glow_kept := 0
@@ -67,7 +76,7 @@ func _initialize() -> void:
 			elif cur != null:
 				painted += 1
 	print("  skin %s on attachments: painted %d, glass kept %d, reticles kept %d" % [finish, painted, glass_kept, glow_kept])
-	check(painted >= 2 and glass_kept >= 1 and glow_kept >= 1, "a skin paints the attachments but keeps glass clear and the reticle lit")
+	check(painted >= 2 and glass_kept >= 1 and glow_kept >= 1, "a part skin paints the attachments but keeps glass clear and the reticle lit")
 	sk.free()
 	print("ACTION: failures=%d" % failures)
 	quit(1 if failures > 0 else 0)

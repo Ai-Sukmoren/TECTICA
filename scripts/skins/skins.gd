@@ -526,9 +526,10 @@ static func material(finish: String, furniture: bool) -> ShaderMaterial:
 
 
 ## Recolours a built weapon model. Glass, glowing parts and lenses stay as they are.
-## Paints every surface of a model part with the finish except see-through
-## glass and glowing reticles, so optics stay clear and lit under any skin.
-static func _skin_surfaces(mi: MeshInstance3D, fm: Material) -> void:
+## Paints the surfaces of a model part with the finish, except see-through glass and
+## glowing reticles, so optics stay clear and lit under any skin. `only` limits it to
+## surfaces whose material name starts with one of those names (see BODY).
+static func _skin_surfaces(mi: MeshInstance3D, fm: Material, only: Array = []) -> void:
 	for s in mi.mesh.get_surface_count():
 		var cur := mi.get_surface_override_material(s)
 		if cur == null:
@@ -537,7 +538,43 @@ static func _skin_surfaces(mi: MeshInstance3D, fm: Material) -> void:
 			var bm := cur as BaseMaterial3D
 			if bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or bm.emission_enabled:
 				continue
+		if not only.is_empty() and not _named(cur, only):
+			continue
 		mi.set_surface_override_material(s, fm)
+
+
+static func _named(m: Material, names: Array) -> bool:
+	var n := String(m.resource_name).to_lower() if m != null else ""
+	for b in names:
+		if n.begins_with(b):
+			return true
+	return false
+
+
+## Where a gun's own skin goes: the painted metal body (the receiver, the upper, the
+## rails' housing), by the gun model's material names. Plastic and wood furniture,
+## bare steel and aluminium, grips and controls keep their factory look, and so do the
+## magazine and every attachment unless the player gives that part its own skin. A gun
+## whose model has none of these names (knives, the one-material MGP7 and ZC57) is painted whole.
+const BODY_DEFAULT := ["h-190", "h-267", "1b"]   # painted metal; "1b" is the metal body on the older models (AS VAL, P90, L96, M700, Marlin)
+const BODY := {
+	"mcx_spear": ["coyote brown", "coyote tan"],   # a painted rifle: its coyote panels, not the cerakote upper
+	"honey_badger": ["h-190", "clear anod"],      # its upper is clear anodised aluminium
+}
+
+
+## The material names a gun's skin paints (see BODY), or [] to paint the whole model.
+static func body_names(model_root: Node, gun: String) -> Array:
+	var names: Array = BODY.get(gun, BODY_DEFAULT)
+	for node in model_root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null or String(mi.get_meta("skin_part", "")) != "" or mi.material_override != null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var cur := mi.get_surface_override_material(s)
+			if _named(cur if cur != null else mi.mesh.surface_get_material(s), names):
+				return names
+	return []
 
 
 ## A part skin that keeps that part's factory look under a skinned gun.
@@ -559,13 +596,14 @@ static func sanitize_parts(parts) -> Dictionary:
 	return out
 
 
-## Paints a built weapon model. `finish` is the gun's own finish ("" = factory);
-## `parts` gives an attachment slot (or the magazine) its own finish, or FACTORY.
-## A part without an entry wears the gun's finish. Parts are tagged by the model
-## builder with the "skin_part" meta.
-static func apply(model_root: Node, finish: String, metal_mats: Array, parts: Dictionary = {}) -> void:
+## Paints a built weapon model. `finish` is the gun's own finish ("" = factory): it
+## goes on the gun's body only (BODY). `parts` gives an attachment slot (or the
+## magazine) its own finish, or FACTORY; a part without an entry keeps its factory
+## look. Parts are tagged by the model builder with the "skin_part" meta.
+static func apply(model_root: Node, finish: String, metal_mats: Array, parts: Dictionary = {}, gun: String = "") -> void:
 	if model_root == null:
 		return
+	var body := body_names(model_root, gun)
 	var stack: Array = [model_root]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
@@ -574,7 +612,8 @@ static func apply(model_root: Node, finish: String, metal_mats: Array, parts: Di
 		if not (n is MeshInstance3D):
 			continue
 		var mi := n as MeshInstance3D
-		var f := String(parts.get(String(mi.get_meta("skin_part", "")), finish))
+		var part := String(mi.get_meta("skin_part", ""))
+		var f := String(parts.get(part, finish if part == "" else FACTORY))
 		if not FINISHES.has(f):
 			continue   # factory look for this part
 		var mm := material(f, false)
@@ -582,7 +621,7 @@ static func apply(model_root: Node, finish: String, metal_mats: Array, parts: Di
 		var mat := mi.material_override
 		if mat == null:
 			if mi.has_meta("pack4"):   # textured model parts (guns and attachments)
-				_skin_surfaces(mi, fm)
+				_skin_surfaces(mi, fm, body if part == "" else [])
 			continue
 		if mat is StandardMaterial3D:
 			var sm := mat as StandardMaterial3D

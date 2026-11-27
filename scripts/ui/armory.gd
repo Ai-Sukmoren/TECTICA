@@ -550,7 +550,7 @@ func _set_preview(weapon: String, finish: String) -> void:
 # ================================================================ drawing
 
 func draw(c: Control, vp: Vector2) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.02, 0.03, 0.94))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0271, 0.0217, 0.0169, 0.94))
 	var sx := sin(t * 70.0) * 10.0 * shake
 	hud._text(c, Vector2(60 + sx, 66), "ARMORY  //  OPERATOR OUTFITS" if tab == 2 and phase == "browse" else "ARMORY  //  WEAPON SKINS", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(60, 90), "%d / %d SKINS COLLECTED   ·   %d PACKS OPENED%s" % [Collection.total_owned(), Skins.finish_ids(Profile.is_admin()).size() * Skins.weapon_ids().size(), Collection.packs_opened, "   ·   ADMIN: ALL UNLOCKED" if Profile.is_admin() else ""], 12, hud.DIM)
@@ -562,9 +562,9 @@ func draw(c: Control, vp: Vector2) -> void:
 			var r := Rect2(60 + i * 220, 108, 200, 30)
 			_tab_rects.append(r)
 			var sel := i == tab
-			c.draw_rect(r, Color(hud.RED, 0.25) if sel else Color(1, 1, 1, 0.04))
+			c.draw_rect(r, Color(hud.ACCENT, 0.14) if sel else Color(1, 1, 1, 0.04))
 			if sel:
-				hud._brackets(c, r, 8.0, hud.RED, 2.0)
+				hud._brackets(c, r, 8.0, hud.ACCENT, 2.0)
 			hud._text(c, Vector2(r.position.x, r.position.y + 21), TAB_NAMES[i], 14, hud.TEXT if sel else hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 		if tab == 0:
 			_draw_packs(c, vp)
@@ -765,19 +765,19 @@ func _draw_card(c: Control, r: Rect2, card: Dictionary, f: float, burst: float) 
 			c.draw_arc(r.get_center(), r.size.y * (0.4 + (1.0 - burst) * (0.6 + k * 0.3)), 0, TAU, 48, Color(rc, burst * 0.5), 3.0, true)
 	if not showing_face:
 		var pack: Dictionary = Skins.PACKS[pack_i]
-		c.draw_rect(cr, Color(0.07, 0.08, 0.1))
+		c.draw_rect(cr, Color(0.104, 0.0833, 0.065))
 		c.draw_rect(cr.grow(-6), (pack.colors[0] as Color).darkened(0.3))
 		c.draw_rect(cr, pack.colors[1], false, 3.0)
 		if sx > 0.3:
 			hud._text(c, Vector2(cr.position.x, cr.get_center().y + 14), "?", 46, Color(pack.colors[1], 0.9), HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, true)
 		return
 	# face
-	c.draw_rect(cr, Color(0.04, 0.045, 0.055))
+	c.draw_rect(cr, Color(0.0583, 0.0467, 0.0364))
 	c.draw_rect(Rect2(cr.position, Vector2(cr.size.x, 30)), Color(rc, 0.85))
 	if sx < 0.35:
 		c.draw_rect(cr, rc, false, 3.0)
 		return
-	hud._text(c, Vector2(cr.position.x, cr.position.y + 21), Skins.RARITY_NAMES[rar], 13, Color(0.03, 0.03, 0.04), HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, true)
+	hud._text(c, Vector2(cr.position.x, cr.position.y + 21), Skins.RARITY_NAMES[rar], 13, Color(0.0417, 0.0333, 0.026), HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, true)
 	_draw_swatch(c, Rect2(cr.position + Vector2(12, 42), Vector2(cr.size.x - 24, cr.size.y * 0.32)), String(card.finish))
 	var ty := cr.position.y + 50 + cr.size.y * 0.32
 	hud._text(c, Vector2(cr.position.x, ty + 14), Skins.weapon_name(String(card.weapon)), 16, hud.TEXT, HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, true)
@@ -848,8 +848,8 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		_wlist_rects.append(r)
 		var sel := i == coll_weapon
 		if sel:
-			c.draw_rect(r, Color(hud.RED, 0.22))
-			hud._brackets(c, r, 8.0, hud.RED, 2.0)
+			c.draw_rect(r, Color(hud.ACCENT, 0.14))
+			hud._brackets(c, r, 8.0, hud.ACCENT, 2.0)
 		hud._text(c, Vector2(r.position.x + 12, y), Skins.weapon_name(id), 14, hud.TEXT if sel else hud.DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		hud._text(c, Vector2(r.position.x, y), "%d / %d" % [Collection.owned_for(id), finishes], 12, hud.ACCENT if Collection.owned_for(id) > 0 else hud.DIM, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 12)
 		y += 34.0
@@ -862,7 +862,7 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 	var pr := Rect2(gx, 150, tw * cols + 10 * (cols - 1), vp.y * 0.24)
 	_coll_rect = pr
 	_stk_buttons.clear()
-	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.7))
+	c.draw_rect(pr, Color(0.0875, 0.07, 0.0546, 0.7))
 	c.draw_texture_rect(_sv.get_texture(), pr, false)
 	var cur: String = tiles[coll_tile]
 	var cur_r := Skins.rarity_of(cur)
@@ -882,11 +882,11 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		var have := Collection.has_skin(wid, f)
 		var rar := Skins.rarity_of(f)
 		var rc: Color = Skins.RARITY_COLORS[rar] if f != "" else hud.DIM
-		c.draw_rect(r, Color(0.05, 0.06, 0.07, 0.9))
+		c.draw_rect(r, Color(0.075, 0.06, 0.0468, 0.9))
 		if have:
 			_draw_swatch(c, Rect2(r.position + Vector2(6, 6), Vector2(r.size.x - 12, 30)), f)
 		else:
-			c.draw_rect(Rect2(r.position + Vector2(6, 6), Vector2(r.size.x - 12, 30)), Color(0.1, 0.11, 0.12))
+			c.draw_rect(Rect2(r.position + Vector2(6, 6), Vector2(r.size.x - 12, 30)), Color(0.138, 0.11, 0.0858))
 			hud._text(c, Vector2(r.position.x, r.position.y + 28), "LOCKED", 11, Color(rc, 0.45), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 		var label := Skins.finish_name(f).to_upper() if f != "" else "FACTORY"
 		hud._text(c, Vector2(r.position.x + 6, r.position.y + 54), label, 11, rc if have else Color(rc, 0.5), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 12, true)
@@ -899,11 +899,11 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		var sel := i == coll_tile
 		c.draw_rect(r, rc if (have or sel) else Color(rc, 0.3), false, 3.0 if sel else 1.5)
 		if sel:
-			hud._brackets(c, r.grow(4), 8.0, hud.RED, 2.0)
+			hud._brackets(c, r.grow(4), 8.0, hud.ACCENT, 2.0)
 	if sticker_edit:
 		var sr := Rect2(pr.end.x - 300, pr.position.y + 10, 290, 128)
-		c.draw_rect(sr, Color(0.03, 0.04, 0.05, 0.92))
-		hud._brackets(c, sr, 8.0, hud.RED, 2.0)
+		c.draw_rect(sr, Color(0.05, 0.04, 0.0312, 0.92))
+		hud._brackets(c, sr, 8.0, hud.ACCENT, 2.0)
 		hud._text(c, sr.position + Vector2(12, 22), "STICKER  ·  EDITING", 14, hud.WARN, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		var side_name: String = ["RIGHT", "LEFT", "BOTH SIDES"][int(_stk.side)]
 		hud._text(c, sr.position + Vector2(12, 46), "POSITION  %d%% / %s" % [int(float(_stk.u) * 100.0), "AUTO" if float(_stk.v) < 0.0 else "%d%%" % int(float(_stk.v) * 100.0)], 12, hud.TEXT)
@@ -917,7 +917,7 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 			var br := Rect2(bx - bw, pr.end.y - 38, bw, 28)
 			bx -= bw + 8.0
 			_stk_buttons.append([br, b[0]])
-			c.draw_rect(br, Color(hud.RED, 0.35) if b[0] == "save" else Color(0.03, 0.04, 0.05, 0.92))
+			c.draw_rect(br, Color(hud.ACCENT, 0.14) if b[0] == "save" else Color(0.05, 0.04, 0.0312, 0.92))
 			c.draw_rect(br, hud.WARN if b[0] == "save" else hud.DIM, false, 1.5)
 			hud._text(c, Vector2(br.position.x, br.position.y + 19), String(b[1]), 12, hud.TEXT, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, true)
 		hud._text(c, Vector2(0, vp.y - 30), "Drag move   ·   right-drag or Z/X turn   ·   wheel or +/- size   ·   WASD nudge   ·   Space side   ·   H hide   ·   F full wrap   ·   Enter save   ·   Esc cancel", 12, hud.WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -926,7 +926,7 @@ func _draw_collection(c: Control, vp: Vector2) -> void:
 		if hint != "":
 			var br := Rect2(pr.end.x - 170, pr.end.y - 38, 160, 28)
 			_stk_buttons.append([br, "edit"])
-			c.draw_rect(br, Color(hud.RED, 0.35))
+			c.draw_rect(br, Color(hud.ACCENT, 0.14))
 			c.draw_rect(br, hud.WARN, false, 1.5)
 			hud._text(c, Vector2(br.position.x, br.position.y + 19), "EDIT STICKER  (T)", 12, hud.TEXT, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, true)
 		hud._text(c, Vector2(0, vp.y - 30), "Wheel or W/S weapon   ·   A/D skin   ·   Enter / click equip" + hint + "   ·   Q/E or Tab  packs   ·   Esc back", 12, hud.DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -946,7 +946,7 @@ func _draw_outfits(c: Control, vp: Vector2) -> void:
 		var sel := i == outfit_i
 		var have := Collection.has_outfit(id)
 		var rc: Color = Outfits.RARITY_COLORS[int(o.rarity)]
-		c.draw_rect(r, Color(hud.RED, 0.2) if sel else Color(0.05, 0.06, 0.07, 0.85))
+		c.draw_rect(r, Color(hud.ACCENT, 0.14) if sel else Color(0.075, 0.06, 0.0468, 0.85))
 		c.draw_rect(Rect2(r.position, Vector2(5, r.size.y)), rc)
 		# colour chips: camo, vest, gear, helmet
 		var cam: Array = o.camo
@@ -960,14 +960,14 @@ func _draw_outfits(c: Control, vp: Vector2) -> void:
 		var rcol: Color = hud.ACCENT if wearing else (hud.TEXT if have else (hud.WARN if Collection.credits >= int(o.price) else Color(hud.DANGER, 0.85)))
 		hud._text(c, Vector2(r.position.x, r.position.y + 31), right, 13, rcol, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 14, true)
 		if sel:
-			hud._brackets(c, r, 8.0, hud.RED, 2.0)
+			hud._brackets(c, r, 8.0, hud.ACCENT, 2.0)
 		y += 58.0
 	# preview + details
 	var cur: String = ids[outfit_i]
 	var info := Outfits.info(cur)
 	var ph := minf(vp.y - 260.0, 640.0)
 	var pr := Rect2(560, 150, ph * 520.0 / 640.0, ph)
-	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.7))
+	c.draw_rect(pr, Color(0.0875, 0.07, 0.0546, 0.7))
 	c.draw_texture_rect(_sv.get_texture(), pr, false)
 	hud._brackets(c, pr, 12.0, Outfits.RARITY_COLORS[int(info.rarity)], 2.0)
 	var dx := pr.end.x + 30.0

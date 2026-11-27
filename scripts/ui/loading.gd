@@ -16,7 +16,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # a pause left over from the last map must not stall the load
 	Transition.begin_loading(get_tree())
 	var background := ColorRect.new()
-	background.color = Color(0.012, 0.02, 0.028)
+	background.color = Color(0.025, 0.02, 0.0156)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
 	Transition.stage(get_tree(), 0.0, "LOADING ASSETS")

@@ -33,6 +33,9 @@ const DIM := Retro.DIM
 const WARN := Retro.WARN
 const DANGER := Retro.DANGER
 const RED := Retro.RED
+const BRAND := Retro.BRAND
+const PANEL := Retro.PANEL
+const LINE := Retro.LINE
 
 var main: Node
 var player
@@ -799,7 +802,7 @@ func _text(c: Control, pos: Vector2, s: String, size: int, color: Color,
 	# big bold headlines use the condensed display weight
 	if bold and size >= 22 and _has_letters(s):
 		var ds := int(size * 0.95)
-		c.draw_string_outline(_font_display, pos + Vector2(2, 2), s, align, width, ds, 4, Color(0, 0, 0, color.a * 0.55))
+		c.draw_string_outline(_font_display, pos + Vector2(1, 1), s, align, width, ds, 3, Color(0, 0, 0, color.a * 0.35))
 		c.draw_string(_font_display, pos, s, align, width, ds, color)
 		return
 	c.draw_string(_font_bold if bold else _font, pos, s, align, width, size + 1, color)
@@ -842,7 +845,7 @@ func _draw_wave_panel(c: Control, vp: Vector2, d) -> void:
 		_zw_break = 0.0
 	var w := 470.0
 	var r := Rect2(vp.x * 0.5 - w * 0.5, 70, w, 66)
-	c.draw_rect(r, Color(0.02, 0.025, 0.03, 0.62))
+	c.draw_rect(r, Color(0.0312, 0.025, 0.0195, 0.62))
 	var edge := Color(ACCENT, 0.55) if d.active else Color(WARN, 0.7)
 	_brackets(c, r, 12.0, edge, 2.0)
 	var x0 := r.position.x
@@ -892,7 +895,7 @@ func _draw_wave_panel(c: Control, vp: Vector2, d) -> void:
 	if not d.active:
 		var hint := _arcade_hint()
 		var hw := _font_bold.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 28.0
-		c.draw_rect(Rect2(vp.x * 0.5 - hw * 0.5, y0 + 72, hw, 22), Color(0.02, 0.025, 0.03, 0.55))
+		c.draw_rect(Rect2(vp.x * 0.5 - hw * 0.5, y0 + 72, hw, 22), Color(0.0312, 0.025, 0.0195, 0.55))
 		_text(c, Vector2(0, y0 + 88), hint, 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 		# the last three seconds, large in the middle of the screen
 		var tl2 := float(d.timer)
@@ -929,12 +932,9 @@ func _draw_banner(c: Control, vp: Vector2) -> void:
 		_text(c, Vector2(-slide, cy + 30), _banner_sub, 14, Color(TEXT, a), HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 
 
-func _brackets(c: Control, r: Rect2, arm: float, col: Color, w: float = 2.0) -> void:
-	for corner in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
-		var sx := 1.0 if corner.x == r.position.x else -1.0
-		var sy := 1.0 if corner.y == r.position.y else -1.0
-		c.draw_line(corner, corner + Vector2(arm * sx, 0), col, w)
-		c.draw_line(corner, corner + Vector2(0, arm * sy), col, w)
+## Marks a selected or framed box: one thin bar down its left edge (the minimal UI's selection mark).
+func _brackets(c: Control, r: Rect2, _arm: float, col: Color, w: float = 2.0) -> void:
+	c.draw_rect(Rect2(r.position, Vector2(clampf(w, 1.0, 2.0), r.size.y)), col)
 
 
 func _draw_logo(c: Control, center: Vector2, width: float, alpha: float = 1.0) -> void:
@@ -979,7 +979,7 @@ func _draw_overlay(c: Control) -> void:
 	# Quiet backing plates keep telemetry readable over bright surfaces.
 	var focus_bar := Net.alone()   # bullet time only with no other player connected
 	for panel in [_weapon_panel_rect(vp), Rect2(16, vp.y - (124 if focus_bar else 100), 224, 106 if focus_bar else 82)]:
-		c.draw_rect(panel, Color(0.025, 0.045, 0.055, 0.78))
+		c.draw_rect(panel, Color(0.0521, 0.0417, 0.0325, 0.78))
 		c.draw_rect(panel, Color(0.42, 0.66, 0.69, 0.24), false, 1.0)
 		c.draw_rect(Rect2(panel.position, Vector2(3, panel.size.y)), Color(ACCENT, 0.8))
 	_draw_enemy_markers(c)
@@ -1217,7 +1217,7 @@ func _draw_title(c: Control, vp: Vector2) -> void:
 		_draw_auth(c, vp)
 		return
 	if settings_open:
-		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.02, 0.025, 0.03, 0.85))
+		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0312, 0.025, 0.0195, 0.85))
 		_draw_settings(c, vp)
 		return
 	if room_browser.is_open:
@@ -1248,8 +1248,8 @@ func _draw_mode_picker(c: Control, vp: Vector2) -> void:
 	var panel_size := Vector2(width, 72.0 + row_h * rows)
 	var panel := Rect2((vp - panel_size) * 0.5, panel_size)
 	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0, 0.0, 0.0, 0.68))
-	c.draw_rect(panel, Color(0.02, 0.025, 0.03, 0.98))
-	_brackets(c, panel, 12.0, RED, 2.0)
+	c.draw_rect(panel, Color(0.0312, 0.025, 0.0195, 0.98))
+	_brackets(c, panel, 12.0, ACCENT, 2.0)
 	_text(c, panel.position + Vector2(22.0, 37.0), "SELECT MODE", 24, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	_mode_picker_rects.clear()
 	for i in rows:
@@ -1257,8 +1257,8 @@ func _draw_mode_picker(c: Control, vp: Vector2) -> void:
 		_mode_picker_rects.append(rect)
 		var selected := i == _mode_picker_index
 		if selected:
-			c.draw_rect(rect, Color(RED, 0.28))
-			c.draw_rect(Rect2(rect.position, Vector2(3.0, rect.size.y)), RED)
+			c.draw_rect(rect, Color(ACCENT, 0.14))
+			c.draw_rect(Rect2(rect.position, Vector2(2.0, rect.size.y)), ACCENT)
 		var mode: String = choices[i] if i < choices.size() else ""
 		var label := "BACK"
 		if mode == "tdm":
@@ -1282,28 +1282,23 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 	if is_instance_valid(menu_cam) and float(menu_cam.fade) > 0.01:
 		c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, float(menu_cam.fade)))
 	# world dimmed, left panel solid, soft edge between them
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.01, 0.02, 0.03, 0.28))
-	c.draw_rect(Rect2(0, 0, panel_w, vp.y), Color(0.012, 0.02, 0.028, 0.86))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.025, 0.02, 0.0156, 0.28))
+	c.draw_rect(Rect2(0, 0, panel_w, vp.y), Color(0.025, 0.02, 0.0156, 0.86))
 	for k in 24:
-		c.draw_rect(Rect2(panel_w + k * 4.0, 0, 4.0, vp.y), Color(0.012, 0.02, 0.028, 0.86 * (1.0 - (k + 1) / 24.0)))
-	c.draw_rect(Rect2(panel_w - 2, 0, 2, vp.y), Color(RED, 0.55))
-	var y := 0.0
-	while y < vp.y:
-		c.draw_line(Vector2(0, y), Vector2(vp.x, y), Color(0, 0, 0, 0.045), 1.0)
-		y += 3.0
+		c.draw_rect(Rect2(panel_w + k * 4.0, 0, 4.0, vp.y), Color(0.025, 0.02, 0.0156, 0.86 * (1.0 - (k + 1) / 24.0)))
+	c.draw_rect(Rect2(panel_w - 1, 0, 1, vp.y), LINE)
 
 	# logo + context line
 	var pad := 44.0
 	var logo_w := minf(panel_w - pad * 2.0, 300.0) if two_col else panel_w - pad * 2.0
-	var pulse := 0.94 + 0.06 * sin(_time * 2.0)
 	var logo_h := logo_w * (float(_logo.get_height()) / float(_logo.get_width()) if _logo != null else 0.22)
-	_draw_logo(c, Vector2(pad + logo_w * 0.5, 40.0 + logo_h * 0.5), logo_w, pulse)
+	_draw_logo(c, Vector2(pad + logo_w * 0.5, 40.0 + logo_h * 0.5), logo_w)
 	var beta_rect := Rect2(panel_w - pad - 70.0, 40.0 + logo_h + 7.0, 70.0, 24.0)
-	c.draw_rect(beta_rect, Color(0.025, 0.035, 0.045, 0.95))
-	c.draw_rect(beta_rect, Color(WARN, 0.9), false, 1.0)
+	c.draw_rect(beta_rect, Color(0.0438, 0.035, 0.0273, 0.95))
+	c.draw_rect(beta_rect, Color(WARN, 0.6), false, 1.0)
 	_text(c, beta_rect.position + Vector2(0, 17), "BETA", 12, WARN, HORIZONTAL_ALIGNMENT_CENTER, beta_rect.size.x, true)
 	var sub := "TACTICAL OPERATIONS"
-	_text(c, Vector2(pad, 40.0 + logo_h + 26.0), sub, 13, Color(RED, 0.95), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	_text(c, Vector2(pad, 40.0 + logo_h + 26.0), sub, 13, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 
 	# grouped menu
 	var entries := _menu_entries()
@@ -1333,7 +1328,7 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 			sec = String(e.sec)
 			cy += 10.0
 			_text(c, Vector2(x0, cy + 12.0), sec, 11, Color(DIM, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-			c.draw_line(Vector2(x0 + 8.0 + sec.length() * 8.5, cy + 8.0), Vector2(x0 + row_w, cy + 8.0), Color(DIM, 0.25), 1.0)
+			c.draw_line(Vector2(x0 + 8.0 + sec.length() * 8.5, cy + 8.0), Vector2(x0 + row_w, cy + 8.0), LINE, 1.0)
 			cy += 20.0
 		var big := bool(e.get("big", false))
 		var h := row_h * (1.45 if big else 1.0)
@@ -1341,16 +1336,16 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 		_menu_rects.append(r)
 		var sel := i == menu_index
 		if big:
-			c.draw_rect(r, Color(RED, 0.92 if sel else 0.7))
+			c.draw_rect(r, Color(BRAND, 1.0 if sel else 0.78))
 			if sel:
-				c.draw_rect(Rect2(r.position + Vector2(0, r.size.y - 3.0), Vector2(r.size.x, 3.0)), Color(1, 1, 1, 0.5))
-			_text(c, Vector2(r.position.x + 18.0, r.position.y + r.size.y * 0.5 + 10.0), String(e.label), 26, Color(1, 1, 1, 0.97), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
-			_text(c, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 6.0), "ENTER  ▶", 13, Color(1, 1, 1, 0.85),
+				c.draw_rect(Rect2(r.position + Vector2(0, r.size.y - 2.0), Vector2(r.size.x, 2.0)), Color(TEXT, 0.6))
+			_text(c, Vector2(r.position.x + 18.0, r.position.y + r.size.y * 0.5 + 10.0), String(e.label), 26, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+			_text(c, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 6.0), "ENTER  ▶", 13, Color(TEXT, 0.85),
 					HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 18.0, true)
 		else:
 			if sel:
-				c.draw_rect(r, Color(RED, 0.18))
-				c.draw_rect(Rect2(r.position, Vector2(3.0, r.size.y)), RED)
+				c.draw_rect(r, Color(TEXT, 0.06))
+				c.draw_rect(Rect2(r.position, Vector2(2.0, r.size.y)), ACCENT)
 			var ty := r.position.y + r.size.y * 0.5 + 6.0
 			_text(c, Vector2(r.position.x + 14.0, ty), String(e.label), 16, TEXT if sel else Color(TEXT, 0.72), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 			var val := String(e.get("value", ""))
@@ -1373,10 +1368,10 @@ func _draw_main_menu(c: Control, vp: Vector2) -> void:
 
 	# status bar
 	c.draw_rect(Rect2(0, vp.y - 44.0, vp.x, 44.0), Color(0, 0, 0, 0.55))
-	c.draw_line(Vector2(0, vp.y - 44.0), Vector2(vp.x, vp.y - 44.0), Color(TEXT, 0.12), 1.0)
+	c.draw_line(Vector2(0, vp.y - 44.0), Vector2(vp.x, vp.y - 44.0), LINE, 1.0)
 	_text(c, Vector2(pad, vp.y - 17.0), "TAP A ROW TO OPEN IT  ·  TAP A ‹ › ROW TO CHANGE IT" if two_col else "W/S  SELECT     A/D  CHANGE     ENTER  CONFIRM     MOUSE  CLICK", 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var ver := "v" + String(ProjectSettings.get_setting("application/config/version", "1.5.0-beta")).to_upper()
-	_text(c, Vector2(vp.x - 420.0, vp.y - 17.0), ver + "  ·  BETA BUILD", 11, Color(WARN, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 380.0, true)
+	_text(c, Vector2(vp.x - 420.0, vp.y - 17.0), ver + "  ·  BETA BUILD", 11, DIM, HORIZONTAL_ALIGNMENT_RIGHT, 380.0, true)
 	if main.title_notice != "":
 		var tr := Rect2(panel_w + 40.0, vp.y - (160.0 if Settings.crash_recovered else 104.0), vp.x - panel_w - 80.0, 48.0)
 		c.draw_rect(tr, Color(0.06, 0.03, 0.0, 0.9))
@@ -1421,7 +1416,7 @@ func _draw_killcam(c: Control, vp: Vector2) -> void:
 	var info: Dictionary = kc.info
 	var w := minf(560.0, vp.x * 0.6)
 	var r := Rect2((vp.x - w) * 0.5, vp.y - bar - 118.0, w, 96.0)
-	c.draw_rect(r, Color(0.02, 0.03, 0.04, 0.85 * k))
+	c.draw_rect(r, Color(0.0375, 0.03, 0.0234, 0.85 * k))
 	c.draw_rect(Rect2(r.position, Vector2(6, r.size.y)), Color(RED, k))
 	_text(c, r.position + Vector2(22, 26), "KILLED BY", 12, Color(DIM, k), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	_text(c, r.position + Vector2(22, 60), String(info.get("name", "")), 30, Color(TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
@@ -1455,23 +1450,23 @@ func _mission_lines() -> Array:
 	if kind in ["tdm", "ffa"]:
 		var bots := _solo_tdm_bots if kind == "tdm" else _solo_ffa_bots
 		return [["TEAM DEATHMATCH" if kind == "tdm" else "FREE FOR ALL", 26, TEXT],
-				[String(main.MAPS[main.map_id]) + "  ·  VS AI", 12, RED],
+				[String(main.MAPS[main.map_id]) + "  ·  VS AI", 12, ACCENT],
 				["%d AI bots split between your team and theirs." % bots if kind == "tdm" else "%d AI bots, everyone for themselves." % bots, 13, Color(TEXT, 0.8)],
 				["FIRST TO %d KILLS  ·  10 MINUTES" % main.PVP_KILL_LIMIT, 13, ACCENT]]
 	if main.is_zombie_mode():
-		var out: Array = [["ZOMBIE SURVIVAL", 26, TEXT], [String(main.MAPS[main.map_id]) + "  ·  OUTBREAK", 12, RED]]
+		var out: Array = [["ZOMBIE SURVIVAL", 26, TEXT], [String(main.MAPS[main.map_id]) + "  ·  OUTBREAK", 12, ACCENT]]
 		out.append(["Survive endless waves after dark.", 13, Color(TEXT, 0.8)])
 		if main.director != null and main.director.best_wave > 0:
 			out.append(["BEST  WAVE %d   ·   SCORE %d" % [main.director.best_wave, main.director.best_score], 13, ACCENT])
 		return out
 	if main.mode == "training":
-		return [["TRAINING", 12, RED], ["THE RANGE", 28, TEXT],
+		return [["TRAINING", 12, ACCENT], ["THE RANGE", 28, TEXT],
 				["A guided course: every move in 16 short steps.", 13, Color(TEXT, 0.8)],
 				["DONE  ·  REPLAY ANY TIME" if Campaign.completed.has("training") else "FINISH IT ONCE FOR +250 CREDITS", 13,
 						ACCENT if Campaign.completed.has("training") else WARN]]
 	var ci := Campaign.chapter_info(main.mode)
 	var lines: Array = [
-		["CHAPTER %d" % int(ci.num), 12, RED],
+		["CHAPTER %d" % int(ci.num), 12, ACCENT],
 		[String(ci.name), 28, TEXT],
 		[String(ci.location), 12, Color(TEXT, 0.75)],
 		["%02d00 HRS LOCAL" % int(float(ci.hour)), 12, DIM],
@@ -1508,9 +1503,8 @@ func _menu_card(c: Control, r: Rect2, heading: String, lines: Array) -> float:
 	for l in lines:
 		h += float(l[1]) + 12.0
 	r.size.y = h
-	c.draw_rect(r, Color(0.012, 0.02, 0.028, 0.78))
-	c.draw_rect(Rect2(r.position, Vector2(r.size.x, 2.0)), Color(RED, 0.8))
-	_brackets(c, r, 12.0, Color(TEXT, 0.25), 1.0)
+	c.draw_rect(r, Color(0.025, 0.02, 0.0156, 0.78))
+	c.draw_rect(Rect2(r.position, Vector2(r.size.x, 1.0)), Color(ACCENT, 0.7))
 	_text(c, r.position + Vector2(18, 28), heading, 11, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var y := r.position.y + 44.0
 	for l in lines:
@@ -1552,7 +1546,7 @@ func _draw_briefing(c: Control, vp: Vector2) -> void:
 		_text(c, Vector2(70, y), shown, line[2], Color(lc, a * lc.a), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		y += 30.0 if line[2] > 16 else 22.0
 	if not survival and int(_time * 3.0) % 2 == 0:
-		c.draw_rect(Rect2(62, vp.y * 0.36 - 18, 3, 20), Color(RED, a))
+		c.draw_rect(Rect2(62, vp.y * 0.36 - 18, 2, 20), Color(ACCENT, a))
 
 
 func _survival_briefing() -> Array:
@@ -1563,7 +1557,7 @@ func _survival_briefing() -> Array:
 	elif player.using_pad:
 		controls = "RT FIRE  ·  X RELOAD  ·  BACK LIGHT"
 	return [
-		["ZOMBIE SURVIVAL", RED, 20],
+		["ZOMBIE SURVIVAL", ACCENT, 20],
 		[controls, TEXT, 14],
 		["EARN POINTS FROM INFECTED. SPEND THEM AT THE ARCADE BETWEEN WAVES.", TEXT, 14],
 	]
@@ -1571,7 +1565,7 @@ func _survival_briefing() -> Array:
 
 func _pvp_briefing() -> Array:
 	return [
-		["TECTICA  //  " + _pvp_title(), RED, 20],
+		["TECTICA  //  " + _pvp_title(), ACCENT, 20],
 		["LOCATION   " + String(main.MAPS[main.map_id]), TEXT, 14],
 		["OBJECTIVE  FIRST %s TO %d KILLS  -  10 MINUTES" % ["TEAM" if main.saved_tdm else "FIGHTER", main.PVP_KILL_LIMIT], TEXT, 14],
 		["INTEL      SHOTS SHOW YOU ON THEIR RADAR  -  BUSHES HIDE YOU", TEXT, 14],
@@ -1582,7 +1576,7 @@ func _pvp_briefing() -> Array:
 
 func _training_briefing() -> Array:
 	return [
-		["TECTICA  //  TRAINING", RED, 20],
+		["TECTICA  //  TRAINING", ACCENT, 20],
 		["LOCATION   THE RANGE", TEXT, 14],
 		["OBJECTIVE  LEARN TO MOVE, SHOOT AND FIGHT, ONE STEP AT A TIME", TEXT, 14],
 		["INTEL      EACH STEP IS AT THE TOP OF THE SCREEN, WITH YOUR KEYS", TEXT, 14],
@@ -1608,7 +1602,7 @@ func _campaign_briefing() -> Array:
 	for o in main.campaign.objectives:
 		objs.append(String(o.text))
 	return [
-		["TECTICA  //  CHAPTER %d: %s" % [int(ci.num), String(ci.name)], RED, 20],
+		["TECTICA  //  CHAPTER %d: %s" % [int(ci.num), String(ci.name)], ACCENT, 20],
 		["LOCATION   " + String(ci.location), TEXT, 14],
 		["TIME       " + main.tod.clock_string().replace(":", "") + " HRS LOCAL", TEXT, 14],
 		["SITREP     " + String(ci.sitrep), TEXT, 14],
@@ -1750,7 +1744,7 @@ func _draw_radar(c: Control, center: Vector2, radius: float) -> void:
 	var inv := Basis(Vector3.UP, -view_yaw)
 	var ppos: Vector3 = player.global_position
 	c.draw_circle(center, radius + 3.0, Color(0, 0, 0, 0.55))
-	c.draw_circle(center, radius, Color(0.06, 0.09, 0.07, 0.75))
+	c.draw_circle(center, radius, Color(0.0917, 0.0733, 0.0572, 0.75))
 	# buildings + trees: clipping and triangulating every outline is costly, so
 	# the shapes are built facing north and only rebuilt after moving a little
 	if center != _radar_center or Vector2(ppos.x - _radar_pos.x, ppos.z - _radar_pos.z).length() > RADAR_REBUILD:
@@ -1831,7 +1825,7 @@ func _draw_debug(c: Control) -> void:
 		["input        " + ("GAMEPAD" if player.using_pad else "KEYBOARD / MOUSE"), DIM],
 		["graphics     " + Settings.PRESETS[main.quality] + "   fps %d" % int(_fps), DIM],
 	]
-	c.draw_rect(Rect2(24, 130, 300, 22 + lines.size() * 18), Color(0.03, 0.04, 0.04, 0.6))
+	c.draw_rect(Rect2(24, 130, 300, 22 + lines.size() * 18), Color(0.0458, 0.0367, 0.0286, 0.6))
 	for i in lines.size():
 		_text(c, Vector2(34, 150 + i * 18), lines[i][0], 13, lines[i][1])
 
@@ -2119,7 +2113,7 @@ func _draw_stealth_prompt(c: Control, vp: Vector2) -> bool:
 
 
 func _draw_blend_space(c: Control, rect: Rect2, rig) -> void:
-	c.draw_rect(rect, Color(0.03, 0.04, 0.04, 0.6))
+	c.draw_rect(rect, Color(0.0458, 0.0367, 0.0286, 0.6))
 	var title_s := ("CROUCH" if rig.crouch_amt > 0.5 else "STANDING") + " BLEND SPACE  ·  35 SAMPLES"
 	_text(c, rect.position + Vector2(10, 18), title_s, 11, DIM)
 	var grid := Rect2(rect.position + Vector2(16, 30), rect.size - Vector2(32, 42))
@@ -2386,7 +2380,7 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	var d = main.director
 	var rows := _shop_rows_now()
 	shop_index = clampi(shop_index, 0, rows.size() - 1)
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.02, 0.025, 0.03, 0.97))   # nothing of the HUD shows through
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0312, 0.025, 0.0195, 0.97))   # nothing of the HUD shows through
 	_text(c, Vector2(70, 70), "ARCADE SHOP  //  SUPPLIES", 26, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	_text(c, Vector2(0, 70), "%d PTS" % d.shop.points, 26, WARN, HORIZONTAL_ALIGNMENT_RIGHT, vp.x - 70.0, true)
 	var sub := "NEXT WAVE IN %d S" % maxi(0, ceili(d.timer))
@@ -2437,8 +2431,8 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 		_shop_rects[i] = rect
 		var sel := i == shop_index
 		if sel:
-			c.draw_rect(rect, Color(RED, 0.22))
-			_brackets(c, rect, 8.0, RED, 1.5)
+			c.draw_rect(rect, Color(ACCENT, 0.14))
+			_brackets(c, rect, 8.0, ACCENT, 1.5)
 		var ok := bool(r.ok)
 		if r.id == "start":
 			_text(c, Vector2(rect.position.x, rect.position.y + row_h * 0.64), "START NEXT WAVE  ▶", 15, TEXT if sel else WARN, HORIZONTAL_ALIGNMENT_CENTER, lw, true)
@@ -2457,7 +2451,7 @@ func _draw_shop(c: Control, vp: Vector2) -> void:
 	var gid := String(g[0])
 	shop_preview.show_weapon(gid, g[1], Collection.skin_for(gid), Collection.parts_for(gid))
 	var pr := Rect2(vp.x * 0.42, 110, vp.x * 0.54, vp.x * 0.27)
-	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.8))
+	c.draw_rect(pr, Color(0.0875, 0.07, 0.0546, 0.8))
 	_brackets(c, pr, 18.0, Color(TEXT, 0.4), 1.5)
 	shop_preview.draw(c, pr)
 	var title := "START NEXT WAVE" if r2.id == "start" else String(r2.label)
@@ -2719,8 +2713,8 @@ func _draw_pause(c: Control, vp: Vector2) -> void:
 		var r := Rect2(vp.x * 0.5 - 150, vp.y * 0.52 + i * 44, 300, 36)
 		_pause_rects.append(r)
 		if i == pause_index:
-			c.draw_rect(r, Color(RED, 0.22))
-			_brackets(c, r, 10.0, RED, 2.0)
+			c.draw_rect(r, Color(ACCENT, 0.14))
+			_brackets(c, r, 10.0, ACCENT, 2.0)
 		_text(c, Vector2(r.position.x, r.position.y + 25), items[i], 17, TEXT if i == pause_index else DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 	_text(c, Vector2(0, vp.y - 36), "F2 graphics   ·   M music   ·   F1 debug", 12, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 
@@ -2769,8 +2763,8 @@ func _draw_settings(c: Control, vp: Vector2) -> void:
 		_settings_idx.append(idx)
 		var sel := idx == settings_row
 		if sel:
-			c.draw_rect(r, Color(RED, 0.22))
-			_brackets(c, r, 8.0, RED, 2.0)
+			c.draw_rect(r, Color(ACCENT, 0.14))
+			_brackets(c, r, 8.0, ACCENT, 2.0)
 		if not is_back:
 			var row: Array = rows[i]
 			_text(c, Vector2(x0 + 14, y), row[1], 15, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
@@ -2807,7 +2801,7 @@ func _draw_crosshair_preview(c: Control, r: Rect2) -> void:
 		r.position.x = c.size.x - r.size.x - 10.0
 	var half := Rect2(r.position, Vector2(r.size.x * 0.5, r.size.y))
 	c.draw_rect(half, Color(0.72, 0.74, 0.7))
-	c.draw_rect(Rect2(half.position + Vector2(half.size.x, 0), half.size), Color(0.08, 0.09, 0.1))
+	c.draw_rect(Rect2(half.position + Vector2(half.size.x, 0), half.size), Color(0.113, 0.09, 0.0702))
 	c.draw_rect(r, Color(ACCENT, 0.5), false, 1.5)
 	_text(c, r.position + Vector2(0, -8), "PREVIEW", 12, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var spread := 8.0 + 10.0 * (0.5 + 0.5 * sin(_time * 2.0))
@@ -3036,7 +3030,7 @@ func _mp_input(event: InputEvent) -> void:
 
 
 func _draw_mp(c: Control, vp: Vector2) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.028, 0.04, 0.82))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0346, 0.0277, 0.0216, 0.82))
 	_open_rooms_rect = Rect2(vp.x - 280, 50, 220, 44)
 	c.draw_rect(_open_rooms_rect, Color(ACCENT, 0.18))
 	_text(c, _open_rooms_rect.position + Vector2(0, 28), "OPEN ROOMS  →", 16, ACCENT, HORIZONTAL_ALIGNMENT_CENTER, _open_rooms_rect.size.x, true)
@@ -3051,8 +3045,8 @@ func _draw_mp(c: Control, vp: Vector2) -> void:
 		_mp_rects.append(r)
 		var sel := i == mp_row
 		if sel:
-			c.draw_rect(r, Color(RED, 0.22))
-			_brackets(c, r, 10.0, RED, 2.0)
+			c.draw_rect(r, Color(ACCENT, 0.14))
+			_brackets(c, r, 10.0, ACCENT, 2.0)
 		var label: String = items[i]
 		if sel and (i == 1 or i == 5):
 			label = "<  " + label + "  >"
@@ -3315,7 +3309,7 @@ func _sign_out() -> void:
 ## (touch_controls.gd); this draws the logo, the message and the accounts
 ## saved on this phone above it. Tap an account to fill in its name.
 func _draw_auth_touch(c: Control, vp: Vector2) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.025, 0.035, 0.9))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0313, 0.025, 0.0195, 0.9))
 	var kb_top := 9999.0
 	for k in touch._keys:
 		kb_top = minf(kb_top, (k[0] as Rect2).position.y)
@@ -3408,12 +3402,12 @@ func _draw_auth(c: Control, vp: Vector2) -> void:
 	if touch != null:
 		_draw_auth_touch(c, vp)
 		return
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.025, 0.035, 0.86))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0313, 0.025, 0.0195, 0.86))
 	_draw_logo(c, Vector2(vp.x * 0.5, vp.y * 0.2), minf(vp.x * 0.42, 640.0), 0.95)
 	var pw := 460.0
 	var px := vp.x * 0.5 - pw * 0.5
 	var top := vp.y * 0.38
-	c.draw_rect(Rect2(px - 30, top - 50, pw + 60, 408), Color(0.03, 0.045, 0.055, 0.85))
+	c.draw_rect(Rect2(px - 30, top - 50, pw + 60, 408), Color(0.0542, 0.0433, 0.0338, 0.85))
 	_brackets(c, Rect2(px - 30, top - 50, pw + 60, 408), 16.0, Color(TEXT, 0.35), 1.5)
 	_text(c, Vector2(0, top - 18), "SIGN IN", 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)
 	_text(c, Vector2(0, top + 336), "Successful sign-ins report your username, time and game version to the game owner.", 11, DIM, HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -3430,13 +3424,13 @@ func _draw_auth(c: Control, vp: Vector2) -> void:
 		var sel := i == _auth_row
 		if i < 2:
 			c.draw_rect(r, Color(0, 0, 0, 0.45))
-			c.draw_rect(r, Color(RED, 0.9) if sel else Color(TEXT, 0.25), false, 2.0 if sel else 1.0)
+			c.draw_rect(r, Color(ACCENT, 0.9) if sel else LINE, false, 1.0)
 			_text(c, Vector2(r.position.x + 14, r.position.y + 25), AUTH_ROWS[i], 13, DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 			_text(c, Vector2(r.position.x + 150, r.position.y + 26), values[i], 18, TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		else:
 			if sel:
-				c.draw_rect(r, Color(RED, 0.22))
-				_brackets(c, r, 10.0, RED, 2.0)
+				c.draw_rect(r, Color(ACCENT, 0.14))
+				_brackets(c, r, 10.0, ACCENT, 2.0)
 			_text(c, Vector2(r.position.x, r.position.y + 26), AUTH_ROWS[i], 17, TEXT if sel else DIM, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
 	if _auth_msg != "":
 		_text(c, Vector2(0, top + 378), _auth_msg, 14, DANGER if _auth_bad else ACCENT, HORIZONTAL_ALIGNMENT_CENTER, vp.x, true)

@@ -122,7 +122,7 @@ func draw(c: Control, vp: Vector2) -> void:
 	if _global:
 		_draw_global(c, vp)
 		return
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.02, 0.03, 0.95))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0271, 0.0217, 0.0169, 0.95))
 	hud._text(c, Vector2(60, 66), "ADMIN  //  DASHBOARD", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(60, 90), "SIGNED IN AS  " + Profile.current.to_upper() + "   ·   LOCAL ACCOUNTS ON THIS PC", 12, hud.DIM)
 
@@ -164,8 +164,8 @@ func draw(c: Control, vp: Vector2) -> void:
 		var rr := Rect2(tx - 8, y - 19, vp.x - 120 + 16, 26)
 		_row_rects.append(rr)
 		if i == row:
-			c.draw_rect(rr, Color(hud.RED, 0.2))
-			hud._brackets(c, rr, 6.0, hud.RED, 1.5)
+			c.draw_rect(rr, Color(hud.ACCENT, 0.14))
+			hud._brackets(c, rr, 6.0, hud.ACCENT, 1.5)
 		var me := String(r.name).to_lower() == Profile.current.to_lower()
 		var vals := [String(r.name).to_upper() + ("  (YOU)" if me else ""), "ADMIN" if bool(r.admin) else "PLAYER",
 				when(float(r.created)), when(float(r.last)), str(r.logins), str(r.fails), str(r.credits),
@@ -204,7 +204,7 @@ func draw(c: Control, vp: Vector2) -> void:
 
 
 func _draw_global(c: Control, vp: Vector2) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.02, 0.03, 0.95))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0271, 0.0217, 0.0169, 0.95))
 	hud._text(c, Vector2(60, 66), "ADMIN  //  GLOBAL SIGN-INS", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(60, 94), str(_service.dashboard_status), 12, hud.DIM)
 	hud._text(c, Vector2(60, 128), "%d RECORDED PLAYERS   ·   %d SIGN-INS   ·   %d ACTIVE IN 24 HOURS" % [
@@ -216,7 +216,7 @@ func _draw_global(c: Control, vp: Vector2) -> void:
 		var r: Dictionary = _rows[i]
 		var y := 196.0 + (i - first) * 30.0
 		if i == row:
-			c.draw_rect(Rect2(54, y - 20, vp.x - 114, 28), Color(hud.RED, 0.2))
+			c.draw_rect(Rect2(54, y - 20, vp.x - 114, 28), Color(hud.ACCENT, 0.14))
 		hud._text(c, Vector2(60, y), str(r.name), 14, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		hud._text(c, Vector2(280, y), "PC " + str(r.device), 12, hud.DIM)
 		hud._text(c, Vector2(450, y), when(float(r.last)), 12, hud.TEXT)

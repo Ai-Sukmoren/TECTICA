@@ -8,13 +8,14 @@ extends CanvasLayer
 ## on screen eases toward the reported value and never runs ahead of it.
 
 const Retro = preload("res://scripts/ui/retro.gd")
+const LOGO_PATH := "res://assets/logo.png"
+var _logo: Texture2D
 
 const FADE_OUT := 0.22
 const FADE_IN := 0.45
 ## Frames the new map draws under the loading screen before it is revealed.
 const SETTLE_FRAMES := 6
 ## Blocks in the progress bar.
-const BLOCKS := 32
 const TIPS := [
 	"CROUCH IN BUSHES TO STAY HIDDEN - TREES STOP BULLETS",
 	"SPACE AT A LEDGE CLIMBS IT - JUMP AND HOLD SPACE TO GRAB A HIGH ONE",
@@ -213,48 +214,22 @@ func _draw_screen() -> void:
 	var accent := Retro.ACCENT
 	var amber := Retro.DIM
 	var text := Retro.TEXT
-	# background: deep blue-black, a slowly drifting tactical grid, scanlines and a vignette band at the bottom
-	c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.012, 0.02, 0.028))
-	var cell := 48.0 * s
-	var drift := fmod(_t * 6.0 * s, cell)
-	var grid := Color(accent.r, accent.g, accent.b, 0.045)
-	var x := -cell + drift
-	while x < sz.x:
-		c.draw_line(Vector2(x, 0), Vector2(x, sz.y), grid, 1.0)
-		x += cell
-	var y := -cell + drift * 0.5
-	while y < sz.y:
-		c.draw_line(Vector2(0, y), Vector2(sz.x, y), grid, 1.0)
-		y += cell
-	# radar: range rings and a sweep, right of centre
-	var rc := Vector2(sz.x * 0.76, sz.y * 0.42)
-	var rr := 190.0 * s
-	for k in 4:
-		c.draw_arc(rc, rr * (k + 1) / 4.0, 0.0, TAU, 64, Color(accent.r, accent.g, accent.b, 0.08), 1.0)
-	c.draw_line(rc - Vector2(rr, 0), rc + Vector2(rr, 0), Color(accent.r, accent.g, accent.b, 0.06), 1.0)
-	c.draw_line(rc - Vector2(0, rr), rc + Vector2(0, rr), Color(accent.r, accent.g, accent.b, 0.06), 1.0)
-	var ang := fmod(_t * 1.4, TAU)
-	for k in 14:
-		var a0 := ang - k * 0.045
-		var pts := PackedVector2Array([rc, rc + Vector2(cos(a0), sin(a0)) * rr, rc + Vector2(cos(a0 - 0.045), sin(a0 - 0.045)) * rr])
-		c.draw_colored_polygon(pts, Color(accent.r, accent.g, accent.b, 0.11 * (1.0 - k / 14.0)))
-	for k in 5:   # contacts the sweep lights up as it passes
-		var ca := float(k) * 1.37 + 0.6
-		var cd := rr * (0.3 + 0.13 * k)
-		var since := fmod(ang - ca + TAU * 4.0, TAU)
-		var glow := clampf(1.0 - since / 2.2, 0.0, 1.0)
-		c.draw_circle(rc + Vector2(cos(ca), sin(ca)) * cd, 3.0 * s, Color(amber.r, amber.g, amber.b, 0.15 + 0.6 * glow))
-	for i in int(sz.y / (3.0 * s)):
-		if i % 2 == 0:
-			c.draw_rect(Rect2(0, i * 3.0 * s, sz.x, 1.0 * s), Color(0, 0, 0, 0.16))
-	c.draw_rect(Rect2(0, sz.y * 0.72, sz.x, sz.y * 0.28), Color(0, 0, 0, 0.35))
+	# background: plain dark brown, a little darker along the bottom
+	c.draw_rect(Rect2(Vector2.ZERO, sz), Retro.PANEL)
+	c.draw_rect(Rect2(0, sz.y * 0.72, sz.x, sz.y * 0.28), Color(0, 0, 0, 0.25))
 
 	var body := Retro.body()
 	var display := Retro.display()
 	var left := 64.0 * s
 	# brand and corner marks
-	c.draw_string(display, Vector2(left, 64.0 * s), "TECTICA", HORIZONTAL_ALIGNMENT_LEFT, -1, int(26 * s), amber)
-	c.draw_string(body, Vector2(left, 86.0 * s), "v" + str(ProjectSettings.get_setting("application/config/version", "")),
+	if _logo == null and ResourceLoader.exists(LOGO_PATH):
+		_logo = load(LOGO_PATH)
+	if _logo != null:
+		var lw := 200.0 * s
+		c.draw_texture_rect(_logo, Rect2(left, 40.0 * s, lw, lw * _logo.get_height() / _logo.get_width()), false)
+	else:
+		c.draw_string(display, Vector2(left, 64.0 * s), "TECTICA", HORIZONTAL_ALIGNMENT_LEFT, -1, int(26 * s), text)
+	c.draw_string(body, Vector2(left, 92.0 * s), "v" + str(ProjectSettings.get_setting("application/config/version", "")),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, int(14 * s), Color(text.r, text.g, text.b, 0.4))
 	# what is loading: mode (green) over the map name (large), sliding in when it becomes known
 	var slide := 1.0 - pow(1.0 - clampf(_title_t / 0.5, 0.0, 1.0), 3.0)
@@ -265,30 +240,21 @@ func _draw_screen() -> void:
 				Color(accent.r, accent.g, accent.b, slide))
 		c.draw_string(display, Vector2(left + off, ty), _title, HORIZONTAL_ALIGNMENT_LEFT, sz.x * 0.62, int(46 * s),
 				Color(text.r, text.g, text.b, slide))
-		c.draw_rect(Rect2(left + off, ty + 16.0 * s, 120.0 * s * slide, 3.0 * s), amber)
+		c.draw_rect(Rect2(left + off, ty + 16.0 * s, 120.0 * s * slide, 2.0 * s), accent)
 	# the stage, with a blinking cursor
-	var cursor := "_" if fmod(_t, 0.8) < 0.45 else " "
-	c.draw_string(body, Vector2(left, ty + 56.0 * s), "> " + _stage_text + cursor, HORIZONTAL_ALIGNMENT_LEFT, -1,
-			int(20 * s), Color(amber.r, amber.g, amber.b, 0.95))
-	# progress: a big percentage and a segmented bar; the block being filled glows
+	c.draw_string(body, Vector2(left, ty + 56.0 * s), _stage_text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			int(20 * s), amber)
+	# progress: a big percentage over a thin bar
 	var pct := int(floor(_shown))
 	var by := sz.y - 120.0 * s
 	var bw := sz.x - left * 2.0
 	c.draw_string(display, Vector2(left, by - 22.0 * s), "%d%%" % pct, HORIZONTAL_ALIGNMENT_RIGHT, bw, int(40 * s), text)
 	c.draw_string(body, Vector2(left, by - 22.0 * s), "LOADING", HORIZONTAL_ALIGNMENT_LEFT, -1, int(18 * s),
 			Color(text.r, text.g, text.b, 0.55))
-	var gap := 4.0 * s
-	var blk := (bw - gap * (BLOCKS - 1)) / BLOCKS
-	var bh := 16.0 * s
-	var filled := _shown / 100.0 * BLOCKS
-	for i in BLOCKS:
-		var r := Rect2(left + i * (blk + gap), by, blk, bh)
-		c.draw_rect(r, Color(accent.r, accent.g, accent.b, 0.1))
-		var f := clampf(filled - i, 0.0, 1.0)
-		if f > 0.0:
-			var col := accent if f >= 1.0 else Color(accent.r, accent.g, accent.b, 0.45 + 0.4 * sin(_t * 9.0) ** 2)
-			c.draw_rect(Rect2(r.position, Vector2(r.size.x * f, r.size.y)), col)
-	c.draw_rect(Rect2(left - 3.0 * s, by - 3.0 * s, bw + 6.0 * s, bh + 6.0 * s), Color(accent.r, accent.g, accent.b, 0.35), false, 1.0)
+	# one thin bar on a hairline track
+	var bh := 3.0 * s
+	c.draw_rect(Rect2(left, by + 6.0 * s, bw, 1.0), Retro.LINE)
+	c.draw_rect(Rect2(left, by + 6.0 * s - bh * 0.5, bw * clampf(_shown / 100.0, 0.0, 1.0), bh), accent)
 	# a tip
 	if _tip != "":
 		c.draw_string(body, Vector2(left, sz.y - 62.0 * s), "TIP  " + _tip, HORIZONTAL_ALIGNMENT_LEFT, bw, int(17 * s),

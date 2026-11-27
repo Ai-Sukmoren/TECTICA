@@ -428,7 +428,7 @@ func _draw_controls() -> void:
 		var top := 9999.0
 		for k in _keys:
 			top = minf(top, (k[0] as Rect2).position.y)
-		c.draw_rect(Rect2(0, top - 10.0, s.x, s.y - top + 10.0), Color(0.02, 0.03, 0.04, 0.95))
+		c.draw_rect(Rect2(0, top - 10.0, s.x, s.y - top + 10.0), Color(0.0375, 0.03, 0.0234, 0.95))
 		var auth: bool = hud._needs_auth()
 		if not auth:
 			c.draw_string(font, Vector2(20.0, top + 34.0), _field_text(), HORIZONTAL_ALIGNMENT_LEFT, s.x * 0.55, 22, Color(1.0, 0.8, 0.35))
@@ -455,7 +455,7 @@ func _draw_controls() -> void:
 			c.draw_string(font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 9.0), String(k[1]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 24 if String(k[1]).length() == 1 else 16, Color(1, 1, 1, 0.92))
 		return
 	if wants_back():
-		c.draw_rect(BACK_RECT, Color(0.02, 0.03, 0.04, 0.88))
+		c.draw_rect(BACK_RECT, Color(0.0375, 0.03, 0.0234, 0.88))
 		c.draw_rect(BACK_RECT, Color(1, 1, 1, 0.55), false, 2.0)
 		c.draw_string(font, Vector2(BACK_RECT.position.x, BACK_RECT.position.y + 37.0), "‹  BACK", HORIZONTAL_ALIGNMENT_CENTER, BACK_RECT.size.x, 22, Color(1, 1, 1, 0.95))
 	if not in_game():

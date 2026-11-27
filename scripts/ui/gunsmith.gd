@@ -192,7 +192,7 @@ func _process(_delta: float) -> void:
 
 func draw(c: Control, vp: Vector2) -> void:
 	_build_rows()
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.02, 0.025, 0.03, 0.9))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0312, 0.025, 0.0195, 0.9))
 	hud._text(c, Vector2(70, 70), "GUNSMITH  //  CLASS LOADOUT", 26, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(70, 96), Loadout.class_desc(), 13, hud.DIM)
 
@@ -243,8 +243,8 @@ func draw(c: Control, vp: Vector2) -> void:
 		_row_rects.append(rect)
 		var sel := i == row
 		if sel:
-			c.draw_rect(rect, Color(hud.RED, 0.22))
-			hud._brackets(c, rect, 8.0, hud.RED, 2.0)
+			c.draw_rect(rect, Color(hud.ACCENT, 0.14))
+			hud._brackets(c, rect, 8.0, hud.ACCENT, 2.0)
 		var col: Color = hud.TEXT if sel else (hud.TEXT if head else hud.DIM)
 		hud._text(c, Vector2(rect.position.x + 12, y), label, 14 if head else 13, col, HORIZONTAL_ALIGNMENT_LEFT, -1, head)
 		if value != "":
@@ -261,7 +261,7 @@ func draw(c: Control, vp: Vector2) -> void:
 
 	# --- preview
 	var pr := Rect2(vp.x * 0.42, 110, vp.x * 0.54, vp.x * 0.27)
-	c.draw_rect(pr, Color(0.06, 0.07, 0.08, 0.8))
+	c.draw_rect(pr, Color(0.0875, 0.07, 0.0546, 0.8))
 	hud._brackets(c, pr, 18.0, Color(hud.TEXT, 0.4), 1.5)
 	preview.draw(c, pr)
 	var slot := _focus_slot()

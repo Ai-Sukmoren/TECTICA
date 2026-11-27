@@ -13,9 +13,19 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.52.3
+## 🆕 What's new in v1.53.0
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.3-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.53.0-beta)
+
+- **New look:** a new TECTICA logo and app icon, and every screen redone in the logo's colours: sand text, olive buttons and selection, dark-brown panels; the red accents are kept for danger and enemies.
+- **New UI font:** Saira (SIL Open Font License) replaces the pixel font in menus and the HUD.
+- **Calmer menus:** a thin bar marks the selected row, the logo no longer pulses and the scanlines are gone.
+
+![The main menu and the gunsmith in the new look](docs/screenshots/v1530-ui.jpg)
+
+## What came in v1.52.3
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.3-beta)
 
 - **Less kick on four more guns:** the SIG MCX Spear, Q Honey Badger, FN SCAR-H and FN SCAR-SC now recoil like SMGs (short, flat, quick to settle); the MCX Spear and both SCARs climb much less per shot. They still handle like rifles.
 

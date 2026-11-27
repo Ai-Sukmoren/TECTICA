@@ -81,7 +81,7 @@ func handle(event: InputEvent) -> bool:
 
 
 func draw(c: Control, vp: Vector2) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.015, 0.025, 0.035, 0.96))
+	c.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.0313, 0.025, 0.0195, 0.96))
 	hud._text(c, Vector2(60, 70), "OPEN ROOMS", 28, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	hud._text(c, Vector2(60, 100), str(_service.rooms_status), 13, hud.DIM)
 	var visible_rows := maxi(int((vp.y - 230) / 60), 1)
@@ -91,7 +91,7 @@ func draw(c: Control, vp: Vector2) -> void:
 		var room: Dictionary = _rooms[i]
 		var r := Rect2(60, 130 + (i - first) * 60, vp.x - 120, 52)
 		_rects.append([r, i])
-		c.draw_rect(r, Color(hud.RED, 0.22) if i == selected else Color(1, 1, 1, 0.04))
+		c.draw_rect(r, Color(hud.ACCENT, 0.14) if i == selected else Color(1, 1, 1, 0.04))
 		hud._text(c, r.position + Vector2(14, 23), str(room.name), 16, hud.TEXT, HORIZONTAL_ALIGNMENT_LEFT, r.size.x * 0.45, true)
 		hud._text(c, r.position + Vector2(14, 43), "%s  ·  %s  ·  v%s" % [str(room.mode).to_upper(), str(room.map).to_upper(), room.version], 11, hud.DIM)
 		hud._text(c, r.position + Vector2(0, 31), "%d / 8     JOIN  →" % int(room.players), 14, hud.ACCENT, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 20, true)

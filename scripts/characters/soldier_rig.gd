@@ -1343,10 +1343,10 @@ const RECOIL_FEEL := {
 func _recoil_feel() -> Dictionary:
 	if weapon == null:
 		return RECOIL_FEEL["rifle"]
-	# assault rifles kick like SMGs (short, flat, quick to settle); they still handle as rifles
-	if String(weapon.stats.get("category", "")) == "ASSAULT RIFLE":
-		return RECOIL_FEEL["smg"]
-	return RECOIL_FEEL[_fp_class()]
+	# assault rifles kick like SMGs (short, flat, quick to settle); they still handle as rifles. A gun's own
+	# "recoil_feel" (weapon_data) overrides its category.
+	var feel := "smg" if String(weapon.stats.get("category", "")) == "ASSAULT RIFLE" else _fp_class()
+	return RECOIL_FEEL[String(weapon.stats.get("recoil_feel", feel))]
 
 
 func add_recoil(strength: float) -> void:

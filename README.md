@@ -13,9 +13,15 @@ Soldiers, the forest map, FX and sound are generated in code; the other maps, mo
 | [![Watch the TECTICA gameplay trailer](docs/screenshots/v139-gameplay-trailer-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-gameplay-trailer.mp4) | [![Watch the TECTICA rifle reveal](docs/screenshots/v139-rifle-reveal-thumb.jpg)](https://github.com/Ai-Sukmoren/TECTICA/releases/download/v1.39.0-beta/tectica-rifle-reveal.mp4) |
 | Weapon inspect, then the gunsmith in one take: attachments installed and swapped, attachment skins, gun skins, ending on the exact P90 from the gameplay. Through its reflex sight into real Backrooms combat: a 120 fps slow-motion headshot, a tactical reload, a weapon switch and a scoped kill. | The battle rifle in a dark studio: macro details, the gun taken apart, its bolt cycled, and a 360° orbit. Specs are the game's own values. |
 
-## 🆕 What's new in v1.52.2
+## 🆕 What's new in v1.52.3
 
-**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.2-beta)
+**[Download the latest version](https://github.com/Ai-Sukmoren/TECTICA/releases/latest/download/TECTICA-Windows.zip)** · [release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.3-beta)
+
+- **Less kick on four more guns:** the SIG MCX Spear, Q Honey Badger, FN SCAR-H and FN SCAR-SC now recoil like SMGs (short, flat, quick to settle); the MCX Spear and both SCARs climb much less per shot. They still handle like rifles.
+
+## What came in v1.52.2
+
+[release notes](https://github.com/Ai-Sukmoren/TECTICA/releases/tag/v1.52.2-beta)
 
 - **Iron sights fold down under an optic:** on the AUG A4, CZ Bren 2, SCAR-SC, Q Honey Badger, SIG MCX Spear and Magpul PDR-C the flip-up irons stand on iron sights and lie flat on the rail once a sight is fitted.
 - **Assault rifles kick like SMGs:** a shorter, flatter kick that settles faster (AUG A4, AUG A1, CZ Bren 2, HK33, AS VAL); they still handle like rifles.

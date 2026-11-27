@@ -2,7 +2,8 @@ extends RefCounted
 ## Weapon, attachment and class definitions.
 ## Spread is in degrees, times in seconds. Attachment modifiers multiply the
 ## base stat of the same name (e.g. "recoil": 0.8 = 20 % less recoil); boolean
-## modifiers override. "mag" multiplies magazine capacity.
+## modifiers override. "mag" multiplies magazine capacity. "recoil_feel" (optional) picks how the gun moves in the
+## hands when it fires (SoldierRig.RECOIL_FEEL), in place of its category's.
 
 const SLOTS := ["optic", "muzzle", "handguard", "rail", "side", "underbarrel", "magazine", "stock"]
 const SLOT_NAMES := {"optic": "OPTIC", "muzzle": "MUZZLE", "handguard": "HANDGUARD", "rail": "RAIL", "side": "SIDE RAIL", "underbarrel": "UNDERBARREL", "magazine": "MAGAZINE", "stock": "STOCK"}
@@ -240,7 +241,7 @@ const WEAPONS := {
 		"damage": 44.0, "range": 100.0, "falloff_start": 50.0, "pierce": true,
 		"spread_hip": 3.3, "spread_aim": 0.45, "spread_move": 2.7,
 		"bloom_add": 0.45, "bloom_max": 3.4, "bloom_recover": 5.5,
-		"recoil": 1.01, "reload": 2.5, "reload_empty": 3.0,
+		"recoil": 0.68, "recoil_feel": "smg", "reload": 2.5, "reload_empty": 3.0,
 		"suppressed": false, "noise_radius": 42.0, "shake": 0.16, "sound": "shot_loud", "volume": -3.0,
 		"mobility": 0.95, "ads_speed": 0.9,
 		"options": {"handguard": ["standard"], "rail": ["none"], "optic": _ALL_OPTICS, "muzzle": _RIFLE_MUZZLES, "side": _SIDE_LASER, "underbarrel": _GRIP_LAUNCHER,
@@ -388,7 +389,7 @@ const WEAPONS := {
 		"damage": 32.0, "range": 67.0, "falloff_start": 26.0,
 		"spread_hip": 2.85, "spread_aim": 0.63, "spread_move": 2.05,
 		"bloom_add": 0.32, "bloom_max": 3.0, "bloom_recover": 6.2,
-		"recoil": 0.64, "reload": 2.25, "reload_empty": 2.8,
+		"recoil": 0.64, "recoil_feel": "smg", "reload": 2.25, "reload_empty": 2.8,
 		"suppressed": true, "noise_radius": 12.0, "shake": 0.09, "sound": "shot_suppressed", "volume": -4.0, "flash": 0.4,
 		"mobility": 1.04, "ads_speed": 1.08,
 		"options": {"handguard": ["standard"], "rail": ["none"], "side": _SIDE_LASER, "underbarrel": _GRIP,
@@ -402,7 +403,7 @@ const WEAPONS := {
 		"damage": 34.0, "range": 72.0, "falloff_start": 31.0,
 		"spread_hip": 2.9, "spread_aim": 0.6, "spread_move": 2.1,
 		"bloom_add": 0.35, "bloom_max": 3.1, "bloom_recover": 6.0,
-		"recoil": 0.76, "reload": 2.2, "reload_empty": 2.8,
+		"recoil": 0.66, "recoil_feel": "smg", "reload": 2.2, "reload_empty": 2.8,
 		"suppressed": false, "noise_radius": 35.0, "shake": 0.12, "sound": "shot_rifle", "volume": -4.0,
 		"mobility": 1.03, "ads_speed": 1.06, "options": _CARBINE_OPTIONS, "defaults": _CARBINE_DEFAULTS,
 	},
@@ -412,7 +413,7 @@ const WEAPONS := {
 		"damage": 42.0, "range": 94.0, "falloff_start": 46.0, "pierce": true,
 		"spread_hip": 3.35, "spread_aim": 0.5, "spread_move": 2.7,
 		"bloom_add": 0.43, "bloom_max": 3.3, "bloom_recover": 5.6,
-		"recoil": 0.95, "reload": 2.45, "reload_empty": 2.95,
+		"recoil": 0.65, "recoil_feel": "smg", "reload": 2.45, "reload_empty": 2.95,
 		"suppressed": false, "noise_radius": 40.0, "shake": 0.15, "sound": "shot_loud", "volume": -4.0,
 		"mobility": 0.96, "ads_speed": 0.93,
 		"options": _CARBINE_OPTIONS,

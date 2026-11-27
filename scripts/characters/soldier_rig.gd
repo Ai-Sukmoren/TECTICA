@@ -1341,7 +1341,12 @@ const RECOIL_FEEL := {
 
 
 func _recoil_feel() -> Dictionary:
-	return RECOIL_FEEL["rifle"] if weapon == null else RECOIL_FEEL[_fp_class()]
+	if weapon == null:
+		return RECOIL_FEEL["rifle"]
+	# assault rifles kick like SMGs (short, flat, quick to settle); they still handle as rifles
+	if String(weapon.stats.get("category", "")) == "ASSAULT RIFLE":
+		return RECOIL_FEEL["smg"]
+	return RECOIL_FEEL[_fp_class()]
 
 
 func add_recoil(strength: float) -> void:

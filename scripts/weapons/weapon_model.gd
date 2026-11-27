@@ -650,7 +650,9 @@ static func _low_poly(r: Node3D, model: String, att: Dictionary = {}) -> Diction
 		if part.begins_with("Optic") or part.begins_with("Suppressor"):
 			factory_parts["factory_optic" if part.begins_with("Optic") else "factory_suppressor"] = e
 			continue
-		if part.begins_with("Iron") and att.get("optic", "iron") != "iron":
+		# flip-up irons: standing on iron sights; with an optic fitted, the folded pair (IronRearFold /
+		# IronFrontFold) if the model has one, else none
+		if part.begins_with("Iron") and part.ends_with("Fold") == (att.get("optic", "iron") == "iron"):
 			continue
 		if part.begins_with("Mag"):
 			mag = [e[1], e[2]]
